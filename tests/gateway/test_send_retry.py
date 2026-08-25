@@ -130,6 +130,17 @@ class TestSendWithRetryNetworkRetry:
 
 class TestSendWithRetryExhausted:
     @pytest.mark.asyncio
+    async def test_each_resend_consumes_one_retry_budget_slot(self):
+        adapter = _StubAdapter()
+        network_err = SendResult(success=False, error="httpx.ConnectError: host unreachable")
+        adapter._send_results = [network_err, network_err, SendResult(success=True)]
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await adapter._send_with_retry("chat1", "hello", max_retries=1, base_delay=0)
+        assert not result.success
+        assert mock_sleep.await_count == 1
+        assert len(adapter._send_calls) == 3  # initial + budgeted resend + failure notice
+
+    @pytest.mark.asyncio
     async def test_sends_user_notice_after_exhaustion(self):
         adapter = _StubAdapter()
         network_err = SendResult(success=False, error="httpx.ConnectError: host unreachable")
@@ -188,6 +199,20 @@ class TestSendWithRetryAfter:
         # First sleep should use retry_after (~37s + jitter), not base_delay (~2s)
         first_sleep = mock_sleep.call_args_list[0][0][0]
         assert first_sleep >= 36.0  # 37 - 1 (max jitter)
+
+    @pytest.mark.asyncio
+    async def test_retry_after_is_authoritative_without_extra_jitter(self):
+        adapter = _StubAdapter()
+        adapter._send_results = [
+            SendResult(success=False, error="rate limited", retryable=True, retry_after=30.0),
+            SendResult(success=True, message_id="ok"),
+        ]
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep, \
+             patch("gateway.platforms.base.random.uniform") as mock_uniform:
+            result = await adapter._send_with_retry("chat1", "hello")
+        assert result.success
+        mock_sleep.assert_awaited_once_with(30.0)
+        mock_uniform.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_retry_after_from_subsequent_result(self):

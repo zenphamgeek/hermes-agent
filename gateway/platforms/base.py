@@ -5449,6 +5449,7 @@ class BasePlatformAdapter(ABC):
         metadata: Any = None,
         max_retries: int = 2,
         base_delay: float = 2.0,
+        max_delay: float = 60.0,
     ) -> "SendResult":
         """
         Send a message with automatic retry for transient network errors.
@@ -5478,19 +5479,19 @@ class BasePlatformAdapter(ABC):
             return result
 
         if is_network:
-            # Retry with exponential backoff for transient errors.
-            # Honor server-requested retry_after (e.g. Telegram FloodWait)
-            # when present — it is authoritative over our backoff schedule.
-            server_retry_after = result.retry_after
-            for attempt in range(1, max_retries + 1):
-                if server_retry_after is not None:
-                    delay = server_retry_after + random.uniform(0, 1)
-                    server_retry_after = None  # only honor once per send
+            # Retry with decorrelated jitter. Retry-After is authoritative and
+            # each actual resend consumes exactly one retry from the budget.
+            retry_budget = max(0, max_retries)
+            previous_delay = base_delay
+            for attempt in range(1, retry_budget + 1):
+                if result.retry_after is not None:
+                    delay = result.retry_after
                 else:
-                    delay = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1)
+                    delay = min(max_delay, random.uniform(base_delay, max(base_delay, previous_delay * 3)))
+                previous_delay = delay
                 logger.warning(
                     "[%s] Send failed (attempt %d/%d, retrying in %.1fs): %s",
-                    self.name, attempt, max_retries, delay, error_str,
+                    self.name, attempt, retry_budget, delay, error_str,
                 )
                 await asyncio.sleep(delay)
                 result = await self.send(
@@ -5503,8 +5504,6 @@ class BasePlatformAdapter(ABC):
                     logger.info("[%s] Send succeeded on retry %d", self.name, attempt)
                     return result
                 error_str = result.error or ""
-                if result.retry_after is not None:
-                    server_retry_after = result.retry_after
                 if not (result.retryable or self._is_retryable_error(error_str)):
                     break  # error switched to non-transient — fall through to plain-text fallback
             else:

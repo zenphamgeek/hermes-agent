@@ -260,8 +260,8 @@ def strip_anthropic_cache_control(
         if not isinstance(msg, dict):
             continue
         msg.pop("cache_control", None)
-        content = msg.get("content")
-        if not isinstance(content, list):
+        parts = msg.get("content")
+        if not isinstance(parts, list):
             continue
         # Two-part skill-invocation split (#81867). The builder-declared
         # boundary is the only decoration that marks the *first* part of a
@@ -272,33 +272,33 @@ def strip_anthropic_cache_control(
         # (failover re-decorates a request built many messages ago, #72626).
         skill_split_shape = (
             msg.get("role") == "user"
-            and len(content) == 2
-            and isinstance(content[0], dict)
-            and isinstance(content[1], dict)
-            and "cache_control" in content[0]
-            and "cache_control" not in content[1]
+            and len(parts) == 2
+            and isinstance(parts[0], dict)
+            and isinstance(parts[1], dict)
+            and "cache_control" in parts[0]
+            and "cache_control" not in parts[1]
         )
-        if any(isinstance(part, dict) and "cache_control" in part for part in content):
-            content = [
+        if any(isinstance(part, dict) and "cache_control" in part for part in parts):
+            parts = [
                 {k: v for k, v in part.items() if k != "cache_control"}
                 if isinstance(part, dict) and "cache_control" in part
                 else part
-                for part in content
+                for part in parts
             ]
-            msg["content"] = content
-        decoration_shape = content and all(
+            msg["content"] = parts
+        decoration_shape = parts and all(
             isinstance(part, dict)
             and part.get("type", "text") == "text"
             and isinstance(part.get("text"), str)
             and set(part.keys()) <= {"type", "text"}
-            for part in content
+            for part in parts
         ) and (
-            len(content) == 1
-            or (msg.get("role") == "system" and len(content) == 2)
+            len(parts) == 1
+            or (msg.get("role") == "system" and len(parts) == 2)
             or skill_split_shape
         )
         if decoration_shape:
-            msg["content"] = "".join(part["text"] for part in content)
+            msg["content"] = "".join(part["text"] for part in parts)
     return api_messages
 
 
