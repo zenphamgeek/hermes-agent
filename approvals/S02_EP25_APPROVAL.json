@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP25",
+  "episode_num": 25,
+  "title": "Tập 25: Tương Lai Kiến Trúc AI — Khép Lại Series 2",
+  "git_hash": "3c5fd918e3e2537cd74f4f88c990c5de5cbd9f63",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-27T10:24:17.114443+00:00",
+  "asset_checksums": {
+    "script_md": "76ac137c79b851f6094acce8750a424630db85d40e84798905554ef706d15f0a",
+    "manim_py": "ec2f53cc22d4f027cb8186127d98fcb7ad9b42fa1c83d7b2c164c84c2b34a00c",
+    "audio_master_wav": "0fcb97679fedfe5a128e45092a8bfec534f847f33316963edfbc0fb8af032f1b",
+    "video_master_mp4": "b4bd906e52950ddaac5a6b2e396a5a486af39abdd460c6e8fd4a835b8b50198d",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "d5ceb679d07b9921db8f4b24444a52c65c0c53ae3b4da2c4cf1ab4cca083336d",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}

@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ZenPhamSeriesApprovalManifest",
+  "description": "Canonical schema for ZenPham Series episodic approval manifests (approvals/S02_EP{num:02d}_APPROVAL.json)",
+  "type": "object",
+  "required": [
+    "approval_version",
+    "series_id",
+    "series_title",
+    "episode_id",
+    "episode_num",
+    "title",
+    "git_hash",
+    "is_git_clean",
+    "execution_mode",
+    "approved_at",
+    "asset_checksums",
+    "closure_sha256",
+    "quality_gates",
+    "metrics",
+    "decision"
+  ],
+  "properties": {
+    "approval_version": {
+      "type": "string",
+      "enum": ["1.0"]
+    },
+    "series_id": {
+      "type": "string",
+      "enum": ["series_02"]
+    },
+    "series_title": {
+      "type": "string"
+    },
+    "episode_id": {
+      "type": "string",
+      "pattern": "^S02_EP(0[1-9]|1[0-9]|2[0-5])$"
+    },
+    "episode_num": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 25
+    },
+    "title": {
+      "type": "string"
+    },
+    "git_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "is_git_clean": {
+      "type": "boolean"
+    },
+    "execution_mode": {
+      "type": "string",
+      "enum": ["isolated_atomic"]
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "asset_checksums": {
+      "type": "object",
+      "required": [
+        "script_md",
+        "manim_py",
+        "audio_master_wav",
+        "video_master_mp4",
+        "thumbnail_mosaic_png"
+      ],
+      "properties": {
+        "script_md": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "manim_py": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "audio_master_wav": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "video_master_mp4": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "thumbnail_mosaic_png": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": true
+    },
+    "closure_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "quality_gates": {
+      "type": "object",
+      "required": [
+        "episodic_isolation",
+        "spatial_containment",
+        "anti_slide_deck",
+        "audio_ebur128",
+        "mosaic_cta_grid"
+      ],
+      "properties": {
+        "episodic_isolation": {
+          "type": "string",
+          "enum": ["PASS", "FAIL"]
+        },
+        "spatial_containment": {
+          "type": "string",
+          "enum": ["PASS", "FAIL"]
+        },
+        "anti_slide_deck": {
+          "type": "string",
+          "enum": ["PASS", "FAIL"]
+        },
+        "audio_ebur128": {
+          "type": "string",
+          "enum": ["PASS", "FAIL"]
+        },
+        "mosaic_cta_grid": {
+          "type": "string",
+          "enum": ["PASS", "FAIL"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "resolution",
+        "fps",
+        "integrated_lufs",
+        "true_peak_dbtp",
+        "slide_deck_violations",
+        "spatial_bounding_box_violations"
+      ],
+      "properties": {
+        "resolution": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "fps": {
+          "type": "integer"
+        },
+        "integrated_lufs": {
+          "type": "number"
+        },
+        "true_peak_dbtp": {
+          "type": "number"
+        },
+        "slide_deck_violations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "spatial_bounding_box_violations": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["approved", "rejected"]
+    }
+  }
+}
