@@ -125,19 +125,19 @@ class Tap24Scene01ColdOpen(Scene):
             inner_radius=1.35, outer_radius=1.85,
             stroke_color=COLOR_ROSE, stroke_width=1.5, fill_opacity=0.12
         ).move_to(DOWN * 0.2)
-        math_oom = MathTex(
+        math_oom = fit_math_to_card(
             r"M_{\text{total}} = 1{,}120\,\text{GB} \gg 80\,\text{GB}",
-            font_size=23.0, color=COLOR_ROSE
-        ).move_to(tensor_core.get_center())
+            tensor_core, font_size=23.0, color=COLOR_ROSE, padding_x=0.20, padding_y=0.10
+        )
 
         oom_box = RoundedRectangle(
             corner_radius=0.10, width=4.6, height=0.62,
             fill_color="#2b0a14", fill_opacity=0.95, stroke_color=COLOR_ROSE, stroke_width=1.6
         ).next_to(tensor_core, UP, buff=0.25)
-        oom_header = Text(
+        oom_header = create_wrapped_card_text(
             "CUDA OUT OF MEMORY (OOM)",
-            font=DEFAULT_FONT, font_size=12.5, weight=BOLD, color=COLOR_ROSE
-        ).move_to(oom_box.get_center())
+            oom_box, font=DEFAULT_FONT, font_size=12.5, weight=BOLD, color=COLOR_ROSE, padding_x=0.20, padding_y=0.10
+        )
 
         self.play(
             Create(tensor_core),
@@ -237,19 +237,28 @@ class Tap24Scene02Architecture(Scene):
             width=2.8, height=0.65,
             fill_color=COLOR_CYAN, fill_opacity=0.85, stroke_color=COLOR_TEXT, stroke_width=1.0
         ).move_to(np.array([stack_x, base_y + 0.325, 0.0]))
-        weight_header = MathTex(r"\text{Weights } 2\Phi \ (140\,\text{GB})", font_size=16.0, color="#0c0d12").move_to(weight_rect.get_center())
+        weight_header = fit_math_to_card(
+            r"\text{Weights } 2\Phi \ (140\,\text{GB})",
+            weight_rect, font_size=16.0, color="#0c0d12", padding_x=0.15, padding_y=0.10
+        )
 
         grad_rect = Rectangle(
             width=2.8, height=0.65,
             fill_color=COLOR_VIOLET, fill_opacity=0.85, stroke_color=COLOR_TEXT, stroke_width=1.0
         ).move_to(np.array([stack_x, base_y + 0.65 + 0.325, 0.0]))
-        grad_header = MathTex(r"\text{Gradients } 2\Phi \ (140\,\text{GB})", font_size=16.0, color="#0c0d12").move_to(grad_rect.get_center())
+        grad_header = fit_math_to_card(
+            r"\text{Gradients } 2\Phi \ (140\,\text{GB})",
+            grad_rect, font_size=16.0, color="#0c0d12", padding_x=0.15, padding_y=0.10
+        )
 
         adam_rect = Rectangle(
             width=2.8, height=2.20,
             fill_color=COLOR_GOLD, fill_opacity=0.85, stroke_color=COLOR_TEXT, stroke_width=1.0
         ).move_to(np.array([stack_x, base_y + 1.30 + 1.10, 0.0]))
-        adam_header = MathTex(r"\text{AdamW } 12\Phi \ (840\,\text{GB})", font_size=17.0, color="#0c0d12").move_to(adam_rect.get_center())
+        adam_header = fit_math_to_card(
+            r"\text{AdamW } 12\Phi \ (840\,\text{GB})",
+            adam_rect, font_size=17.0, color="#0c0d12", padding_x=0.15, padding_y=0.15
+        )
 
         stack_label_header = Text("BỘ NHỚ TĨNH 1 GPU: 1,120 GB", font=DEFAULT_FONT, font_size=12.5, weight=BOLD, color=COLOR_ROSE)
         stack_label_header.next_to(adam_rect, UP, buff=0.18)
@@ -264,28 +273,28 @@ class Tap24Scene02Architecture(Scene):
             corner_radius=0.12, width=5.8, height=0.85,
             fill_color=COLOR_PANEL, fill_opacity=0.9, stroke_color=COLOR_GOLD, stroke_width=1.4
         ).move_to(RIGHT * 2.8 + UP * 0.9)
-        math_zero1 = MathTex(
+        math_zero1 = fit_math_to_card(
             r"\text{ZeRO-1 } (P_{\text{os}}): \ M = 4\Phi + \frac{12\Phi}{N} \implies 293\,\text{GB} \ (4\times)",
-            font_size=18.0, color=COLOR_GOLD
-        ).move_to(zero1_box.get_center())
+            zero1_box, font_size=18.0, color=COLOR_GOLD, padding_x=0.20, padding_y=0.10
+        )
 
         zero2_box = RoundedRectangle(
             corner_radius=0.12, width=5.8, height=0.85,
             fill_color=COLOR_PANEL, fill_opacity=0.9, stroke_color=COLOR_VIOLET, stroke_width=1.4
         ).move_to(RIGHT * 2.8 + DOWN * 0.05)
-        math_zero2 = MathTex(
+        math_zero2 = fit_math_to_card(
             r"\text{ZeRO-2 } (P_{\text{os+g}}): \ M = 2\Phi + \frac{14\Phi}{N} \implies 155\,\text{GB} \ (8\times)",
-            font_size=18.0, color=COLOR_VIOLET
-        ).move_to(zero2_box.get_center())
+            zero2_box, font_size=18.0, color=COLOR_VIOLET, padding_x=0.20, padding_y=0.10
+        )
 
         zero3_box = RoundedRectangle(
             corner_radius=0.12, width=5.8, height=0.85,
             fill_color=COLOR_PANEL, fill_opacity=0.9, stroke_color=COLOR_GREEN, stroke_width=1.5
         ).move_to(RIGHT * 2.8 + DOWN * 1.0)
-        math_zero3 = MathTex(
+        math_zero3 = fit_math_to_card(
             r"\text{ZeRO-3 / FSDP}: \ M = \frac{16\Phi}{N} \implies 17.5\,\text{GB} < 80\,\text{GB} \ (16\times)",
-            font_size=18.0, color=COLOR_GREEN
-        ).move_to(zero3_box.get_center())
+            zero3_box, font_size=18.0, color=COLOR_GREEN, padding_x=0.20, padding_y=0.10
+        )
 
         # Stage 1 Collapse Animation: ZeRO-1
         arrow_z1 = Arrow(start=adam_rect.get_right(), end=zero1_box.get_left(), buff=0.15, color=COLOR_GOLD, tip_length=0.16)
@@ -332,12 +341,12 @@ class Tap24Scene03Mathematics(Scene):
         math_vol = MathTex(
             r"\text{Data Volume} = 2 \times \frac{N-1}{N} \times \Phi \approx 2\Phi",
             font_size=24.0, color=COLOR_GOLD
-        ).move_to(UP * 1.8)
+        ).move_to(UP * 2.45)
         self.play(Write(math_vol), run_time=1.0)
 
-        # 6 GPU Nodes in Circular Topology (Radius = 2.3, Center = [0.0, -0.35, 0.0])
-        ring_center = np.array([0.0, -0.35, 0.0])
-        ring_radius = 2.3
+        # 6 GPU Nodes in Circular Topology (Radius = 2.1, Center = [0.0, -0.7, 0.0])
+        ring_center = np.array([0.0, -0.7, 0.0])
+        ring_radius = 2.1
         num_gpus = 6
         node_colors = [COLOR_CYAN, COLOR_GOLD, COLOR_VIOLET, COLOR_ROSE, COLOR_GREEN, "#38bdf8"]
 
@@ -350,12 +359,12 @@ class Tap24Scene03Mathematics(Scene):
             node_centers.append(pos)
 
             outer_circle = Circle(
-                radius=0.55, stroke_color=node_colors[i], stroke_width=2.0,
+                radius=0.48, stroke_color=node_colors[i], stroke_width=2.0,
                 fill_color=COLOR_PANEL, fill_opacity=0.9
             ).move_to(pos)
             inner_dot = Dot(pos, radius=0.08, color=node_colors[i])
             node_header = Text(f"GPU {i}", font=DEFAULT_FONT, font_size=12.0, weight=BOLD, color=node_colors[i])
-            node_header.next_to(outer_circle.get_top(), DOWN, buff=0.14)
+            node_header.next_to(outer_circle.get_top(), DOWN, buff=0.12)
             gpu_nodes.add(VGroup(outer_circle, inner_dot, node_header))
 
         self.play(LaggedStart(*[FadeIn(n, scale=0.7) for n in gpu_nodes], lag_ratio=0.08), run_time=1.2)
@@ -368,8 +377,8 @@ class Tap24Scene03Mathematics(Scene):
             # Tangent direction on circle
             t_mid = (i + 0.5) * TAU / num_gpus
             curved_arr = CurvedArrow(
-                start_point=start_p + 0.58 * np.array([np.cos(i * TAU / num_gpus + 0.3), np.sin(i * TAU / num_gpus + 0.3), 0.0]),
-                end_point=end_p + 0.58 * np.array([np.cos((i + 1) * TAU / num_gpus - 0.3), np.sin((i + 1) * TAU / num_gpus - 0.3), 0.0]),
+                start_point=start_p + 0.50 * np.array([np.cos(i * TAU / num_gpus + 0.3), np.sin(i * TAU / num_gpus + 0.3), 0.0]),
+                end_point=end_p + 0.50 * np.array([np.cos((i + 1) * TAU / num_gpus - 0.3), np.sin((i + 1) * TAU / num_gpus - 0.3), 0.0]),
                 angle=-TAU / 12,
                 color=COLOR_CYAN,
                 stroke_width=2.0,
@@ -384,7 +393,7 @@ class Tap24Scene03Mathematics(Scene):
         phase1_header = Text(
             "GIAI ĐOẠN 1: SCATTER-REDUCE — TÍCH LŨY PHÂN MẢNH ĐẠO HÀM (N-1 BƯỚC)",
             font=DEFAULT_FONT, font_size=12.0, weight=BOLD, color=COLOR_CYAN
-        ).next_to(math_vol, DOWN, buff=0.25)
+        ).move_to(UP * 2.05)
         self.play(FadeIn(phase1_header), run_time=0.6)
 
         token_dots = VGroup(*[
@@ -402,7 +411,7 @@ class Tap24Scene03Mathematics(Scene):
         phase2_header = Text(
             "GIAI ĐOẠN 2: ALL-GATHER — ĐỒNG BỘ TOÀN BỘ TRỌNG SỐ TOÀN CỤC (N-1 BƯỚC)",
             font=DEFAULT_FONT, font_size=12.0, weight=BOLD, color=COLOR_GREEN
-        ).next_to(math_vol, DOWN, buff=0.25)
+        ).move_to(UP * 2.05)
         self.play(
             FadeOut(phase1_header),
             FadeIn(phase2_header),
@@ -418,7 +427,7 @@ class Tap24Scene03Mathematics(Scene):
             callout_header, buff=0.15, stroke_color=COLOR_CYAN, stroke_width=1.2,
             fill_color=COLOR_PANEL, fill_opacity=0.9
         )
-        callout_grp = VGroup(callout_box, callout_header).to_edge(DOWN, buff=0.45)
+        callout_grp = VGroup(callout_box, callout_header).to_edge(DOWN, buff=0.20)
         self.play(FadeIn(callout_grp, shift=UP * 0.2), run_time=0.8)
         self.wait(1.5)
 
@@ -500,7 +509,7 @@ class Tap24Scene04Telemetry(Scene):
             corner_radius=0.08, width=1.5, height=1.1,
             fill_color=COLOR_PANEL, fill_opacity=0.9, stroke_color=COLOR_GREEN, stroke_width=1.6
         ).move_to(RIGHT * 4.6 + DOWN * 0.35)
-        z_header = MathTex(r"Z = XAB", font_size=19.0, color=COLOR_GREEN).move_to(z_box.get_center())
+        z_header = fit_math_to_card(r"Z = XAB", z_box, font_size=19.0, color=COLOR_GREEN, padding_x=0.15, padding_y=0.15)
         arr_sum_z = Arrow(start=sum_node.get_right(), end=z_box.get_left(), buff=0.12, color=COLOR_GREEN, tip_length=0.15)
 
         self.play(
@@ -592,7 +601,7 @@ class Tap24Scene05LabExperiment(Scene):
                 corner_radius=0.06, width=block_w * 0.76, height=block_h,
                 fill_color=COLOR_PANEL, fill_opacity=0.9, stroke_color=b_col, stroke_width=1.2
             ).move_to(np.array([pos_x, pos_y, 0.0]))
-            t_math = MathTex(lbl_str, font_size=15.0, color=b_col).move_to(r_block.get_center())
+            t_math = fit_math_to_card(lbl_str, r_block, font_size=15.0, color=b_col, padding_x=0.06, padding_y=0.06)
             schedule_blocks.add(VGroup(r_block, t_math))
 
         self.play(LaggedStart(*[FadeIn(b, scale=0.8) for b in schedule_blocks], lag_ratio=0.03), run_time=2.2)
@@ -682,8 +691,10 @@ class Tap24Scene06Outro(Scene):
             corner_radius=0.12, width=3.8, height=1.3,
             fill_color=COLOR_PANEL, fill_opacity=0.7, stroke_color=COLOR_GOLD, stroke_width=1.5
         ).move_to(RIGHT * 3.5 + DOWN * 0.35)
-        pl_header = Text("PLAYLIST TRỌN BỘ 25 TẬP", font=DEFAULT_FONT, font_size=12.0, weight=BOLD, color=COLOR_GOLD)
-        pl_header.move_to(pl_card.get_center())
+        pl_header = create_wrapped_card_text(
+            "PLAYLIST TRỌN BỘ 25 TẬP", pl_card,
+            font=DEFAULT_FONT, font_size=12.0, weight=BOLD, color=COLOR_GOLD, padding_x=0.20, padding_y=0.15
+        )
 
         # 3. Channel Subscribe Avatar: Circle at X=+3.5, Y=-1.65
         sub_circle = Circle(
