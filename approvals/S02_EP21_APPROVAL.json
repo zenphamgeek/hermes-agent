@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP21",
+  "episode_num": 21,
+  "title": "Tập 21: Hệ Thống RAG Đa Tầng — Nạp Tri Thức Sống Cho Não AI",
+  "git_hash": "303c624bfbebcb19b2654e76ea890e5a4229e1d5",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-27T21:01:33.950224+00:00",
+  "asset_checksums": {
+    "script_md": "6a4c28223a37d47c2f3acd8e819d63e6afc0f9adf76f60f4e027009265ee53fe",
+    "manim_py": "2934f7a340df7574375e7ec5fe3a6af6436b8d2a2d6af2faf231aa526bcf90a2",
+    "audio_master_wav": "395fed38cc61f37ee20b488314d70fd79ae85cfe9df5c598b039de775a787bcc",
+    "video_master_mp4": "3402bb610e036c50ca607fa644b8511954ef19ae7c3bc4ada729e39b93b3ac1b",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "5d1afe8501cc6e201631db22db877dc1b6bcddb8c6b0c05dee8214bc05c7a624",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
