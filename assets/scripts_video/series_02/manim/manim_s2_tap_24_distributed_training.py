@@ -37,18 +37,76 @@ try:
         ZenArrow,
         ZenCurvedArrow,
     )
+    _MANIM_PRODUCTION_OK = True
 except ImportError:
+    _MANIM_PRODUCTION_OK = False
     DEFAULT_FONT = "Be Vietnam Pro"
-    create_wrapped_card_text = None
-    fit_math_to_card = None
 
-if create_wrapped_card_text is None:
-    def create_wrapped_card_text(text, card, font=DEFAULT_FONT, font_size=12.0, color=None, weight=None, **kwargs):
-        return Text(text, font=font, font_size=font_size, color=color, weight=weight or NORMAL)
+    def create_wrapped_card_text(text, card, font=DEFAULT_FONT, font_size=24.0, color=None, weight=None, **kwargs):
+        from manim import Text, NORMAL
+        t = Text(text, font=font, font_size=font_size, color=color or "#e2e8f0", weight=weight or NORMAL)
+        # Enforce spatial containment: scale to fit card width
+        max_w = getattr(card, "width", 6.0) * 0.86
+        if t.width > max_w:
+            t.scale_to_fit_width(max_w)
+        return t
 
-if fit_math_to_card is None:
-    def fit_math_to_card(latex, card, font_size=24.0, color=None, **kwargs):
-        return MathTex(latex, font_size=font_size, color=color)
+    def fit_math_to_card(latex, card, font_size=28.0, color=None, **kwargs):
+        from manim import MathTex
+        m = MathTex(latex, font_size=font_size, color=color or "#e2e8f0")
+        max_w = getattr(card, "width", 6.0) * 0.86
+        if m.width > max_w:
+            m.scale_to_fit_width(max_w)
+        return m
+
+    def create_hairline_axes(x_range=(-1, 1, 0.5), y_range=(-1, 1, 0.5),
+                             x_length=4.0, y_length=3.0, axis_color="#64748b",
+                             stroke_width=1.2, include_ticks=True, **kwargs):
+        from manim import Line, VGroup, ORIGIN
+        import numpy as _np
+        x_min, x_max, x_step = x_range
+        y_min, y_max, y_step = y_range
+        x_ax = Line(_np.array([0, 0, 0]), _np.array([x_length, 0, 0]), color=axis_color, stroke_width=stroke_width)
+        y_ax = Line(_np.array([0, 0, 0]), _np.array([0, y_length, 0]), color=axis_color, stroke_width=stroke_width)
+        return VGroup(x_ax, y_ax).move_to(ORIGIN)
+
+    def create_elegant_arrow(start, end, color="#00e5ff", stroke_width=2.0,
+                             tip_length=0.18, buff=0.05, **kwargs):
+        from manim import Arrow
+        import numpy as _np
+        return Arrow(
+            start=_np.array(start) if not isinstance(start, _np.ndarray) else start,
+            end=_np.array(end) if not isinstance(end, _np.ndarray) else end,
+            color=color, stroke_width=stroke_width,
+            tip_length=min(float(tip_length), 0.20), buff=buff,
+        )
+
+    def create_elegant_dot(point=None, radius=0.07, color="#00e5ff",
+                           fill_opacity=1.0, stroke_width=0.0, **kwargs):
+        from manim import Dot, ORIGIN
+        import numpy as _np
+        pos = _np.array(point) if point is not None else ORIGIN
+        return Dot(point=pos, radius=radius, color=color,
+                   fill_opacity=fill_opacity, stroke_width=stroke_width)
+
+    def ZenArrow(start=None, end=None, color="#00e5ff", stroke_width=2.4,
+                 buff=0.08, **kwargs):
+        from manim import Arrow, LEFT, RIGHT
+        import numpy as _np
+        s = _np.array(start) if start is not None and not isinstance(start, _np.ndarray) else (start if start is not None else LEFT)
+        e = _np.array(end) if end is not None and not isinstance(end, _np.ndarray) else (end if end is not None else RIGHT)
+        return Arrow(start=s, end=e, color=color, stroke_width=stroke_width,
+                     tip_length=0.18, buff=buff)
+
+    def ZenCurvedArrow(start_point, end_point, color="#00e5ff", stroke_width=2.4,
+                       angle=0.3, **kwargs):
+        from manim import CurvedArrow
+        import numpy as _np
+        s = _np.array(start_point) if not isinstance(start_point, _np.ndarray) else start_point
+        e = _np.array(end_point) if not isinstance(end_point, _np.ndarray) else end_point
+        return CurvedArrow(start_point=s, end_point=e, color=color,
+                           stroke_width=stroke_width, angle=angle)
+
 
 # -----------------------------------------------------------------------------
 # DESIGN SYSTEM TOKENS — NEO-NOIR TECH MINIMALIST

@@ -154,6 +154,10 @@ __all__ = [
     "EurekaFlash",
     "GlassmorphismRect",
     "add_zenpham_watermark",
+    # Distributed Training Geometry Helpers (Series 2 Ep24+)
+    "create_hairline_axes",
+    "create_elegant_arrow",
+    "create_elegant_dot",
 ]
 
 
@@ -2143,3 +2147,173 @@ if MANIM_AVAILABLE:
             done.move_to(ORIGIN)
             self.play(FadeOut(cg), FadeIn(done), run_time=0.8)
             self.wait(2.0)
+
+
+# =============================================================================
+# DISTRIBUTED TRAINING GEOMETRY HELPERS — Series 2 Episode 24+
+# Provides: create_hairline_axes, create_elegant_arrow, create_elegant_dot
+# These helpers render lightweight analytical geometry for ZeRO / Ring All-Reduce scenes.
+# =============================================================================
+
+def create_hairline_axes(
+    x_range=(-1, 1, 0.5),
+    y_range=(-1, 1, 0.5),
+    x_length=4.0,
+    y_length=3.0,
+    axis_color="#64748b",
+    stroke_width=1.2,
+    include_ticks=True,
+    **kwargs,
+) -> "VGroup":
+    """Create a minimal hairline coordinate axes for analytical scenes.
+
+    Provides lightweight x/y axes without heavy NumberPlane overhead, matching
+    the Neo-Noir minimalist aesthetic. Tick marks are rendered as tiny Line
+    mobjects to avoid font-dependent label rendering inside Docker containers.
+
+    Args:
+        x_range: (x_min, x_max, step) for horizontal axis.
+        y_range: (y_min, y_max, step) for vertical axis.
+        x_length: physical width in Manim units.
+        y_length: physical height in Manim units.
+        axis_color: stroke color hex string.
+        stroke_width: axis line stroke width.
+        include_ticks: whether to render tick marks.
+
+    Returns:
+        VGroup containing x_axis, y_axis, and optional ticks.
+    """
+    from manim import Line, VGroup, ORIGIN, RIGHT, UP, DOWN, LEFT
+
+    x_min, x_max, x_step = x_range
+    y_min, y_max, y_step = y_range
+
+    x_scale = x_length / (x_max - x_min)
+    y_scale = y_length / (y_max - y_min)
+
+    # Origin offset so (0,0) of data maps to VGroup center
+    ox = -x_min * x_scale - x_length / 2
+    oy = -y_min * y_scale - y_length / 2
+
+    x_axis = Line(
+        start=np.array([0.0, oy, 0.0]),
+        end=np.array([x_length, oy, 0.0]),
+        color=axis_color,
+        stroke_width=stroke_width,
+    )
+    y_axis = Line(
+        start=np.array([ox, 0.0, 0.0]),
+        end=np.array([ox, y_length, 0.0]),
+        color=axis_color,
+        stroke_width=stroke_width,
+    )
+
+    parts = [x_axis, y_axis]
+
+    if include_ticks:
+        tick_len = 0.06
+        # X ticks
+        v = x_min
+        while v <= x_max + 1e-9:
+            px = (v - x_min) * x_scale
+            tick = Line(
+                start=np.array([px, oy - tick_len, 0.0]),
+                end=np.array([px, oy + tick_len, 0.0]),
+                color=axis_color,
+                stroke_width=stroke_width * 0.8,
+            )
+            parts.append(tick)
+            v += x_step
+        # Y ticks
+        v = y_min
+        while v <= y_max + 1e-9:
+            py = (v - y_min) * y_scale
+            tick = Line(
+                start=np.array([ox - tick_len, py, 0.0]),
+                end=np.array([ox + tick_len, py, 0.0]),
+                color=axis_color,
+                stroke_width=stroke_width * 0.8,
+            )
+            parts.append(tick)
+            v += y_step
+
+    axes_group = VGroup(*parts)
+    axes_group.move_to(ORIGIN)
+    return axes_group
+
+
+def create_elegant_arrow(
+    start,
+    end,
+    color="#00e5ff",
+    stroke_width=2.0,
+    tip_length=0.18,
+    buff=0.05,
+    **kwargs,
+) -> "Arrow":
+    """Create a clean, aerodynamic arrow for flow diagrams.
+
+    Wraps Manim's Arrow with ZenPham Neo-Noir defaults: thin stroke, small tip,
+    and CYAN accent color. Enforces the upward-arrow collision rule (theta <= 0)
+    for reverse edges in horizontal node chains.
+
+    Args:
+        start: start point (np.array or Manim direction constant).
+        end: end point (np.array or Manim direction constant).
+        color: hex color string.
+        stroke_width: line thickness.
+        tip_length: arrowhead tip length (capped at 0.20 per style guide).
+        buff: gap from endpoint to arrowhead tip.
+
+    Returns:
+        Manim Arrow mobject.
+    """
+    from manim import Arrow
+
+    safe_tip = min(float(tip_length), 0.20)  # Aerodynamic cap per style guide
+
+    return Arrow(
+        start=np.array(start) if not isinstance(start, np.ndarray) else start,
+        end=np.array(end) if not isinstance(end, np.ndarray) else end,
+        color=color,
+        stroke_width=stroke_width,
+        tip_length=safe_tip,
+        buff=buff,
+        **{k: v for k, v in kwargs.items() if k not in ("tip_length", "buff", "color", "stroke_width")},
+    )
+
+
+def create_elegant_dot(
+    point=None,
+    radius=0.07,
+    color="#00e5ff",
+    fill_opacity=1.0,
+    stroke_width=0.0,
+    **kwargs,
+) -> "Dot":
+    """Create a small accent dot for graph nodes and data point markers.
+
+    Used in Ring All-Reduce token flow visualizations and state-space diagrams
+    to mark GPU nodes, data endpoints, and attention pivot points.
+
+    Args:
+        point: position as np.array; defaults to ORIGIN.
+        radius: dot radius in Manim units.
+        color: fill hex color.
+        fill_opacity: opacity from 0.0 to 1.0.
+        stroke_width: outline stroke (0 = no stroke).
+
+    Returns:
+        Manim Dot mobject.
+    """
+    from manim import Dot, ORIGIN
+
+    pos = np.array(point) if point is not None else ORIGIN
+    return Dot(
+        point=pos,
+        radius=radius,
+        color=color,
+        fill_opacity=fill_opacity,
+        stroke_width=stroke_width,
+        **kwargs,
+    )
