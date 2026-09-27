@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP23",
+  "episode_num": 23,
+  "title": "Tập 23: Kiến Trúc Multi-Agent — Khi Các Siêu AI Cộng Tác",
+  "git_hash": "ab4b749841aab21189b390e3ffee6903755506f8",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-27T20:01:14.970922+00:00",
+  "asset_checksums": {
+    "script_md": "f7496b3d4c701de650b144907d52030d7a381b812b7bed222d6777a1e0cace88",
+    "manim_py": "9c4f01c7e508148c259f037fed8d507aed512143a2086e75ba3783f83dbb5056",
+    "audio_master_wav": "5bb7c9fc3ec8dbbd88edf52e7b0f53db51d750a98f0289016f17a07ea547308c",
+    "video_master_mp4": "e7d6d9b08eb14e457eea2bb9d77f13aee89106e00c315b7b4b06c60819e83f90",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "41189759c0c24192b5d767636e2605a5cdd5a660b226ee7890d6e715d20a2cf9",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
