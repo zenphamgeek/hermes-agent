@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP20",
+  "episode_num": 20,
+  "title": "Tập 20: Ảo Giác AI — Giải Phẫu Nguồn Cội & Cách Hiệu Chỉnh",
+  "git_hash": "87382903f3411924b2a4c622e17ef7dfcb4ad9ac",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-27T23:18:28.599412+00:00",
+  "asset_checksums": {
+    "script_md": "43f84f21d01dece76a5b321c04dc3a5cb282ec4c5761955e334cbba3d8b88ab5",
+    "manim_py": "3581e89ba36bdecdc8a690aafbe8ee17b965626a83737b29733e4887ee5251ab",
+    "audio_master_wav": "17c070c84a206cbb4c666ef47924620992606277a01e0202ffdd85362d968e0e",
+    "video_master_mp4": "07348fb80611d72c2f954bafb34622f7a1b3d1e7f895287b1021456665147d88",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "a25ae4ce2a697b179bebe1596452dacb756d00d4a68b0bdf043472a38e53b1a8",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
