@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP24",
+  "episode_num": 24,
+  "title": "Tập 24: Distributed Training — Huấn Luyện AI Phân Tán",
+  "git_hash": "73aefa52964d7cc9357aadbfc84ea709bdc661a7",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-27T12:43:08.675810+00:00",
+  "asset_checksums": {
+    "script_md": "070903036df97e872384cdac735ad4d42a8561f45184c11751c3d9365f23231a",
+    "manim_py": "9ce4201bfd4e92e129ea4a6fb364e4ccff8c8607ea86f810a13d2bcb2d89f150",
+    "audio_master_wav": "2d632545b0c13e95271ca6b946885851751a25e03158f2a0977f4ae50361b224",
+    "video_master_mp4": "8b999be83a091fa1e3b82b266bf9c46053a67c7a9e6bb27a131e3e8fe9d1ad99",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "65dec135d625cfddaa48d23d8ea0d9804fd8d3f79736cb85e3eb2d74d4a666b3",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
