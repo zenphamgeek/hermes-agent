@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP19",
+  "episode_num": 19,
+  "title": "Tập 19: Giải Thuật GRPO — Đột Phá Suy Luận DeepSeek R1",
+  "git_hash": "13aaede197ec83186f8acbfc9a04f1711c073653",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-27T23:32:30.768218+00:00",
+  "asset_checksums": {
+    "script_md": "f2d04d358aa1910b7729af84703cb00b52eeb0167601b06ba7f19e25607473c8",
+    "manim_py": "6af52ea4675a6ebc226290bcc4814430773cd3f360499293ad5ce76b31d28ae9",
+    "audio_master_wav": "459ee06bb497999c154b5056fd485cb00c7e74387539303321a98a7788555006",
+    "video_master_mp4": "b237e7ec82f118cfbac658dd95770e6d7f51795eecdfbd6123b389df1fb2f3ae",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "2c68733eab50f2dd261493f756712c707331a350d032c2cfa84b568dd99ba9d0",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
