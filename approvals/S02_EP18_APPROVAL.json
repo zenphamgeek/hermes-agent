@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP18",
+  "episode_num": 18,
+  "title": "Tập 18: Suy Luận Chuỗi CoT — Khai Mở Tư Duy Logic Của AI",
+  "git_hash": "7204b07a7f0ebdc0710dd22c18e3d659e97b894f",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-27T23:46:39.137929+00:00",
+  "asset_checksums": {
+    "script_md": "dbb34bcfb1d627b42ee66a94b0c5d962ea525c30c4beb04a1e7200b1d7720aed",
+    "manim_py": "3455a6a62e48b5e51c9748d3b0851221019e9b9cfad63d0abd6e31af0b45f740",
+    "audio_master_wav": "43d8db08083592b71b8cd8eeee906c1ae06b5b2a10046e1b4920d2f6497cf4bf",
+    "video_master_mp4": "1adc3bab9f9a10c2847fa3edc9ee246653086e736f51fef8b202b568603b96b8",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "8c29ed73247fd6fb24b420470a732fb3dc0a96aa7ec88f67ec07d77a46860ded",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
