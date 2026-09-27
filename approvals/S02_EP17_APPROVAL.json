@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP17",
+  "episode_num": 17,
+  "title": "Tập 17: PPO vs DPO vs KTO — So Sánh Hình Học Các Hàm Thưởng",
+  "git_hash": "ce6a35528021e86387291f329b558add4c407faa",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-27T23:58:40.264025+00:00",
+  "asset_checksums": {
+    "script_md": "8d795302cb1d4f2c807f210ea255ae440d3baf828619ded6321dc55785a18ad0",
+    "manim_py": "3e315335681cbfd2c87599886775080d4ce329cb785f3ba3a71454e4c9839826",
+    "audio_master_wav": "814eddc957104929dd9f5364d8dfef9889643e1af58b8ea17aed096a318f8651",
+    "video_master_mp4": "47f560da33f71d5fb448ae4a3d10663c2af2eeb8845973f01bce7a58ac6b1cfc",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "dcfb348433adc222895a33c67f40cdd54291e424d5e87ddbc7570260269ca6e8",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
