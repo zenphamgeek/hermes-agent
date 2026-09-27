@@ -520,15 +520,22 @@ def _get_bbox(mobject, margin=0.0) -> BBox:
         w = float(mobject)
         h = 3.0
         return BBox(-w/2.0 - margin, -h/2.0 - margin, w/2.0 + margin, h/2.0 + margin)
-    if hasattr(mobject, "get_bbox"):
-        bb = mobject.get_bbox()
-        return BBox(float(bb.x_min) - margin, float(bb.y_min) - margin,
-                    float(bb.x_max) + margin, float(bb.y_max) + margin)
     if hasattr(mobject, "get_corner"):
-        ul = mobject.get_corner(UL)
-        dr_pt = mobject.get_corner(DR)
-        return BBox(min(ul[0], dr_pt[0]) - margin, min(ul[1], dr_pt[1]) - margin,
-                    max(ul[0], dr_pt[0]) + margin, max(ul[1], dr_pt[1]) + margin)
+        try:
+            ul = mobject.get_corner(UL)
+            dr_pt = mobject.get_corner(DR)
+            return BBox(min(ul[0], dr_pt[0]) - margin, min(ul[1], dr_pt[1]) - margin,
+                        max(ul[0], dr_pt[0]) + margin, max(ul[1], dr_pt[1]) + margin)
+        except Exception:
+            pass
+    if hasattr(mobject, "get_bbox"):
+        try:
+            bb = mobject.get_bbox()
+            if bb is not None and hasattr(bb, "x_min"):
+                return BBox(float(bb.x_min) - margin, float(bb.y_min) - margin,
+                            float(bb.x_max) + margin, float(bb.y_max) + margin)
+        except Exception:
+            pass
     if hasattr(mobject, "width") and hasattr(mobject, "height"):
         if hasattr(mobject, "get_center"):
             c = mobject.get_center()

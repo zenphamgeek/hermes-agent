@@ -5,18 +5,18 @@
   "episode_id": "S02_EP24",
   "episode_num": 24,
   "title": "Tập 24: Distributed Training — Huấn Luyện AI Phân Tán",
-  "git_hash": "ca38859fa73f29dfa2f66324e757f417e359ef49",
+  "git_hash": "6ce6ec3cde2602f28110d78861fcfad2acdb9bd7",
   "is_git_clean": false,
   "execution_mode": "isolated_atomic",
-  "approved_at": "2026-09-27T15:11:35.789408+00:00",
+  "approved_at": "2026-09-27T16:27:58.959583+00:00",
   "asset_checksums": {
     "script_md": "070903036df97e872384cdac735ad4d42a8561f45184c11751c3d9365f23231a",
-    "manim_py": "50ad5008bc06ea9e1eefb92ac9a38e851e95f77bef690ab670092d8798006758",
+    "manim_py": "436b0a00c3b906ffa82fdf72fd18ce6edba7ab2bd8b5aff4547c8a60163e526e",
     "audio_master_wav": "2d632545b0c13e95271ca6b946885851751a25e03158f2a0977f4ae50361b224",
-    "video_master_mp4": "1e2388353e25e7e24e5441d4af488d1b0c5c12698937d15ef312218cfb5d5cfc",
+    "video_master_mp4": "609f59b5057596701f3d8f848c5e34de6ae357c47163251707b72aff5f80de6d",
     "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
   },
-  "closure_sha256": "c15e22e07cfe4407e8ed7bd046c6c50875d616c1c064ce44eb33a82f4224df06",
+  "closure_sha256": "7857b24657fb7b1fa239a882e168e02e46ac943d8a4a0938a8d7c73aea20c883",
   "quality_gates": {
     "episodic_isolation": "PASS",
     "spatial_containment": "PASS",
