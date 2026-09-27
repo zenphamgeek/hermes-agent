@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP22",
+  "episode_num": 22,
+  "title": "Tập 22: Function Calling — Cầu Nối Giữa AI Và Thế Giới Thực",
+  "git_hash": "14b0771861d93e559b8c9c7840fcab6d7337017b",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-27T20:23:32.697973+00:00",
+  "asset_checksums": {
+    "script_md": "2896bcbf72e10a7c32e8edcc2fdee1e514d1c84a2bde79c76f2d0707d47d137a",
+    "manim_py": "1774648e55875d7fda074c2f7b6587022f0c58379bbda5275fa14a5f5e4514ec",
+    "audio_master_wav": "22827ee8f145bbc9c7910568bdcff60f10ff3a03f44dacc9acc94b3c9327403d",
+    "video_master_mp4": "d12144d1aad42d572ece34bd6b06aa45832f9370b40594a03bf4153228dc1ffc",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "b3954d30622fc0269af116a6e4d676b3c483947565d5c8d3ae9c520fe1b510c0",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}

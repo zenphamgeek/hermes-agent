@@ -1336,7 +1336,6 @@ def ZenCurvedArrow(start_point, end_point, color=None, stroke_width=2.4,
     return CurvedArrow(
         start_point, end_point, color=c, stroke_width=stroke_width,
         tip_length=tip_length, angle=angle,
-        max_tip_length_to_length_ratio=max_tip_ratio,
         **kwargs
     )
 
