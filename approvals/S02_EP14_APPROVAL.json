@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP14",
+  "episode_num": 14,
+  "title": "Tập 14: Kỹ Thuật LoRA & QLoRA — Tinh Chỉnh AI Siêu Nhẹ",
+  "git_hash": "c26d392b67d1402030c44125d983f86a3b09ac04",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T00:25:35.936596+00:00",
+  "asset_checksums": {
+    "script_md": "8a4466f78ca8818b07f78cdf6ca74ff410f00d5e6d3b7603802da4338f1468f7",
+    "manim_py": "5138198058f375ac3822c7446b7e092e78736a3595779500a7391afcf840b2af",
+    "audio_master_wav": "e1a2e06d056cdf0a3b2910642b3d9268078f7c107c0426903ded100d9cfef7d2",
+    "video_master_mp4": "42bdb9f54211893b57027054cdbff790e58455a641a0586d140d579763880bfb",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "be7a6999f84422023983edd258e1aeae2820e69fead592c816bb08ff03af098d",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
