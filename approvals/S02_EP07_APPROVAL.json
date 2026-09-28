@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP07",
+  "episode_num": 7,
+  "title": "Tập 07: Kỹ Thuật KV Cache — Quả Tim Vận Hành Từng Token",
+  "git_hash": "e5b2ee6d1fecc5b6d72f97cd7fae1c726860b6bc",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T01:43:42.913651+00:00",
+  "asset_checksums": {
+    "script_md": "10fe3a7c0fd06620fb6978947822e9b0170fbe9dda49a9061929e2b4de922fc1",
+    "manim_py": "5191d9e53203ae417bd7268de99c65bdf0a687c7595fa0e34c1a1fa8f3c7f08f",
+    "audio_master_wav": "166580fd0fc145a827ac51a87c3a545831a799868f8d64bd050cf74766b522c9",
+    "video_master_mp4": "fdc206728b39f6968ef228cce934691d3b19041f5efb262263b09d616dd35878",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "746f461f5769ede23dcdeb19f6731b1e79248adb23d0ecbbb94f1e58c0bb625f",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
