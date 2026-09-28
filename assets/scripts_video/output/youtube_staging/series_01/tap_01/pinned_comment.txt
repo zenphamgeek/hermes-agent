@@ -1,0 +1,3 @@
+Bạn tin rằng trí tuệ nhân tạo sau cùng chỉ là một cỗ máy tính toán xác suất tinh xảo, hay khi số lượng tham số đủ lớn, một dạng ý thức thực sự sẽ trỗi dậy?
+
+Hãy để lại góc nhìn của bạn bên dưới, và hẹn gặp lại bạn ở Tập 02: Giải tích & Chiếc la bàn Gradient Descent!

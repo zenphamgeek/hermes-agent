@@ -1,0 +1,74 @@
+[
+  {
+    "scene_num": 1,
+    "scene_id": "S1E1_Scene01",
+    "duration": 62.7,
+    "words": 220,
+    "wpm": 210.5,
+    "temper": 0.59,
+    "wav_file": "assets/scripts_video/audio/series_01/tap_01/scene_01.wav"
+  },
+  {
+    "scene_num": 2,
+    "scene_id": "S1E1_Scene02",
+    "duration": 65.29,
+    "words": 212,
+    "wpm": 194.8,
+    "temper": 0.53,
+    "wav_file": "assets/scripts_video/audio/series_01/tap_01/scene_02.wav"
+  },
+  {
+    "scene_num": 3,
+    "scene_id": "S1E1_Scene03",
+    "duration": 74.49,
+    "words": 244,
+    "wpm": 196.5,
+    "temper": 0.53,
+    "wav_file": "assets/scripts_video/audio/series_01/tap_01/scene_03.wav"
+  },
+  {
+    "scene_num": 4,
+    "scene_id": "S1E1_Scene04",
+    "duration": 68.9,
+    "words": 236,
+    "wpm": 205.5,
+    "temper": 0.53,
+    "wav_file": "assets/scripts_video/audio/series_01/tap_01/scene_04.wav"
+  },
+  {
+    "scene_num": 5,
+    "scene_id": "S1E1_Scene05",
+    "duration": 90.38,
+    "words": 297,
+    "wpm": 197.2,
+    "temper": 0.54,
+    "wav_file": "assets/scripts_video/audio/series_01/tap_01/scene_05.wav"
+  },
+  {
+    "scene_num": 6,
+    "scene_id": "S1E1_Scene06",
+    "duration": 68.63,
+    "words": 242,
+    "wpm": 211.6,
+    "temper": 0.53,
+    "wav_file": "assets/scripts_video/audio/series_01/tap_01/scene_06.wav"
+  },
+  {
+    "scene_num": 7,
+    "scene_id": "S1E1_Scene07",
+    "duration": 68.91,
+    "words": 235,
+    "wpm": 204.6,
+    "temper": 0.53,
+    "wav_file": "assets/scripts_video/audio/series_01/tap_01/scene_07.wav"
+  },
+  {
+    "scene_num": 8,
+    "scene_id": "S1E1_Scene08",
+    "duration": 63.66,
+    "words": 214,
+    "wpm": 201.7,
+    "temper": 0.52,
+    "wav_file": "assets/scripts_video/audio/series_01/tap_01/scene_08.wav"
+  }
+]

@@ -1,0 +1,22 @@
+Bản chất của Xác Suất trong AI: Có Phép Màu Nào Đằng Sau Đồng Xu?
+
+Khi tung một đồng xu lên không trung, kết quả là ngẫu nhiên hay chỉ là sự thiếu hụt thông tin của con người?
+Và tại sao một cỗ máy vi mạch hiện đại — thứ được xây dựng từ hàng tỷ bóng bán dẫn tất định bậc nhất — lại phải liên tục tung những đồng xu xác suất để trò chuyện cùng chúng ta?
+
+Trong tập mở màn của Series "Tôi Làm Việc", chúng ta cùng đi sâu vào giải phẫu toán học và triết học của xác suất trong Trí Tuệ Nhân Tạo: từ cú búng tay cơ học cổ điển của Newton, Quỷ Laplace, thước đo thông tin 1 bit của Claude Shannon, cán cân niềm tin Thomas Bayes, bàn xoay Softmax Temperature, đến phép màu hội tụ của Định luật số lớn.
+
+TIMESTAMPS:
+00:00 - Cú búng tay trong bóng tối & Nghịch lý tất định
+01:02 - Quỷ Laplace & Hai tầng ngẫu nhiên: Bản thể vs Nhận thức
+02:07 - Claude Shannon & Thước đo độ bất ngờ (1 Bit thông tin)
+03:22 - Cán cân cơ học Bayes: Cập nhật niềm tin bằng bằng chứng
+04:31 - Ma trận trọng số, đa tạp Softmax & Bàn xoay Nhiệt độ (Temperature)
+06:01 - Phép màu Định luật Số lớn & Bàn chốt cản Galton
+07:10 - Chiếc bẫy tự tin (Overconfidence Gap) & Hiệu chuẩn sai số ECE
+08:19 - Đại dương bất định & Hẹn gặp lại ở Tập 02 (Gradient Descent)
+
+---
+Toàn bộ đồ họa toán học được lập trình động lực học trực quan bằng Manim Community (2K QHD 60fps).
+Âm thanh chuẩn phát thanh quốc tế EBU R128 (-14.5 LUFS).
+
+#ZenPham #ToiLamViec #ArtificialIntelligence #Manim #Probability #DataScience

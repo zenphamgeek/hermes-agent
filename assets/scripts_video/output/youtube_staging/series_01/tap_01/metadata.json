@@ -1,0 +1,26 @@
+{
+  "series": "Tôi Làm Việc — ZenPham Educational Cinema",
+  "season": 1,
+  "episode": 1,
+  "title": "Bản chất của Xác Suất trong AI: Có Phép Màu Nào Đằng Sau Đồng Xu?",
+  "subtitle": "Từ Cú Búng Tay Của Quỷ Laplace Đến Đại Dương Bất Định Của Claude Shannon",
+  "duration_seconds": 562.96,
+  "resolution": "2560x1440 @ 60fps",
+  "audio_standard": "EBU R128 (-14.5 LUFS Stereo)",
+  "published_at": null,
+  "tags": [
+    "AI",
+    "Xác suất",
+    "Định lý Bayes",
+    "Claude Shannon",
+    "Entropy",
+    "Softmax",
+    "Temperature",
+    "Galton Board",
+    "Định luật số lớn",
+    "ECE",
+    "Hallucination",
+    "Manim",
+    "ZenPham"
+  ]
+}

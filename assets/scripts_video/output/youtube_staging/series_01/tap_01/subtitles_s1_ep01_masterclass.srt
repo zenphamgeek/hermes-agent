@@ -1,0 +1,167 @@
+1
+00:00:00,000 --> 00:00:12,540
+Một cú búng tay trong bóng tối... Đồng xu kim loại xoay tròn trên không trung rồi rơi xuống mặt bàn.
+
+2
+00:00:12,540 --> 00:00:25,080
+Người đời thường mỉm cười bảo nhau: sấp hay ngửa là chuyện hên xui, là sự ngẫu nhiên của số phận... Nhưng nếu đứng dưới góc nhìn của vật lý cơ học cổ điển, không hề có một chút ngẫu nhiên nào tồn tại ở đây cả.
+
+3
+00:00:25,080 --> 00:00:37,620
+Góc búng ngón tay, lực tác động, mật độ không khí, và trọng lực của Trái Đất — tất cả đều tuân theo những định luật tất định nghiêm ngặt của Isaac Newton. Nếu có một thước đo đủ tinh vi để đo lường trọn vẹn từng thông số ấy ngay từ khoảnh khắc rời tay... mặt tiếp đất của đồng xu đã được an bài từ trước khi nó kịp bay lên.
+
+4
+00:00:37,620 --> 00:00:50,160
+Sự bất định mà ta cảm thấy... không nằm ở bản thân đồng xu, mà bắt nguồn từ chính sự bất lực của giác quan con người trong việc nắm bắt những biến thiên cực nhỏ.
+
+5
+00:00:50,160 --> 00:01:02,700
+Vậy thì tại sao... một cỗ máy vi mạch hiện đại — thứ được xây dựng từ hàng tỷ bóng bán dẫn tất định bậc nhất — lại phải liên tục tung những đồng xu xác suất để trò chuyện cùng chúng ta?
+
+6
+00:01:02,700 --> 00:01:19,022
+Năm 1814, nhà toán học người Pháp Pierre-Simon Laplace từng mường tượng ra một thực thể trí tuệ siêu phàm — người đời sau gọi là Quỷ Laplace.
+
+7
+00:01:19,022 --> 00:01:35,345
+Nếu thực thể ấy biết trọn vẹn vị trí và vận tốc của từng hạt nguyên tử trong vũ trụ tại một khoảnh khắc duy nhất, thì từ quỹ đạo của một thiên hà xa xôi cho đến mặt tiếp đất của đồng xu trên tay bạn... tương lai sẽ hiển hiện rõ ràng hệt như quá khứ. Không có gì là bất định, và khái niệm may rủi hoàn toàn biến mất.
+
+8
+00:01:35,345 --> 00:01:51,667
+Điều này dẫn chúng ta đến một sự phân định triết học sâu sắc giữa hai tầng ngẫu nhiên: Ngẫu nhiên bản thể — tức tự thân vũ trụ vốn hỗn loạn từ gốc rễ; và Ngẫu nhiên nhận thức — tức thế giới vốn dĩ tất định, nhưng trí tuệ con người quá hữu hạn để thu thập đủ thông tin.
+
+9
+00:01:51,667 --> 00:02:07,990
+Đồng xu không hề gieo quẻ may rủi. Khi chúng ta nói xác suất ngửa là năm mươi phần trăm, đó không phải là đặc tính của đồng kim loại... Xác suất, thực chất chỉ là chiếc gương phản chiếu sự thiếu hụt thông tin của chính chúng ta.
+
+10
+00:02:07,990 --> 00:02:22,888
+Mùa hè năm 1948, giữa những căn phòng thí nghiệm tĩnh lặng của viện Bell, một kỹ sư trẻ tên là Claude Shannon đã đặt ra một câu hỏi làm đảo lộn văn minh nhân loại: Thông tin... thực chất là gì?
+
+11
+00:02:22,888 --> 00:02:37,786
+Câu trả lời của Shannon giản dị đến mức làm người ta sững sờ: Thông tin không phải là những con chữ bóng bẩy hay âm thanh ồn ào. Thông tin chính là thước đo của sự giải tỏa độ bất định.
+
+12
+00:02:37,786 --> 00:02:52,684
+Hãy hình dung: nếu một đồng xu hoàn toàn cân bằng, cơ hội chia đều năm mươi — năm mươi, sự bất định nằm ở mức cực đại. Khoảnh khắc đồng xu rơi xuống và hé lộ kết quả, bạn nhận được chính xác một đơn vị thông tin cơ bản — đúng một bit, đơn vị nhị phân nền tảng của toàn bộ kỷ nguyên số.
+
+13
+00:02:52,684 --> 00:03:07,582
+Nhưng nếu một kẻ gian lận đưa cho bạn đồng xu có hai mặt đều là ngửa? Xác suất mặt ngửa là một trăm phần trăm. Khi nó rơi xuống, bạn chẳng học thêm được điều gì mới mẻ cả. Độ bất ngờ bằng không, và lượng thông tin nhận về cũng bằng không.
+
+14
+00:03:07,582 --> 00:03:22,480
+Nguyên lý trên chỉ ra rằng: sự kiện càng hiếm hoi bất ngờ, lượng thông tin chuyên chở càng khổng lồ. Và Entrô-pi... chính là thể tích trung bình của những sự bất ngờ ấy trong một hệ thống.
+
+15
+00:03:22,480 --> 00:03:36,260
+Khi đối diện với một thế giới bất định, cỗ máy thông minh không suy nghĩ bằng những định kiến cứng nhắc. Nó tư duy theo tinh thần của một mục sư người Anh ở thế kỷ mười tám: Thomas Bayes.
+
+16
+00:03:36,260 --> 00:03:50,040
+Tư duy Bayes không đòi hỏi chúng ta phải biết chắc chắn sự thật ngay từ đầu. Trước khi có dữ liệu, cỗ máy nắm giữ một niềm tin ban đầu — gọi là xác suất tiền nghiệm. Đó có thể là một giả định mơ hồ rằng đồng xu này vốn dĩ cân bằng.
+
+17
+00:03:50,040 --> 00:04:03,820
+Nhưng điều kỳ diệu xảy ra khi bằng chứng xuất hiện: nếu bạn tung đồng xu mười lần, và cả mười lần đều ngửa... chiếc cán cân toán học lập tức chuyển động.
+
+18
+00:04:03,820 --> 00:04:17,600
+Mỗi dữ liệu quan sát mới giống như một giọt nước đổ thêm vào đĩa cân, bẻ cong niềm tin cũ để nhào nặn nên một niềm tin mới — gọi là xác suất hậu nghiệm. Cỗ máy không hề có lòng tự ái hay cố chấp bảo thủ. Nó sẵn sàng từ bỏ giả định ban đầu để cúi đầu trước sức nặng của bằng chứng thực nghiệm.
+
+19
+00:04:17,600 --> 00:04:31,379
+Đó chính là cốt lõi của việc học máy: không phải sự thông thái tuyệt đối, mà là khả năng tự sửa mình liên tục, từng bước uốn cong niềm tin để tiệm cận chân lý khách quan.
+
+20
+00:04:31,379 --> 00:04:44,291
+Giờ đây, chúng ta hãy bước vào sâu bên trong bộ não điện toán của một mô hình ngôn ngữ lớn như ChatGPT. Cỗ máy không hề suy nghĩ bằng câu chữ hay cảm xúc... Ở tầng tính toán cuối cùng, mạng nơ-ron chỉ xuất xưởng một mảng gồm hàng chục ngàn con số thô ráp — các kỹ sư gọi chúng là logits.
+
+21
+00:04:44,291 --> 00:04:57,202
+Để biến những con số không giới hạn này thành một phân phối xác suất hợp lệ có tổng bằng một, cỗ máy áp dụng một phép biến đổi toán học thanh lịch: hàm Softmax.
+
+22
+00:04:57,202 --> 00:05:10,114
+Khi bạn đưa vào câu gợi ý: *"Mặt trời mọc ở hướng..."*, không gian vector lập tức biến dạng. Điểm số của từ *"Đông"* được khuếch đại lũy thừa, trong khi các từ *"Tây"*, *"Nam"*, hay *"biển cả"* bị ghìm sâu xuống đáy vực.
+
+23
+00:05:10,114 --> 00:05:23,025
+Nhưng cỗ máy không chọn từ một cách mù quáng. Nó nắm trong tay một chiếc van điều áp tinh tế mang tên Nhiệt độ — Temperature.
+
+24
+00:05:23,025 --> 00:05:35,937
+Nếu vặn nhiệt độ về gần số không, phân phối xác suất co rút thành một mũi kim sắc lẹm. Cỗ máy trở nên cực kỳ bảo thủ, luôn chọn từ có xác suất cao nhất, lặp đi lặp lại những câu văn sáo mòn vô hồn.
+
+25
+00:05:35,937 --> 00:05:48,848
+Nhưng nếu vặn nhiệt độ lên quá cao... mặt cong xác suất bị nung chảy và san phẳng hoàn toàn. Mọi từ vựng kỳ quặc nhất đều có cơ hội trồi lên, cỗ máy bắt đầu nói sảng và rơi vào ảo giác mê muội.
+
+26
+00:05:48,848 --> 00:06:01,760
+Nghệ thuật của trí tuệ nhân tạo nằm ở một khoảng nhiệt độ cân bằng mong manh — nơi sự chuẩn xác của toán học hòa quyện cùng một chút ngẫu hứng bất ngờ.
+
+27
+00:06:01,760 --> 00:06:13,198
+Ở cấp độ một cú búng tay đơn lẻ, số phận của từng hạt bụi là điều không thể đoán định.
+
+28
+00:06:13,198 --> 00:06:24,636
+Nhưng khi bạn lặp lại hành động ấy hàng triệu lần, một trật tự vĩ đại đột ngột xuất hiện từ đáy sâu của sự hỗn loạn. Đó là phép màu của Định luật Số lớn và Phân phối Chuẩn.
+
+29
+00:06:24,636 --> 00:06:36,075
+Hãy quan sát những hạt ánh sáng rơi qua bàn chốt cản. Từng hạt riêng lẻ nảy sang trái hay sang phải hoàn toàn vô trật tự, tưởng chừng như một mớ bòng bong mù mịt. Thế nhưng, khi hàng ngàn hạt tích tụ lại ở đáy sàn, chúng không hề tạo thành một đống hỗn độn vô nghĩa.
+
+30
+00:06:36,075 --> 00:06:47,513
+Chúng tự động dâng lên, vẽ nên một đường cong hình chuông hoàn mỹ tuyệt đối — đối xứng, cân đối và thanh tao kỳ lạ.
+
+31
+00:06:47,513 --> 00:06:58,951
+Mỗi mô hình ngôn ngữ lớn hôm nay đang tung hàng tỷ đồng xu xác suất mỗi giây. Từng token riêng lẻ có vẻ ngẫu nhiên, nhưng khi tích tụ qua hàng trăm ngàn bước dự đoán, những câu văn khúc chiết, những vần thơ đẫm lệ, và những dòng mã lập trình phức tạp đột ngột thành hình.
+
+32
+00:06:58,951 --> 00:07:10,390
+Trí tuệ nhân tạo không nằm ở từng con số đơn độc. Nó nảy sinh từ sự hội tụ của số lớn — nơi sự hỗn loạn đầu hàng trước quy luật của cái đẹp toán học.
+
+33
+00:07:10,390 --> 00:07:24,172
+Nhưng quy luật xác suất cũng đặt ra một cái bẫy nghiệt ngã nhất của công nghệ hôm nay: hội chứng ảo giác — Hallucination.
+
+34
+00:07:24,172 --> 00:07:37,954
+Dưới lăng kính toán học thuần túy, cỗ máy không hề biết nói dối. Nó không có ác tâm, cũng chẳng có mưu mô đánh lừa con người. Nó chỉ đơn giản là đang tung một đồng xu bị lệch phân phối ngoài vùng dữ liệu mà nó từng được huấn luyện.
+
+35
+00:07:37,954 --> 00:07:51,736
+Hiểm họa lớn nhất của trí tuệ nhân tạo không phải là một cỗ máy ngây ngô biết mình dốt. Hiểm họa thực sự nằm ở một cỗ máy phát biểu những điều hoàn toàn sai lầm với một độ tự tin toán học lên tới chín mươi chín phần trăm...
+
+36
+00:07:51,736 --> 00:08:05,518
+Các nhà khoa học đo lường bi kịch ấy bằng một chỉ số mang tên Sai số Hiệu chuẩn Kỳ vọng — ECE. Khi khoảng cách giữa niềm tin chủ quan của cỗ máy và chân lý khách quan thực tế bị xé toạc, cỗ máy trở thành một kẻ huyễn tưởng đầy nguy hiểm trong vỏ bọc thông thái.
+
+37
+00:08:05,518 --> 00:08:19,300
+Làm chủ trí tuệ nhân tạo, vì thế, không phải là mù quáng tôn thờ những con số xác suất hào nhoáng, mà là sự tỉnh táo đo lường ranh giới của sự bất định và biết khi nào cỗ máy đang nói trong sự mơ hồ.
+
+38
+00:08:19,300 --> 00:08:32,032
+Nhìn thấu qua lớp sương mù công nghệ, cỗ máy suy cho cùng vẫn là một cỗ máy tính toán xác suất khổng lồ. Nhưng trong từng phép tính phân phối ấy, nó phản chiếu lại chính sự hữu hạn và khát vọng tìm kiếm chân lý ngàn đời của loài người.
+
+39
+00:08:32,032 --> 00:08:44,764
+Đồng xu đã rơi xuống, nhưng hành trình nhận thức của chúng ta chỉ mới bắt đầu. Con người và cỗ máy, theo một cách nào đó, đang cùng chèo lái con thuyền tư duy giữa một đại dương bất định bao la... Chúng ta học cách chung sống với xác suất, không phải để đầu hàng may rủi, mà để tìm thấy trật tự ẩn giấu đằng sau sự hỗn mang.
+
+40
+00:08:44,764 --> 00:08:57,495
+Thế nhưng, khi cỗ máy rơi vào một không gian bóng tối với hàng ngàn tỷ tham số, làm sao nó biết hướng nào để bước đi? Làm sao nó biết cách tự sửa mình để biến sai số thành sự thông tuệ?
+
+41
+00:08:57,495 --> 00:09:10,227
+Ở tập tiếp theo, chúng ta sẽ cùng bước xuống thung lũng bóng tối vạn chiều của mạng nơ-ron — nơi cỗ máy tìm đường qua chiếc la bàn vĩ đại của toán học: Đạo hàm và Gradient Descent.
+
+42
+00:09:10,227 --> 00:09:22,959
+Xin chào và hẹn gặp lại các bạn.

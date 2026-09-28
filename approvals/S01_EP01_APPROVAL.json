@@ -1,0 +1,38 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_01",
+  "series_title": "Tôi Làm Việc — ZenPham Educational Cinema",
+  "episode_id": "S01_EP01",
+  "episode_num": 1,
+  "title": "Tập 01: Bản chất của xác suất trong AI — Đồng xu của cỗ máy",
+  "git_hash": "aa641f2e0ae571f5ea4b61f9a4c3c697b0fccd7a",
+  "is_git_clean": false,
+  "execution_mode": "masterclass_teamwork_council",
+  "approved_at": "2026-09-28T06:08:48.872369+00:00",
+  "asset_checksums": {
+    "script_md": "84dee0f2a1c1985ac6f0a064419d889f2ce2048de5df4de2fc4b0a3b0fcd9798",
+    "manim_py": "9ab7afac76d8ecdf5683fa5fd0c0d9f70b393a25e130148bb5504554d93baae1",
+    "audio_master_wav": "73b340560db55023359884f091e7d7c20d28a53557bf55b47a01a33cb730d31e",
+    "video_master_mp4": "1a4873d4bf1b3e9178d75f81436cdefa587ceb3a21536a95ca24c3fe5c79295e"
+  },
+  "closure_sha256": "b5659c29629d40ff77083dbd8f089b1dc3563dad032bece7b02b6d60d837c59c",
+  "quality_gates": {
+    "council_deliberation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "empirical_test_harness": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "duration_seconds": 562.95,
+    "integrated_lufs": -15.1,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
