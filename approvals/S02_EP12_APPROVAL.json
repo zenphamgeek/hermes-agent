@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP12",
+  "episode_num": 12,
+  "title": "Tập 12: Lượng Tử Hóa INT8 & FP8 — Nén Mô Hình Tỷ Tham Số",
+  "git_hash": "09103d3b2aba9f684d473a57fbd26486bf0a8a98",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T00:47:07.280261+00:00",
+  "asset_checksums": {
+    "script_md": "78d5e0e1ed399672cabeec92a0ec2bb3e9d6452be42cfa482946b73849921fe3",
+    "manim_py": "ce710b2792007773db0413df9ad75bf15bed809c52783cb2e43c162ea061910b",
+    "audio_master_wav": "8697f3c42eca9a9ff9c1bc19c9aaaf907b8f00d5a2ea7d73e5c1466484f4a6bf",
+    "video_master_mp4": "4a40073fbf86ea5e69f7abb7bdabd72a7691fe7cd8d4ab060f81ed8b8940dd5a",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "7d33225fd7e6870c4d54adc0861379406ad597ab61d4f30f35b3961f8a179369",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
