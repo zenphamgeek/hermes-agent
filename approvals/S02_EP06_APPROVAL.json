@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP06",
+  "episode_num": 6,
+  "title": "Tập 06: MHA vs GQA — Cuộc Chiến Băng Thông Bộ Nhớ VRAM",
+  "git_hash": "94ec83dfc68337d1218748f237b67de052033d86",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T01:45:03.674031+00:00",
+  "asset_checksums": {
+    "script_md": "2d2aafa7bde412a471b5068e3ea2d258cdd46b5f36edd2ecb5967ee7a6b587f5",
+    "manim_py": "2c267786ec75c3a5e42c47c87503015d4e660d3f9a69df0767d6d8e043c95964",
+    "audio_master_wav": "e9c2b40b75033e9449b4b12c6bbb5cfb950a186c1f41ab8f733bdf81e6d124a6",
+    "video_master_mp4": "77479af868c316b1f59b39927f72d60f3addd251c418d1c3cd6c316d9d53bceb",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "4ff29a0409ede8b73b75a4f58e9251789328cb7da09ccb2c68105ba6492cbf03",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
