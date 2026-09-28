@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP13",
+  "episode_num": 13,
+  "title": "Tập 13: GPTQ & AWQ — Lượng Tử Hóa Bảo Vệ Trọng Số Lõi",
+  "git_hash": "0adf2d93edf780bce99f18aa9cb4423c67025d0f",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T00:35:38.763567+00:00",
+  "asset_checksums": {
+    "script_md": "dab8a528a9d67d7239fa88c54f2aa2cadf9a673242cf07df14b1750bb83f112e",
+    "manim_py": "8f728d3fa4c39427fdab8b520eb8f1a4de81d096db7628c9e0b17546ccce75e6",
+    "audio_master_wav": "5fa5f4ddffb3639af9af436659821bae813b1df457328429d7f970a27530f72d",
+    "video_master_mp4": "8d364e6b214f39629871130c532009b418a18d70af6aa9c24cf429e19aa0bee3",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "bc6e92293c78e1cdb0202f1969ba32f4b2e78f4e379522f822962717769e424e",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
