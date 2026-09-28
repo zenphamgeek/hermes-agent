@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP05",
+  "episode_num": 5,
+  "title": "Tập 05: Chuẩn Hóa RMSNorm — Tối Ưu Tốc Độ Tính Toán AI",
+  "git_hash": "f65289d41e788bc4db65e28dcbbf416a56226208",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T02:12:20.544775+00:00",
+  "asset_checksums": {
+    "script_md": "4cef499159fb360b5ab8bf531f9c0f483f7e26acfad00ef6fbe7fba5a18a30cd",
+    "manim_py": "a6ddaf72d8809a05cedc889f9b70b04c24873b0b3a5d04273f464d9cb7d62f67",
+    "audio_master_wav": "a37452c4ddefa081ffab0e9980fe9ae6074ef6e88cba7b1eca3bd89dae5313f5",
+    "video_master_mp4": "787c097e6178b3607bdf602b3a7b9d04080ddb1b5af67c5b4f8a100b8d7869f1",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "224ddfbab20d68c36a6a4a1c8343d20b3600e17d3b7636b71f856cc25f38dc11",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
