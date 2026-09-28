@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP01",
+  "episode_num": 1,
+  "title": "Tập 01: Tokenization — Nghệ Thuật Cắt Lát Ngôn Ngữ AI",
+  "git_hash": "85b996afc9839b5190da6a78cf6e9e4a77fa5d62",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T03:14:09.660856+00:00",
+  "asset_checksums": {
+    "script_md": "da02ed70da2661fbbd32f79796266ab72ebe656e26d1dd8693254d78e0ba6526",
+    "manim_py": "79cf229f6548877724750baa8ee409cdd0b16c1a87877b609acc23c60c44883c",
+    "audio_master_wav": "6e861e6db523a48834cacd56d02bdb3185e69511e0f2e649cd22e71eab87302c",
+    "video_master_mp4": "f4afc45ae5e7817275633222077e26f7ce3ffadb4e952606b882443413dce1c4",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "80640ee22aaae4b6545cf237922e70e0490648a9a8bc81eb06481c3bc5c0c7a2",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
