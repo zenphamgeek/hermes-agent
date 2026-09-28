@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP16",
+  "episode_num": 16,
+  "title": "Tập 16: Tối Ưu Sở Thích DPO — Căn Chỉnh AI Không Cần Thưởng",
+  "git_hash": "9fea2b2ed382cdbe5995dada3cc2d10d38d63a53",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T00:08:25.823287+00:00",
+  "asset_checksums": {
+    "script_md": "40e01f2abd88da1882fc04ce205aa31c2836040d4812a02d51ae1734be00a845",
+    "manim_py": "9fea0e38a1bbf7b43c969c14c2b905c1cb92ec798959296d3cf6d7f9af05d3d8",
+    "audio_master_wav": "0d5056154b82472f504dff653abc695780d7de059a96fa439589e022270df946",
+    "video_master_mp4": "a2baf936c2d535bd723868a78de34441d26cf68c67ad095590448a5b476531f4",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "2f1b44fdaed4fa8a3afe196a4338101d62657f5a17eca19e5e1ace9d49c36062",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
