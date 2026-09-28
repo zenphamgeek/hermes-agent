@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP08",
+  "episode_num": 8,
+  "title": "Tập 08: PagedAttention — Cấp Phát Bộ Nhớ Ảo Trong vLLM",
+  "git_hash": "8e6ee180a348249ae5710f6ab420501efd722b6a",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T01:38:22.911389+00:00",
+  "asset_checksums": {
+    "script_md": "fda6f1d1ea59ffe171958e8d4f3a6b3b84a382f83fd56719c4298a8e423113d6",
+    "manim_py": "0ed05baa513471b893696e5d383fbcc63f0fcd3d21e32cdacd0e9b16d7c52ec2",
+    "audio_master_wav": "f4668dd23baf08ce2de8d38b7d08ffb93527156de501a13c50ab71fbf631e116",
+    "video_master_mp4": "adb9ba9134e2023d169b97b5f4282622e4e5c027619803543a45d8d433798f8f",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "cf377f6942901cb7e66937aaff80ae7112e33cfc4eca533ffa4d4f030ec6e689",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
