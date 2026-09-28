@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP10",
+  "episode_num": 10,
+  "title": "Tập 10: Mamba & SSM — Mô Hình Không Gian Trạng Thái AI",
+  "git_hash": "c05315c67e26577010f5500c72782e420a876fcc",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T01:12:24.796961+00:00",
+  "asset_checksums": {
+    "script_md": "dc5d9ce39da5e7b596a33f031fd58ca80b8c058ad1e4f1734b738610cd63fa7c",
+    "manim_py": "930a54e09aea2b9d8f82682da9b0d77d66541c0a3d710f6af3b365f7b9596850",
+    "audio_master_wav": "9960c9b6e5b48339962a59f374a904e5efb4a9cbdad310ffd1039a16b497b4da",
+    "video_master_mp4": "29cdb94e63d6505f5f0e0aa8da2a3801f4ace230578e2aa838274a1beaebdb51",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "047fd010f27b3f787ce441b7179c1fc5c16218eba3df910eb44c6fd2cd4e63fc",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
