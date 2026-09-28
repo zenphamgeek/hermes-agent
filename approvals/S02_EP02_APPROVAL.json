@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP02",
+  "episode_num": 2,
+  "title": "Tập 02: Ma Trận RoPE — Phép Xoay Tọa Độ Trong LLaMA",
+  "git_hash": "134cd9db384b7151a8360ee6808684c4329ca8ed",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T02:51:03.322046+00:00",
+  "asset_checksums": {
+    "script_md": "64b18e10470dc0ae5d5e3a7fe1749b061f6bf221ae3f293296fd5b8b63e24a29",
+    "manim_py": "d54fdd48ed6a2d26e7705fc6cb3ce8f96a42746c5ccdc4d170ed3765789762dc",
+    "audio_master_wav": "1d6fd4ff51217210b57ca283dd7b1100f24084747a92acc0cad9c5fd0df724e4",
+    "video_master_mp4": "36c8f16f1f345d8163de7df1a62e5e8b48ce6c0047cc966d77432192bdb3c1bc",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "830e46aa7b57c727881289d9b8f28b8cb8957b92cf91a14916343d34346ec522",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
