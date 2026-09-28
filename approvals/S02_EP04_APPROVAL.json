@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP04",
+  "episode_num": 4,
+  "title": "Tập 04: Hàm SwiGLU — Cổng Kiểm Soát Dòng Chảy Nơ-ron",
+  "git_hash": "f126669aedafa9602410a0a234b4899b4f935e36",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T02:12:55.986542+00:00",
+  "asset_checksums": {
+    "script_md": "710d246485cd32e545578be1febff1079e0c4fe66d3b2262f6ca47d5f5c598d5",
+    "manim_py": "adc24cef79f74cf8578013624a8bc7f50996cff85582a0da0b373a1cd0fec49e",
+    "audio_master_wav": "c94e04aea454cdc768e0d97b7bbf73a97b77d7c8ff817b3526cd161264f9806c",
+    "video_master_mp4": "9df2aba5e3997b0b978b661a521e45629fb2b1383fd4d4d5461d3ba8c0b88e56",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "35a72d4fc4f09325ee59300236da9c3532aad862bc3e28ec7c4465769d2b1762",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
