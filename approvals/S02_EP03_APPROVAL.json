@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP03",
+  "episode_num": 3,
+  "title": "Tập 03: Mở Rộng Ngữ Cảnh — Giải Thuật YaRN & Streaming",
+  "git_hash": "5598caf0f4b3c5c2f25f46723c580449cc3fa6dd",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T02:22:55.932557+00:00",
+  "asset_checksums": {
+    "script_md": "b1b6b1d72cb010fa9523ab82ca45f3977e367f13b4b80cb953dffc4aa0a100eb",
+    "manim_py": "333b8579138121a8a815381a1f486e69b872058c15af1b7ced0f2c9cbb3ab124",
+    "audio_master_wav": "c3e72264839a7582533ff5a81ee78eb3d3887d0feaa27b28e1d3a6cdb4f6779f",
+    "video_master_mp4": "3841c86646d115665563cd142dd17624ae56b20bcd6d142d5d4a7fa23f985599",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "a861965fe1344d3178e3f618a86d2b55fb9207368c0dcad046a42bc671bee558",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
