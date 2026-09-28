@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP09",
+  "episode_num": 9,
+  "title": "Tập 09: FlashAttention — Tối Ưu I/O Giữa SRAM & HBM",
+  "git_hash": "1e0ccbaeee8d05d22634b0e24d926fb429199556",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T01:13:01.147720+00:00",
+  "asset_checksums": {
+    "script_md": "a93f4f4c55f71031f2ca4fb9e8857464ac3dfd238f927b43584fdc14fdf4ad81",
+    "manim_py": "e06dedf5e1f85d1a3bd2c4de105a8c1db856503c80959dd24cf668278e43ce08",
+    "audio_master_wav": "6bd22f72be501806f7ec40dee90e9d8f9c194e512664e6f1ea53063c42905816",
+    "video_master_mp4": "6957263859c88be9b0be7edb5b1f7a9811ec74b9ee84a78d17bfc7cb2d16a277",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "25a94d546a06a28790da4ab1a89c352157ea91df932017f0ef51e44ce03f2e73",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
