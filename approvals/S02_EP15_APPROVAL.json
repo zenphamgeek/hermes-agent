@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP15",
+  "episode_num": 15,
+  "title": "Tập 15: Speculative Decoding — Đoán Trước Tương Lai Token",
+  "git_hash": "565f34e5efd1cae52c1350e5a7b8af2350c793bd",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T00:17:31.044338+00:00",
+  "asset_checksums": {
+    "script_md": "5ef356ec6849fac09c8daadff60f0fdcf6ed2cf74e6b78a0e7c84d148b3a7c40",
+    "manim_py": "84545f8885f919a900f704e650cf8ae488642597c9d5b2fca7a26d176c99e9b8",
+    "audio_master_wav": "6fc774b1c0da5023721eaac9a1b2b5935641d8496fad57dfe79e13ab4850bc98",
+    "video_master_mp4": "89847c74b577a4f46d294711c83ee27e5904e0ab848911eca0b70fe169a6772c",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "69bf4906201fa651198233b60941776f22fa461264ecad96df1086b09888cb3b",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
