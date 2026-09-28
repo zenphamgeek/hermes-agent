@@ -1,0 +1,39 @@
+{
+  "approval_version": "1.0",
+  "series_id": "series_02",
+  "series_title": "The Anatomy of Modern LLMs",
+  "episode_id": "S02_EP11",
+  "episode_num": 11,
+  "title": "Tập 11: Mạng Chuyên Gia MoE — Bí Mật Định Tuyến Mixtral",
+  "git_hash": "3ef5a05e3b3500aed5a05f59cd957e5fdb322fd3",
+  "is_git_clean": false,
+  "execution_mode": "isolated_atomic",
+  "approved_at": "2026-09-28T01:11:51.522318+00:00",
+  "asset_checksums": {
+    "script_md": "5ca50d4ae55bd8413aec54e60aae45c0b48c504d09b4b5343a088c1fb94f98f3",
+    "manim_py": "36a6a1103b3db9f67ce4ca8ef935c1910e931dbde14db57e827b64e5c901c817",
+    "audio_master_wav": "c930bbba449f4063e5bab39521d117236c867a8cbbdf3e57cfc3b7f66e2b668a",
+    "video_master_mp4": "bd58962d515943379b48be278767623c7e40bd2d59dad4c07a2167f845efd682",
+    "thumbnail_mosaic_png": "3e37e2f833829d308b302738a7c9a56c7a97206e15d81973a31f4ff3231a0888"
+  },
+  "closure_sha256": "46d24cc2017357326bbd68f37be41dcb3053679102558731d76401d4c702455e",
+  "quality_gates": {
+    "episodic_isolation": "PASS",
+    "spatial_containment": "PASS",
+    "anti_slide_deck": "PASS",
+    "audio_ebur128": "PASS",
+    "mosaic_cta_grid": "PASS"
+  },
+  "metrics": {
+    "resolution": [
+      2560,
+      1440
+    ],
+    "fps": 60,
+    "integrated_lufs": -14.5,
+    "true_peak_dbtp": -1.5,
+    "slide_deck_violations": 0,
+    "spatial_bounding_box_violations": 0
+  },
+  "decision": "approved"
+}
