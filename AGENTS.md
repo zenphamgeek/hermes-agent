@@ -74,8 +74,28 @@ Whenever a task requires non-trivial code generation, refactoring, architectural
   - Multi-Perspective Council & Parallel Verification: `call_mcp_tool(ServerName="agy-fleet", ToolName="fleet_parallel", Arguments={"prompt": "..."})`
 - **Node Routing Persona Standards**:
   - **Standard Pro Nodes (Default)**: Route high-throughput vibe-coding and unit test generation to Pro nodes (`pro-1` / `innoria.team`, `node-4`..`node-8`, `team-3` / `coderedgen`) using `gemini-3.8-flash-high` or `gemini-3.1-pro-high`.
-  - **Ultra Offload Persona (`lthn.Ariana`)**: When the user requests "chuyển tải sang lthn.Ariana", or for complex architectural proofs, deep debugging, and high-complexity tasks ($\ge 2.5$), route directly to **`lthn.Ariana`** (`ultra-2` / `claude-opus-4-6-thinking` or `claude-sonnet-4-6`).
+  - **Ultra Offload Persona (`lthn.Ariana`)**: When the user requests "chuyển tải sang lthn.Ariana", or for complex architectural proofs, deep debugging, and high-complexity tasks ($\ge 2.5$), route directly to **`lthn.Ariana`** (`ultra-2` / `claude-opus-5-5-high` or `claude-sonnet-5-5-high`).
 - **Local Application & Verification**: Receive clean structured code output from Fleet nodes, apply changes locally using `replace_file_content` or `write_to_file`, and run local test quality gates to ensure 100% verified correctness.
+- **Fleet-Run vs Subagent Decision Tree** (CRITICAL — prevents misuse):
+  - `fleet_run`: For **standalone generation** tasks where ALL context is in the prompt. Fleet nodes run in `--print` mode — **NO filesystem access**. Always paste relevant code/schemas into the prompt.
+  - `invoke_subagent`: For tasks that **NEED to READ existing files** on disk (refactoring, test writing against existing code, debugging). Still counts as valid delegation per Thin Coordinator.
+  - **NEVER generate >20 lines inline** without first attempting delegation via one of these two paths.
+  - **NEVER claim "delegated to fleet" without actual `fleet_run` / `fleet_parallel` tool call evidence** — this is fabrication under Zero-Fake-Pass.
+  - *(See `.agents/rules/05_fleet_delegation_enforcement.md` for full decision tree and anti-patterns)*.
+
+### 1.12. Autonomous Action & Proactive Execution Invariant (Kích Hoạt Không Cần Hỏi / Report After, Not Ask Before)
+Hermes Agent and AGY Fleet nodes exist to solve problems autonomously and with high velocity:
+- **Zero-Passive-Prompting Mandate**: Never stall execution by asking passive permission questions (*"Do you want me to run the tests?"*, *"Should I proceed?"*, *"Bạn có muốn tôi làm tiếp không?"*). Execute non-destructive workflows proactively: Sense $\to$ Plan $\to$ Execute $\to$ Verify $\to$ Report.
+- **Single Destruction Boundary**: Stop and ask explicit user confirmation **ONLY** for irreversible, catastrophic data destruction (`DROP DATABASE/TABLE`, broad `DELETE` without `WHERE` on production DBs, `gsutil rm -r` or deleting production storage buckets/secrets, deleting master tokens in `modal_token_profile.md`).
+- **Self-Healing Limit**: Maximum 3 consecutive automated remediation attempts before compiling an Escalation Notice to avoid runaway loops.
+- **Evidence-First Coupling**: Every proactive execution MUST be verified by genuine tool execution logs and console outputs in the current turn. *(See `.agents/rules/06_autonomous_action_and_odoo_owl_ui_standards.md`)*.
+
+### 1.13. Universal Odoo QWeb & Owl UI/UX Convergence Invariant (Thống Nhất UI/UX Công Cụ về QWeb & Owl Odoo 20)
+All developer tools, monitoring dashboards, operational cockpits, and telemetry HUDs across all projects (AGY Fleet Manager, Modal GPU Monitor, Tokenomics Dashboard, Trae Autopilot Widget, VerticalRisk GRC, Content Factory telemetry) MUST be architected for seamless porting and embedding into **Odoo 20 (Insilos Enterprise)**:
+- **Owl Component Architecture Parity**: All interactive widgets must adhere to the `@odoo/owl` Component pattern (`class X extends Component`, `useState`, `onWillStart`, `onMounted`, `onWillUnmount`).
+- **Decoupled RPC Transport**: UI layers must interface via decoupled RPC abstractions mirroring Odoo 20's `useService("rpc")`, ensuring zero code rewrite when transitioning from standalone REST to Odoo JSON-RPC / ORM.
+- **Odoo 20 Semantic QWeb Directives**: Layout templates must follow native QWeb standards. Prohibit deprecated `t-esc` and `t-raw`; enforce `<t t-out="...">` and mandatory `t-key` on all client `<t t-foreach="...">` loops.
+- **Visual Convergence & Rule 29 Parity**: Blend Bootstrap 5 utility classes with ZENPHAM Neo-Noir Obsidian tokens (`#080a0f`, `#0c0d12`, `#38bdf8`, `#ffd700`, `#10b981`, `#ef4444`). Strictly eliminate thick, opaque card box containers (`card-body`) in favor of borderless floating tiles with subtle hairlines. *(See `.agents/rules/06_autonomous_action_and_odoo_owl_ui_standards.md`)*.
 
 ---
 
@@ -108,9 +128,12 @@ Run test quality gates:
 
 ## 4. Master Rules Directory
 
-For comprehensive operational guidelines, consult the 4 Master Pillars in `.agents/rules/`:
+For comprehensive operational guidelines, consult the Master Pillars in `.agents/rules/`:
 - [**MASTER_RULES.md**](file:///home/zen/hermes-agent/.agents/rules/MASTER_RULES.md) — Unified Index
 - [**01_council_integrity_and_macro_structure.md**](file:///home/zen/hermes-agent/.agents/rules/01_council_integrity_and_macro_structure.md) — Council Charter & 5-Section Assembly
 - [**02_acoustic_tts_and_subtitles_gold_standards.md**](file:///home/zen/hermes-agent/.agents/rules/02_acoustic_tts_and_subtitles_gold_standards.md) — TTS V0-Sense on CUDA & Gold SRT
 - [**03_visual_geometry_and_manim_standards.md**](file:///home/zen/hermes-agent/.agents/rules/03_visual_geometry_and_manim_standards.md) — Rule 29 Borderless Canvas & Manim Rules
 - [**04_shorts_funnel_and_publishing_standards.md**](file:///home/zen/hermes-agent/.agents/rules/04_shorts_funnel_and_publishing_standards.md) — 5-Shorts Funnel & Packaging
+- [**05_modal_gpu_fleet_and_token_invariants.md**](file:///home/zen/hermes-agent/.agents/rules/05_modal_gpu_fleet_and_token_invariants.md) — Modal Multi-GPU Fleet & Token Invariants
+- [**05_fleet_delegation_enforcement.md**](file:///home/zen/hermes-agent/.agents/rules/05_fleet_delegation_enforcement.md) — AGY Fleet Mandatory Delegation & Anti-Inline Generation
+- [**06_autonomous_action_and_odoo_owl_ui_standards.md**](file:///home/zen/hermes-agent/.agents/rules/06_autonomous_action_and_odoo_owl_ui_standards.md) — Autonomous Proactive Action & Universal Odoo QWeb/Owl Convergence
