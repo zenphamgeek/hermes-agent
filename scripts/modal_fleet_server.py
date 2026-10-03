@@ -4061,7 +4061,7 @@ class SentinelUsageLimitAuditor:
                 spend = current_spends.get(ws, 0.0)
 
                 # Special case 1: overdue invoice on just-ask-mr-zen
-                if ws == "just-ask-mr-zen":
+                if ws in FLEET_POLICY.get("overdue_invoice", []):
                     configured_limit = 29.50
                     is_configured = True
                     is_compliant = False

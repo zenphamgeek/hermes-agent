@@ -1,21 +1,88 @@
 {
   "updated": "2026-10-03",
-  "excluded": ["motion"],
-  "excluded_reason": {"motion": "Workspace paused on Modal (ac-IZOdoGglIV04WnAGJohvuY); token kept, not in fleet"},
-  "deploy_blocked": ["asmr", "diatts", "mindful", "phi4", "pvvsf", "r2rgraph", "vi2vi", "zenguru", "zenllm", "zenmaster", "zennchat", "zenpeace"],
+  "excluded": [
+    "motion"
+  ],
+  "excluded_reason": {
+    "motion": "Workspace paused on Modal (ac-IZOdoGglIV04WnAGJohvuY); token kept, not in fleet"
+  },
+  "deploy_blocked": [
+    "asmr",
+    "diatts",
+    "mindful",
+    "phi4",
+    "pvvsf",
+    "r2rgraph",
+    "vi2vi",
+    "zenguru",
+    "zenllm",
+    "zenmaster",
+    "zennchat",
+    "zenpeace"
+  ],
   "deploy_blocked_reason": "Modal: 'Please add a payment method' on new GPU deploy (probe 2026-10-03). Existing apps may keep running; no new deploys.",
-  "deploy_ok": ["insimind", "lovenovel", "mojopham", "mvlm", "nhatrophamvu", "verticalresilience", "vieturbo", "vrag", "zenonmind", "zenonts"],
+  "deploy_ok": [
+    "insimind",
+    "lovenovel",
+    "mojopham",
+    "mvlm",
+    "nhatrophamvu",
+    "verticalresilience",
+    "vieturbo",
+    "vrag",
+    "zenonmind",
+    "zenonts"
+  ],
   "routing": {
     "qwen_img_21": {
-      "has_app": ["lovenovel", "mvlm", "zenonmind", "mojopham", "verticalresilience"],
-      "order": ["lovenovel", "mvlm", "zenonmind", "mojopham", "verticalresilience"],
+      "has_app": [
+        "lovenovel",
+        "mvlm",
+        "zenonmind",
+        "mojopham",
+        "verticalresilience"
+      ],
+      "order": [
+        "lovenovel",
+        "mvlm",
+        "zenonmind",
+        "mojopham",
+        "verticalresilience"
+      ],
       "policy": "spend ascending at runtime; skip >= $25 MTD",
       "skip_spend_usd": 25.0
     },
     "qwen_image_edit_t4": {
-      "has_app": ["mvlm", "mojopham", "diatts", "zenpeace", "mindful", "asmr"],
-      "order": ["mvlm", "mojopham", "diatts", "zenpeace", "mindful", "asmr"]
+      "has_app": [
+        "mvlm",
+        "mojopham",
+        "diatts",
+        "zenpeace",
+        "mindful",
+        "asmr"
+      ],
+      "order": [
+        "mvlm",
+        "mojopham",
+        "diatts",
+        "zenpeace",
+        "mindful",
+        "asmr"
+      ]
     },
-    "new_deploy_candidates": ["lovenovel", "zenonmind", "mvlm", "vieturbo", "vrag", "zenonts", "insimind", "nhatrophamvu", "mojopham", "verticalresilience"]
-  }
+    "new_deploy_candidates": [
+      "lovenovel",
+      "zenonmind",
+      "mvlm",
+      "vieturbo",
+      "vrag",
+      "zenonts",
+      "insimind",
+      "nhatrophamvu",
+      "mojopham",
+      "verticalresilience"
+    ]
+  },
+  "overdue_invoice": [],
+  "just_ask_mr_zen_note": "invoice paid per user 2026-10-03, $30 credit available; no token so spend/deploy unverified"
 }
