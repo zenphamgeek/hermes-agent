@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "concepts": [
+    {
+      "id": "tts_v8",
+      "patterns": ["TTS[ _-]?V8\\b", "\\bV8 Expressive\\b", "\\bV8 Prosody\\b", "\\bV8 Enhanced\\b", "\\bV8 Wave\\b"],
+      "replacement": "TTS V0-Sense (assets/scripts_video/tts_v0_sense_synthesizer.py) on local VieNeu-TTS v3 Turbo, 100% natural inference",
+      "source_of_truth": "AGENTS.md section 1.4 ('TTS V8 and all intermediate text manipulation ... remain COMPLETELY ABANDONED')",
+      "deprecated_since": "per AGENTS.md 1.4 (date not recorded in source)"
+    },
+    {
+      "id": "prosody_dictionary",
+      "patterns": ["prosody_dictionary(\\.json)?"],
+      "replacement": "No prosody dictionary; direct raw canonical script synthesis via TTS V0-Sense",
+      "source_of_truth": "AGENTS.md section 1.4 ('prosody dictionaries (prosody_dictionary.json) ... remain COMPLETELY ABANDONED')",
+      "deprecated_since": "per AGENTS.md 1.4 (date not recorded in source)"
+    },
+    {
+      "id": "atempo_slowdown",
+      "patterns": ["0\\.94\\s*x", "atempo\\s*=?\\s*0\\.\\d+", "0\\.73\\s*x"],
+      "replacement": "Native 1.0x neural speed; remaining duration filled by ambient music/SFX, never by time-stretching speech",
+      "source_of_truth": "AGENTS.md section 1.4 Zero-Atempo-Slowdown Mandate ('atempo < 1.0, e.g. 0.73x, 0.94x ... STRICTLY AND ABSOLUTELY FORBIDDEN')",
+      "deprecated_since": "per AGENTS.md 1.4 (date not recorded in source)"
+    }
+  ]
+}

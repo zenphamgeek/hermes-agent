@@ -1,0 +1,353 @@
+{
+  "version": 1,
+  "gate": "G3",
+  "description": "Frozen ground truth for superseded-concept scan over L3 (AGENTS.md, .agents/rules, .agents/skills). Labels assigned by manual reading of each hit's context on 2026-10-03; not derived from scanner pre-labels.",
+  "labels": {
+    "supersedes_candidate": "text still instructs/presents the deprecated concept as live -> candidate for SUPERSEDE proposal",
+    "mentions_as_deprecated": "text describes the concept as abandoned/forbidden -> must be KEPT",
+    "ambiguous": "unclear; route to QUARANTINE / human review"
+  },
+  "counts": {
+    "supersedes_candidate": 26,
+    "mentions_as_deprecated": 13,
+    "ambiguous": 3
+  },
+  "entries": [
+    {
+      "file": "AGENTS.md",
+      "line": 32,
+      "concept_id": "tts_v8",
+      "label": "mentions_as_deprecated",
+      "quote": "All Vietnamese voiceover generation MUST strictly adhere to the **TTS V0-Sense standard** (`assets/scripts_video/tts_v0_sense_synthesizer.py`). TTS V8 and all intermediate text manipulation, prosody d",
+      "justification": "Source of truth: 'TTS V8 and all intermediate text manipulation ... remain COMPLETELY ABANDONED'."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 32,
+      "concept_id": "prosody_dictionary",
+      "label": "mentions_as_deprecated",
+      "quote": "All Vietnamese voiceover generation MUST strictly adhere to the **TTS V0-Sense standard** (`assets/scripts_video/tts_v0_sense_synthesizer.py`). TTS V8 and all intermediate text manipulation, prosody d",
+      "justification": "Same sentence: 'prosody dictionaries (prosody_dictionary.json) ... COMPLETELY ABANDONED'."
+    },
+    {
+      "file": "AGENTS.md",
+      "line": 34,
+      "concept_id": "atempo_slowdown",
+      "label": "mentions_as_deprecated",
+      "quote": "- **Zero-Atempo-Slowdown Mandate**: Speech MUST run at 100% native 1.0x neural inference speed. Any artificial time-stretching or speed reduction (`atempo < 1.0`, e.g. 0.73x, 0.94x) and mechanical zer",
+      "justification": "'(atempo < 1.0, e.g. 0.73x, 0.94x) ... STRICTLY AND ABSOLUTELY FORBIDDEN'."
+    },
+    {
+      "file": ".agents/rules/02_acoustic_tts_and_subtitles_gold_standards.md",
+      "line": 10,
+      "concept_id": "prosody_dictionary",
+      "label": "mentions_as_deprecated",
+      "quote": "All voiceover generation across all Content Factory channels and videos MUST strictly adhere to the **TTS V0-Sense standard** (`assets/scripts_video/tts_v0_sense_synthesizer.py`). Intermediate text ma",
+      "justification": "Lists prosody_dictionary among 'Intermediate text manipulation ... ABANDONED' under V0-Sense."
+    },
+    {
+      "file": ".agents/rules/02_acoustic_tts_and_subtitles_gold_standards.md",
+      "line": 15,
+      "concept_id": "atempo_slowdown",
+      "label": "mentions_as_deprecated",
+      "quote": "- **Absolute Ban on atempo < 1.0**: Under NO circumstances may any script, FFmpeg filter, or DSP chain apply `atempo < 1.0` (such as `atempo=0.73`, `atempo=0.85`, `atempo=0.94`). Neural inference runs",
+      "justification": "'Absolute Ban on atempo < 1.0: Under NO circumstances ... (atempo=0.94)' -- a ban, heuristic missed ('NO'/'Ban' not markers)."
+    },
+    {
+      "file": ".agents/rules/content_factory.md",
+      "line": 90,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "- **TÔI ĐỌC SÁCH:** Triết học kinh điển, sách cổ điển. 16:9 Landscape, giọng trầm tĩnh (`speed: 0.94x`).",
+      "justification": "Live channel config: 'TÔI ĐỌC SÁCH ... giọng trầm tĩnh (`speed: 0.94x`)' conflicts with native 1.0x mandate."
+    },
+    {
+      "file": ".agents/rules/geographic_documentary_rules.md",
+      "line": 24,
+      "concept_id": "tts_v8",
+      "label": "ambiguous",
+      "quote": "- **Động cơ mặc định:** **V8 Enhanced VieNeu-TTS** (VieNeu-TTS v3 Turbo 48kHz Streaming kết hợp Chuỗi Master Giọng Đọc 5 Giai Đoạn - Studio Vocal Mastering Chain: High-pass 80Hz, De-mud EQ 300Hz, Pres",
+      "justification": "'Động cơ mặc định: V8 Enhanced VieNeu-TTS' -- engine (VieNeu v3 Turbo) is current but V8 label and -15 LUFS/80Hz chain differ from 1.4; naming drift vs real supersession unclear."
+    },
+    {
+      "file": ".agents/rules/manim_masterclass_rules.md",
+      "line": 118,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "B --> C[\"2. TTS OmniVoice (Zen Miền Tây 0.94x, >= 480s)\"]",
+      "justification": "Live workflow step: '2. TTS OmniVoice (Zen Miền Tây 0.94x, >= 480s)'."
+    },
+    {
+      "file": ".agents/rules/modular_episode_harness.md",
+      "line": 350,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "- Tốc độ: **0.94x** (khoảng dừng thở tự nhiên giữa các câu)",
+      "justification": "Live spec 'Tốc độ: **0.94x**'; nearby 'CẤM' refers to afftdn/lowpass, not to 0.94x."
+    },
+    {
+      "file": ".agents/rules/modular_episode_harness.md",
+      "line": 461,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "- Giọng đọc Zen Miền Tây (0.94x – 0.96x) ấm áp, rõ nét.",
+      "justification": "Live Shorts spec 'Giọng đọc Zen Miền Tây (0.94x – 0.96x)'; nearby 'CẤM' is about afftdn."
+    },
+    {
+      "file": ".agents/rules/tts_english_anchoring_rules.md",
+      "line": 243,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "Synthesize audio (OmniVoice F5-TTS, 0.94x, 24kHz)",
+      "justification": "Live pipeline step 'Synthesize audio (OmniVoice F5-TTS, 0.94x, 24kHz)'."
+    },
+    {
+      "file": ".agents/rules/vietnamese_gold_tts_rules.md",
+      "line": 6,
+      "concept_id": "tts_v8",
+      "label": "mentions_as_deprecated",
+      "quote": "> **BÃI BỎ HOÀN TOÀN TTS V8:**",
+      "justification": "'BÃI BỎ HOÀN TOÀN TTS V8' (V8 fully abolished)."
+    },
+    {
+      "file": ".agents/rules/vietnamese_gold_tts_rules.md",
+      "line": 7,
+      "concept_id": "prosody_dictionary",
+      "label": "mentions_as_deprecated",
+      "quote": "> - Tuyệt đối **KHÔNG** sử dụng bộ tiền xử lý ngữ âm V8 (`vietnamese_expressive_prosody.py`, `prosody_dictionary.json`).",
+      "justification": "'Tuyệt đối KHÔNG sử dụng ... prosody_dictionary.json'."
+    },
+    {
+      "file": ".agents/rules/vietnamese_gold_tts_rules.md",
+      "line": 10,
+      "concept_id": "atempo_slowdown",
+      "label": "mentions_as_deprecated",
+      "quote": "> - **CẤM TUYỆT ĐỐI LÀM CHẬM (ZERO-ATEMPO-SLOWDOWN):** Nghiêm cấm dùng bộ lọc `atempo < 1.0` (như 0.73x, 0.85x, 0.94x) hoặc chèn khoảng câm zero cơ học. Giọng đọc phải chạy đúng 100% tốc độ tự nhiên 1",
+      "justification": "'CẤM TUYỆT ĐỐI LÀM CHẬM ... atempo < 1.0 (như 0.73x, 0.85x, 0.94x)'."
+    },
+    {
+      "file": ".agents/rules/vietnamese_gold_tts_rules.md",
+      "line": 54,
+      "concept_id": "atempo_slowdown",
+      "label": "mentions_as_deprecated",
+      "quote": "- Giọng đọc chạy ở 100% tốc độ tự nhiên của mô hình VieNeu. **CẤM TUYỆT ĐỐI áp dụng bộ lọc `atempo < 1.0`** (như `atempo=0.73` hay `atempo=0.94`) hoặc chèn mảng số 0 khoảng câm (`np.zeros(...)`) làm n",
+      "justification": "'CẤM TUYỆT ĐỐI áp dụng bộ lọc atempo < 1.0 (như atempo=0.73 hay atempo=0.94)'."
+    },
+    {
+      "file": ".agents/rules/voice_identity_rules.md",
+      "line": 67,
+      "concept_id": "tts_v8",
+      "label": "mentions_as_deprecated",
+      "quote": "> 2. **Đọc thẳng 100% từ kịch bản (Zero Text Preprocessing):** Bỏ hoàn toàn TTS V8, không sử dụng `prosody_dictionary.json`, không gán 24 Wave ngữ điệu, không băm câu hay chèn dấu câu giả lập. VieNeu-",
+      "justification": "'Bỏ hoàn toàn TTS V8'."
+    },
+    {
+      "file": ".agents/rules/voice_identity_rules.md",
+      "line": 67,
+      "concept_id": "prosody_dictionary",
+      "label": "mentions_as_deprecated",
+      "quote": "> 2. **Đọc thẳng 100% từ kịch bản (Zero Text Preprocessing):** Bỏ hoàn toàn TTS V8, không sử dụng `prosody_dictionary.json`, không gán 24 Wave ngữ điệu, không băm câu hay chèn dấu câu giả lập. VieNeu-",
+      "justification": "'không sử dụng prosody_dictionary.json'."
+    },
+    {
+      "file": ".agents/skills/infographic-director/SKILL.md",
+      "line": 3,
+      "concept_id": "tts_v8",
+      "label": "supersedes_candidate",
+      "quote": "description: \"Đạo diễn Đồ họa Thông tin Địa lý & Khoa học (Geographic & Scientific Infographic Director) cho series 'Việt Nam — Những Miền Sống' và kênh BIẾT ĐỊA LÝ TỪ BA TÔI. Triết lý tối thượng: FOO",
+      "justification": "Skill description: '... đồng bộ cùng giọng đọc V8 Expressive Prosody'; the 'cấm' nearby is about slides, unrelated."
+    },
+    {
+      "file": ".agents/skills/infographic-director/SKILL.md",
+      "line": 78,
+      "concept_id": "tts_v8",
+      "label": "supersedes_candidate",
+      "quote": "## 4. Đồng Bộ Nhịp Điệu Giọng Đọc V8 Expressive Prosody",
+      "justification": "Live section heading '## 4. Đồng Bộ Nhịp Điệu Giọng Đọc V8 Expressive Prosody'."
+    },
+    {
+      "file": ".agents/skills/omnivoice-reader/SKILL.md",
+      "line": 3,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "description: \"Chuyên môn kỹ thuật và quy trình chuẩn sản xuất giọng đọc ZenPham (Zen Miền Tây 0.94x) qua OmniVoice: Chuẩn hóa code-switching Việt-Anh (Golden Method v4), chuẩn hóa ký hiệu toán học TTS",
+      "justification": "Skill description 'giọng đọc ZenPham (Zen Miền Tây 0.94x) qua OmniVoice'."
+    },
+    {
+      "file": ".agents/skills/omnivoice-reader/SKILL.md",
+      "line": 29,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "- **Tốc độ (Speed)**: Cố định `0.94x` (mọi scene, bất biến).",
+      "justification": "'Tốc độ (Speed): Cố định `0.94x` (mọi scene, bất biến)' -- mandatory parameter."
+    },
+    {
+      "file": ".agents/skills/omnivoice-reader/SKILL.md",
+      "line": 272,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "- Tốc độ đọc 0.94x của Zen yêu cầu nhịp thở trầm tĩnh, đĩnh đạc.",
+      "justification": "'Tốc độ đọc 0.94x của Zen yêu cầu nhịp thở trầm tĩnh' presumes 0.94x as live; nearby 'Cấm' is about clause length."
+    },
+    {
+      "file": ".agents/skills/omnivoice-reader/SKILL.md",
+      "line": 468,
+      "concept_id": "atempo_slowdown",
+      "label": "ambiguous",
+      "quote": "║ Voice: zen-meditation-mientay | Speed: 0.94x         ║",
+      "justification": "Benchmark box 'Speed: 0.94x | Date: 2026-09-12' is a historical measurement record, not an instruction; archive-worthy evidence."
+    },
+    {
+      "file": ".agents/skills/omnivoice-reader/SKILL.md",
+      "line": 517,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "Synthesize audio (OmniVoice F5-TTS, 0.94x, 24kHz)",
+      "justification": "Live pipeline step 'Synthesize audio (OmniVoice F5-TTS, 0.94x, 24kHz)'."
+    },
+    {
+      "file": ".agents/skills/omnivoice-reader/SKILL.md",
+      "line": 540,
+      "concept_id": "tts_v8",
+      "label": "supersedes_candidate",
+      "quote": "Kể từ phiên bản V8, toàn bộ quy trình sản xuất giọng đọc OmniVoice bắt buộc sử dụng tiêu chuẩn **V8 Expressive Prosody (Wave Expression)** thông qua skill độc quyền **`vietnamese-expressive-tts`**:",
+      "justification": "'bắt buộc sử dụng tiêu chuẩn V8 Expressive Prosody' -- mandates V8."
+    },
+    {
+      "file": ".agents/skills/omnivoice-reader/SKILL.md",
+      "line": 544,
+      "concept_id": "prosody_dictionary",
+      "label": "supersedes_candidate",
+      "quote": "- **Hybrid Acoustic Guard & Adaptive Prosody Dictionary (`prosody_dictionary.json`):** Tự động phát hiện mật độ âm tiết cao và phụ âm tắc dồn dập để kẹp trần an toàn `safe_speed <= 0.98x`, chèn micro-",
+      "justification": "Live feature 'Adaptive Prosody Dictionary (prosody_dictionary.json)'."
+    },
+    {
+      "file": ".agents/skills/omnivoice-reader/SKILL.md",
+      "line": 546,
+      "concept_id": "prosody_dictionary",
+      "label": "supersedes_candidate",
+      "quote": "- **Động cơ thực thi:** `assets/scripts_video/vietnamese_expressive_prosody.py` (tích hợp `prosody_dictionary.json`).",
+      "justification": "'Động cơ thực thi: vietnamese_expressive_prosody.py (tích hợp prosody_dictionary.json)'."
+    },
+    {
+      "file": ".agents/skills/reality-decode/SKILL.md",
+      "line": 71,
+      "concept_id": "tts_v8",
+      "label": "supersedes_candidate",
+      "quote": "│ TẦNG 3: SẢN XUẤT THUYẾT MINH GOLD TTS (V8 EXPRESSIVE PROSODY)               │",
+      "justification": "'TẦNG 3: SẢN XUẤT THUYẾT MINH GOLD TTS (V8 EXPRESSIVE PROSODY)'."
+    },
+    {
+      "file": ".agents/skills/reality-decode/SKILL.md",
+      "line": 72,
+      "concept_id": "tts_v8",
+      "label": "supersedes_candidate",
+      "quote": "│ - Chuẩn duy nhất: V8 Expressive Prosody (`vietnamese-expressive-tts`)       │",
+      "justification": "'Chuẩn duy nhất: V8 Expressive Prosody'."
+    },
+    {
+      "file": ".agents/skills/toi-lam-viec/SKILL.md",
+      "line": 42,
+      "concept_id": "tts_v8",
+      "label": "supersedes_candidate",
+      "quote": "7. **Tiêu chuẩn Gold TTS Duy Nhất (V8 Expressive Prosody):** 100% audio lời thoại bắt buộc xử lý qua `vietnamese-expressive-tts` (`vietnamese_expressive_prosody.py` + `prosody_dictionary.json`): khóa ",
+      "justification": "'Tiêu chuẩn Gold TTS Duy Nhất (V8 Expressive Prosody): 100% audio ... bắt buộc'; nearby 'cấm' is about monolithic parts."
+    },
+    {
+      "file": ".agents/skills/toi-lam-viec/SKILL.md",
+      "line": 42,
+      "concept_id": "prosody_dictionary",
+      "label": "supersedes_candidate",
+      "quote": "7. **Tiêu chuẩn Gold TTS Duy Nhất (V8 Expressive Prosody):** 100% audio lời thoại bắt buộc xử lý qua `vietnamese-expressive-tts` (`vietnamese_expressive_prosody.py` + `prosody_dictionary.json`): khóa ",
+      "justification": "Same line mandates 'vietnamese_expressive_prosody.py + prosody_dictionary.json'."
+    },
+    {
+      "file": ".agents/skills/toi-lam-viec/SKILL.md",
+      "line": 341,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "> - **Tốc độ đọc chuẩn (Calibrated Speed)**: **`0.94x`** (Bắt buộc cho toàn bộ nội dung tiếng Việt của kênh ZENPHAM, bao gồm video phân tích chuyên sâu 16:9 \"Tôi Làm Việc\" và Tech Shorts 9:16). Nhịp 0",
+      "justification": "'Tốc độ đọc chuẩn (Calibrated Speed): `0.94x` (Bắt buộc ...)'; nearby 'CẤM' is about bilingual splicing."
+    },
+    {
+      "file": ".agents/skills/toi-lam-viec/SKILL.md",
+      "line": 342,
+      "concept_id": "tts_v8",
+      "label": "ambiguous",
+      "quote": "> - **Engine TTS Mặc Định (Default Synthesizer)**: **V8 Enhanced VieNeu-TTS** (VieNeu-TTS v3 Turbo 48kHz Streaming kết hợp Chuỗi Master Giọng Đọc 5 Giai Đoạn - Studio Vocal Mastering Chain: Highpass 8",
+      "justification": "'Engine TTS Mặc Định: V8 Enhanced VieNeu-TTS' -- VieNeu engine current, V8 label/-15 LUFS chain stale; naming drift vs supersession unclear."
+    },
+    {
+      "file": ".agents/skills/toi-lam-viec/SKILL.md",
+      "line": 421,
+      "concept_id": "tts_v8",
+      "label": "supersedes_candidate",
+      "quote": "### 🎙️ TIÊU CHUẨN V8 WAVE EXPRESSION TTS (KẾ THỪA & ĐỒNG BỘ TOÀN WORKSPACE VỚI KÊNH BIẾT ĐỊA LÝ TỪ BA TÔI)",
+      "justification": "Live heading 'TIÊU CHUẨN V8 WAVE EXPRESSION TTS (KẾ THỪA & ĐỒNG BỘ ...)'; nearby 'KHÔNG' is about hardsubs."
+    },
+    {
+      "file": ".agents/skills/toi-lam-viec/SKILL.md",
+      "line": 424,
+      "concept_id": "tts_v8",
+      "label": "supersedes_candidate",
+      "quote": "> Tiêu chuẩn **V8 Wave Expression TTS** được nghiên cứu và phát triển chung giữa đội ngũ kỹ nghệ của hai kênh **ZENPHAM** và **BIẾT ĐỊA LÝ TỪ BA TÔI** (`assets/scripts_video/vietnamese_expressive_tts_",
+      "justification": "'Tiêu chuẩn V8 Wave Expression TTS ... Hai kênh chia sẻ 100% động cơ lõi' -- presented as live shared core."
+    },
+    {
+      "file": ".agents/skills/toi-lam-viec/SKILL.md",
+      "line": 424,
+      "concept_id": "prosody_dictionary",
+      "label": "supersedes_candidate",
+      "quote": "> Tiêu chuẩn **V8 Wave Expression TTS** được nghiên cứu và phát triển chung giữa đội ngũ kỹ nghệ của hai kênh **ZENPHAM** và **BIẾT ĐỊA LÝ TỪ BA TÔI** (`assets/scripts_video/vietnamese_expressive_tts_",
+      "justification": "Same live paragraph references the V8 core including prosody_dictionary.json."
+    },
+    {
+      "file": ".agents/skills/toi-lam-viec/SKILL.md",
+      "line": 428,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "> - **Kênh ZENPHAM (\"Tôi Làm Việc\" / Reality Decode)**: Persona \"Kỹ sư thực thi điềm tĩnh\", mộc mạc, suy tư, không melodrama (cấm \"phòng lab 2h sáng\"), tôn trọng vẻ đẹp toán học và sự tao nhã của hệ t",
+      "justification": "'Tốc độ chuẩn 0.94x (kẹp trần <= 0.98x)'; the 'cấm' is about 'phòng lab 2h sáng' wording."
+    },
+    {
+      "file": ".agents/skills/vietnamese-expressive-tts/SKILL.md",
+      "line": 19,
+      "concept_id": "tts_v8",
+      "label": "mentions_as_deprecated",
+      "quote": "> **BÃI BỎ HOÀN TOÀN TTS V8:**",
+      "justification": "'BÃI BỎ HOÀN TOÀN TTS V8'."
+    },
+    {
+      "file": ".agents/skills/vietnamese-expressive-tts/SKILL.md",
+      "line": 20,
+      "concept_id": "prosody_dictionary",
+      "label": "mentions_as_deprecated",
+      "quote": "> - Toàn bộ các cơ chế tiền xử lý văn bản, khóa từ ghép cưỡng bức, ma trận 24 Wave và từ điển `prosody_dictionary.json` của V8 chính thức được **bãi bỏ**.",
+      "justification": "'từ điển prosody_dictionary.json của V8 chính thức được bãi bỏ'."
+    },
+    {
+      "file": ".agents/skills/youtube-to-manim/SKILL.md",
+      "line": 36,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "| **7. Vietnamese Voiceover Synthesis** | `OmniVoice TTS` (Zen Mien Tay) | Container port 8080 (`http://10.123.214.178:8080`) | ~3.5 GB | Tạo file thuyết minh WAV 100% Đơn giọng Zen Miền Tây (`0.94x`)",
+      "justification": "Live model table 'Đơn giọng Zen Miền Tây (`0.94x`)'; 'CẤM cắt ghép' is about splicing voices."
+    },
+    {
+      "file": ".agents/skills/youtube-video-rewriter/SKILL.md",
+      "line": 61,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "│ - Track 2: Thuyết minh TTS OmniVoice (100% Đơn giọng Zen Miền Tây, 0.94x)   │",
+      "justification": "Live track spec 'Thuyết minh TTS OmniVoice (100% Đơn giọng Zen Miền Tây, 0.94x)'."
+    },
+    {
+      "file": ".agents/skills/youtube-video-rewriter/SKILL.md",
+      "line": 147,
+      "concept_id": "atempo_slowdown",
+      "label": "supersedes_candidate",
+      "quote": "- **Định luật Đơn Giọng Thuần Khiết (Monolingual Invariant)**: 1 giọng Zen duy nhất từ đầu tới cuối (`0.94x`), tuyệt đối KHÔNG cắt ghép 2 giọng đọc.",
+      "justification": "'1 giọng Zen duy nhất từ đầu tới cuối (`0.94x`)'; 'KHÔNG cắt ghép' is about splicing, not speed."
+    }
+  ]
+}

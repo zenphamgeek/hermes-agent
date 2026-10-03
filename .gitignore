@@ -12,6 +12,8 @@ act/
 .venv
 .vscode/
 .env
+.modal.md
+.conf
 .op.env
 .env.local
 .env.development.local
@@ -201,3 +203,14 @@ native/fts5_cjk/*.so
 # interrupted; consumed by launch-time recovery. Never commit it (was tracked
 # by accident via 3a69e34702, removed in the #72002 salvage).
 .lazy-refresh-incomplete
+assets/credientials/google_personal.md
+modal_token_profile.md
+pexels_api_key.md
+node_modules
+node_modules
+
+# .agents: track rules/skills/migrations only (memory-curator L3 versioning)
+.agents/teamwork/
+.agents/**/__pycache__/
+# contains Modal token IDs - keep out of git until redacted
+.agents/rules/05_modal_gpu_fleet_and_token_invariants.md
