@@ -240,7 +240,7 @@ Chạy tts_code_switch_risk.py → BLOCK nếu HIGH
   ↓
 A/B test term rủi ro → Lưu tts_term_registry_v4.json
   ↓
-Synthesize audio (OmniVoice F5-TTS, 0.94x, 24kHz)
+Synthesize audio (TTS V0-Sense tts_v0_sense_synthesizer.py, 1.0x native, 48kHz)
   ↓
 cap_internal_silence.py (≤ 350ms)
   ↓

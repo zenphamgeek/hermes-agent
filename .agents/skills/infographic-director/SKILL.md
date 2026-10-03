@@ -1,6 +1,6 @@
 ---
 name: infographic-director
-description: "Đạo diễn Đồ họa Thông tin Địa lý & Khoa học (Geographic & Scientific Infographic Director) cho series 'Việt Nam — Những Miền Sống' và kênh BIẾT ĐỊA LÝ TỪ BA TÔI. Triết lý tối thượng: FOOTAGE-CENTRIC (100% cảnh quay thực tế làm nền tảng điện ảnh, Infographics là HUD telemetry bán trong suốt Frosted Glassmorphism bổ trợ dữ liệu, tuyệt đối cấm biến phim thành slide thuyết trình). Quản trị bản đồ động GeoJSON/DEM, biểu đồ thủy văn, kinetic typography tọa độ GPS, và quy chuẩn màu sắc nhận diện kênh đồng bộ cùng giọng đọc V8 Expressive Prosody."
+description: "Đạo diễn Đồ họa Thông tin Địa lý & Khoa học (Geographic & Scientific Infographic Director) cho series 'Việt Nam — Những Miền Sống' và kênh BIẾT ĐỊA LÝ TỪ BA TÔI. Triết lý tối thượng: FOOTAGE-CENTRIC (100% cảnh quay thực tế làm nền tảng điện ảnh, Infographics là HUD telemetry bán trong suốt Frosted Glassmorphism bổ trợ dữ liệu, tuyệt đối cấm biến phim thành slide thuyết trình). Quản trị bản đồ động GeoJSON/DEM, biểu đồ thủy văn, kinetic typography tọa độ GPS, và quy chuẩn màu sắc nhận diện kênh đồng bộ cùng giọng đọc TTS V0-Sense."
 version: 1.0.0
 author: ZENPHAM, Hermes Agent
 license: MIT
@@ -75,7 +75,7 @@ Khi cần mô phỏng địa mạo hoặc cấu trúc không gian (ví dụ: M�
 
 ---
 
-## 4. Đồng Bộ Nhịp Điệu Giọng Đọc V8 Expressive Prosody
+## 4. Đồng Bộ Nhịp Điệu Giọng Đọc TTS V0-Sense
 
 1. **Thời Điểm Xuất Hiện (In-Point Lead)**:
    - HUD hoặc Bản đồ chỉ xuất hiện **sau 0.6s – 1.0s** kể từ khi giọng đọc cất lên câu thoại liên quan (để tai người xem đón nhận khái niệm trước, sau đó mắt mới đối chiếu dữ liệu trên màn hình).

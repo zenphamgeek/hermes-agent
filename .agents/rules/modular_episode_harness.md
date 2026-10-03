@@ -347,7 +347,7 @@ Tuyệt đối không để thuật ngữ tiếng Anh đứng đầu câu:
 
 ### F. Thông Số Âm Thanh Studio:
 - Giọng mẫu: `zenpham-zen-meditation-mientay`
-- Tốc độ: **0.94x** (khoảng dừng thở tự nhiên giữa các câu)
+- Tốc độ: **1.0x** native (TTS V0-Sense, cấm `atempo < 1.0`; khoảng dừng thở tự nhiên giữa các câu)
 - Chuẩn xuất xưởng: **48,000 Hz, Stereo, EBU R128 -14.5 LUFS**, True Peak $\le$ **-1.5 dBTP**.
 - **Banned Audio Filters:**
   - `afftdn`: Gây biến dạng pha kim loại (phase warble) $\to$ **CẤM**.
@@ -458,7 +458,7 @@ Mã nguồn: `episode_industrial_ai_tap_XX/manim_short_tap_XX.py`.
   Tránh thanh tìm kiếm và icon camera ở mép trên cùng màn hình điện thoại.
 
 ### C. Âm Thanh Chuẩn YouTube Shorts (AQG Compliance):
-- Giọng đọc Zen Miền Tây (0.94x – 0.96x) ấm áp, rõ nét.
+- Giọng đọc Zen Miền Tây (TTS V0-Sense, 1.0x native, cấm `atempo < 1.0`) ấm áp, rõ nét.
 - Chuẩn EBU R128: **$-14.0 \pm 0.5$ LUFS**, True Peak $\le -1.0$ dBTP (chống méo khi YouTube nén lại qua Opus).
 - Nhạc nền Ambient Lo-Fi ducking sâu $-18$dB đến $-22$dB khi có giọng nói; fade-in 1.5s, fade-out 2.0s.
 - **TUYỆT ĐỐI CẤM** dùng các bộ lọc phá hoại âm thanh: CẤM `afftdn=nf=-28`, CẤM `lowpass=11000`.

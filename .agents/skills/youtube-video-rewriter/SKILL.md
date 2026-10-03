@@ -58,7 +58,7 @@ Skill này cung cấp quy trình tự động hóa toàn diện nhằm tiếp nh
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ TẦNG 4: MULTI-TRACK SCRIPTWRITING (scripts/script_writer.py)                │
 │ - Track 1: Timeline & Phân cảnh 6 hồi                                       │
-│ - Track 2: Thuyết minh TTS OmniVoice (100% Đơn giọng Zen Miền Tây, 0.94x)   │
+│ - Track 2: Thuyết minh TTS V0-Sense (100% Đơn giọng Zen Miền Tây, 1.0x)     │
 │ - Track 3: Manim Animation Blueprint (Class name, Zone 1-4, ASCII MathTex)  │
 │ - Track 4: Footage B-roll & SFX (Tự động tra cứu PexelsVisualMatcher:       │
 │   * Nếu khớp >= 90%: DÙNG TRỰC TIẾP VIDEO FOOTAGE PEXELS [VISUAL: PEXELS]   │
@@ -144,7 +144,7 @@ python3 skills/creative/youtube-video-rewriter/scripts/srt_extractor.py \
 - Kết hợp dữ liệu phân tích và kế hoạch Manim để tạo file `production_script_multitrack.md` gồm 4 luồng song song:
   - **Track 1**: Timeline & Tên phân cảnh.
   - **Track 2**: Lời thoại thuyết minh tiếng Việt chuẩn OmniVoice (100% Đơn giọng Zen Miền Tây):
-    - **Định luật Đơn Giọng Thuần Khiết (Monolingual Invariant)**: 1 giọng Zen duy nhất từ đầu tới cuối (`0.94x`), tuyệt đối KHÔNG cắt ghép 2 giọng đọc.
+    - **Định luật Đơn Giọng Thuần Khiết (Monolingual Invariant)**: 1 giọng Zen duy nhất từ đầu tới cuối (TTS V0-Sense, `1.0x` native), tuyệt đối KHÔNG cắt ghép 2 giọng đọc.
     - **Thuật ngữ kỹ thuật**: Giữ nguyên tiếng Anh gốc (`Splay Tree`, `Transformer`, `Softmax`, `Cache`, `Attention`), không phiên âm thô.
     - **Acronyms**: Đọc tách từng chữ cái (`N a N`, `L L M`, `G P U`). Thương hiệu: `Zen Phạm`.
     - Chèn thẻ ngắt nhịp thở `[pause 0.5s]`, `[emphasis]`.

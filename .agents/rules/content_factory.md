@@ -87,7 +87,7 @@ Thứ tự pipeline kiểm định: `Script → SAG → Produce → Source QG (4
 ## 3. Quản Trị Đa Kênh & Lưu Trữ Đám Mây (rclone Google Drive)
 
 ### Quản Trị Nhận Diện Đa Kênh
-- **TÔI ĐỌC SÁCH:** Triết học kinh điển, sách cổ điển. 16:9 Landscape, giọng trầm tĩnh (`speed: 0.94x`).
+- **TÔI ĐỌC SÁCH:** Triết học kinh điển, sách cổ điển. 16:9 Landscape, giọng trầm tĩnh (TTS V0-Sense, tốc độ tự nhiên `1.0x`, cấm `atempo < 1.0`).
 - **ZENPHAM:** Tiểu luận xã hội, tâm lý đám đông, AI & kỹ nghệ hệ thống. 16:9 Video Essay (`speed: 1.15x`) và 9:16 Shorts (`speed: 1.18x`). Phong cách Neo-Noir.
 - **BIẾT ĐỊA LÝ TỪ BA TÔI (`@phamtrai-dialy`):** Phim tài liệu Địa lý Nhân văn. **Quy tắc tối thượng: FOOTAGE-CENTRIC 100%** (cảnh quay thực địa 2K chân thực; Infographics/bản đồ là kính HUD Frosted Glassmorphism $\ge 50\%$ bán trong suốt bổ trợ; 100% clip kèm `.meta.json` khớp kịch bản $\ge 95\%$; giọng đọc TTS V0 Gold đọc trực tiếp từ kịch bản). Tham chiếu `.agents/rules/geographic_documentary_rules.md`.
 

@@ -1,6 +1,6 @@
 ---
 name: omnivoice-reader
-description: "Chuyên môn kỹ thuật và quy trình chuẩn sản xuất giọng đọc ZenPham (Zen Miền Tây 0.94x) qua OmniVoice: Chuẩn hóa code-switching Việt-Anh (Golden Method v4), chuẩn hóa ký hiệu toán học TTS-safe, quét rủi ro neo ngữ pháp (tts_code_switch_risk), kiểm tra A/B từ điển phát âm (tts_term_registry), nối âm mượt mà chống giật cục (Zero-Jolt Splicing), premium studio mastering, đồng bộ timestamp từng từ qua Faster-Whisper (whisper_aligner), pha nhịp chuyển động Manim (VoiceSyncTimeline), và voice benchmark tiêu chuẩn phòng thu."
+description: "Chuyên môn kỹ thuật và quy trình chuẩn sản xuất giọng đọc ZenPham (Zen Miền Tây, TTS V0-Sense 1.0x native) qua OmniVoice: Chuẩn hóa code-switching Việt-Anh (Golden Method v4), chuẩn hóa ký hiệu toán học TTS-safe, quét rủi ro neo ngữ pháp (tts_code_switch_risk), kiểm tra A/B từ điển phát âm (tts_term_registry), nối âm mượt mà chống giật cục (Zero-Jolt Splicing), premium studio mastering, đồng bộ timestamp từng từ qua Faster-Whisper (whisper_aligner), pha nhịp chuyển động Manim (VoiceSyncTimeline), và voice benchmark tiêu chuẩn phòng thu."
 version: 2.0.0
 author: ZENPHAM, Hermes Agent
 license: MIT
@@ -26,7 +26,7 @@ Quy trình sản xuất âm thanh, kiểm soát ngữ âm song ngữ Việt - An
    - Câu chuẩn benchmark: *"Đôi khi, điều khó nhất không phải là tìm câu trả lời đúng, mà là chấp nhận rằng mình đã sai. Nhưng chính những lần vấp ngã ấy, lại dạy ta nhiều hơn bất kỳ thành công nào."*
 
 2. **Tham Số Kỹ Thuật Bắt Buộc (OmniVoice F5-TTS)**:
-   - **Tốc độ (Speed)**: Cố định `0.94x` (mọi scene, bất biến).
+   - **Tốc độ (Speed)**: Cố định `1.0x` native (mọi scene, bất biến; cấm `atempo < 1.0` theo AGENTS.md §1.4).
    - **Độ phân giải lấy mẫu (Sample Rate)**: 24,000 Hz, 16-bit Mono PCM WAV.
    - **Siêu tham số suy luận**:
      - `num_step`: 48 (độ mịn sóng âm tối đa)
@@ -269,7 +269,7 @@ Khi văn bản thiếu các điểm neo cú pháp rõ ràng, tokenizer hoặc b�
      - ✅ *"Toàn bộ quá trình huấn luyện đòi hỏi dung lượng bộ nhớ rất lớn."*
 
 3. **Phân Cụm Hơi Thở Sinh Học (Biological Breath Groups 8–16 Từ):**
-   - Tốc độ đọc 0.94x của Zen yêu cầu nhịp thở trầm tĩnh, đĩnh đạc.
+   - Tốc độ đọc 1.0x tự nhiên (TTS V0-Sense) của Zen yêu cầu nhịp thở trầm tĩnh, đĩnh đạc.
    - Mỗi vế câu (giữa 2 dấu phẩy/chấm) phải chứa từ **8 đến 16 từ**.
    - Cấm các vế câu vượt quá **22 từ** không có dấu phẩy lấy hơi. Điểm lấy hơi chỉ được đặt tại các liên từ tự nhiên (*"và"*, *"nhưng"*, *"mà"*, *"khi"*, *"để"*, *"do đó"*, *"vì vậy"*), tuyệt đối không ngắt ngang cụm từ ghép.
 
@@ -514,7 +514,7 @@ Chạy tts_code_switch_risk.py → BLOCK nếu HIGH
   ↓
 A/B test term rủi ro → Lưu tts_term_registry_v4.json
   ↓
-Synthesize audio (OmniVoice F5-TTS, 0.94x, 24kHz)
+Synthesize audio (TTS V0-Sense tts_v0_sense_synthesizer.py, 1.0x native, 48kHz)
   ↓
 cap_internal_silence.py (≤ 350ms)
   ↓
@@ -537,13 +537,13 @@ XUẤT BẢN
 
 ## 11. Tiêu Chuẩn V8 — Vietnamese Expressive TTS: Gold TTS Tiêu Chuẩn Duy Nhất 🌟
 
-Kể từ phiên bản V8, toàn bộ quy trình sản xuất giọng đọc OmniVoice bắt buộc sử dụng tiêu chuẩn **V8 Expressive Prosody (Wave Expression)** thông qua skill độc quyền **`vietnamese-expressive-tts`**:
+Toàn bộ quy trình sản xuất giọng đọc bắt buộc sử dụng tiêu chuẩn **TTS V0-Sense** (`assets/scripts_video/tts_v0_sense_synthesizer.py`, AGENTS.md §1.4) thông qua skill độc quyền **`vietnamese-expressive-tts`**:
 - **Khóa từ ghép nguyên khối (Zero-Split Lexical Invariant):** 500+ từ ghép 2-3 tiếng không bao giờ bị ngắt hơi sai giữa chừng.
 - **Biểu cảm biên câu:** Head Attack (80-120ms headroom) và Tail Cadence Release (280-350ms decay tail).
 - **Ma trận 24 Wave ngữ điệu:** Điều biến tốc độ và F0 theo từng câu, chấm dứt giọng đọc flat-rate đơn điệu.
-- **Hybrid Acoustic Guard & Adaptive Prosody Dictionary (`prosody_dictionary.json`):** Tự động phát hiện mật độ âm tiết cao và phụ âm tắc dồn dập để kẹp trần an toàn `safe_speed <= 0.98x`, chèn micro-breath sinh học 60-80ms, không ngừng tự học và hoàn thiện.
+- **Acoustic Clause Guard (TTS V0-Sense):** Tách mỗi đơn vị tổng hợp thành vế ≤ 75 ký tự (thay `...` bằng `, `), tốc độ 1.0x native (cấm `atempo < 1.0`), xác minh ASR vòng kín Faster-Whisper (≥ 75% độ phủ từ, tự động thử lại nếu méo).
 - **Tài liệu & Skill chi tiết:** [.agents/skills/vietnamese-expressive-tts/SKILL.md](file:///home/zen/hermes-agent/.agents/skills/vietnamese-expressive-tts/SKILL.md)
-- **Động cơ thực thi:** `assets/scripts_video/vietnamese_expressive_prosody.py` (tích hợp `prosody_dictionary.json`).
+- **Động cơ thực thi:** `assets/scripts_video/tts_v0_sense_synthesizer.py` (đọc trực tiếp kịch bản gốc, không tiền xử lý văn bản).
 
 ### Lệnh Kiểm Toán Kịch Bản V8:
 ```bash

@@ -39,7 +39,7 @@ Tham chiếu quy chuẩn chi tiết tại [manim_masterclass_rules.md](../../rul
    python3 assets/scripts_video/run_all_quality_gates.py --episode XX
    ```
    Phải đạt 0 Critical trên cả 4 tầng (Kỹ thuật, Bố cục/Typography, Sư phạm/Vật lý, Bản sắc kênh).
-7. **Tiêu chuẩn Gold TTS Duy Nhất (V8 Expressive Prosody):** 100% audio lời thoại bắt buộc xử lý qua `vietnamese-expressive-tts` (`vietnamese_expressive_prosody.py` + `prosody_dictionary.json`): khóa nguyên khối từ ghép (Zero-split), bảo vệ biên câu, điều biến 24 Wave ngữ điệu, kẹp trần tốc độ $\le 0.98x$ chống méo tiếng. Cấm đọc phẳng một tốc độ (flat monotone). 1 giọng Zen thuần nhất từ đầu tới cuối, cấm cắt ghép 2 giọng đọc.
+7. **Tiêu chuẩn Gold TTS Duy Nhất (TTS V0-Sense):** 100% audio lời thoại bắt buộc xử lý qua `vietnamese-expressive-tts` (`assets/scripts_video/tts_v0_sense_synthesizer.py`): đọc trực tiếp kịch bản gốc trên VieNeu-TTS v3 Turbo (không tiền xử lý văn bản), tốc độ 1.0x native (cấm `atempo < 1.0`), Clause Guard ≤ 75 ký tự, xác minh ASR Faster-Whisper, master -14.5 ± 0.5 LUFS / TP ≤ -1.5 dBTP / 48kHz Stereo. 1 giọng Zen thuần nhất từ đầu tới cuối, cấm cắt ghép 2 giọng đọc.
 8. **Chuẩn mực ngôn ngữ:** 100% "thực tế", 0% "thực chiến"; thuật ngữ tiếng Anh tự nhiên theo ngữ cảnh.
 9. **Phân Rã 10-12 Phần Modular (Modular Parts Architecture):**
    - **Tuyệt đối cấm xử lý Monolithic (Nguyên khối):** Mỗi tập phim = 10-12 Parts độc lập (45-90s/part), mỗi Part có kịch bản `.md`, Manim `.py`, audio `.wav` và quality gate riêng.
@@ -338,7 +338,7 @@ Các mẫu Manim có sẵn tại `skills/creative/toi-lam-viec/references/manim_
 >   - **TUYỆT ĐỐI CẤM** việc cắt từ tiếng Anh/thuật ngữ kỹ thuật đưa sang một voice model thứ 2 đọc rồi ghép lại (Bilingual Splitting / Splicing).
 >   - *Lý do thực nghiệm*: Việc cắt ghép 2 giọng đọc khác nhau (dù áp dụng carrier prompting, crossfade hay LUFS matching) vẫn tạo ra xung đột âm sắc (timbre clash), làm vấp nhịp thở tự nhiên và phá hủy hoàn toàn cảm xúc tĩnh tại, liền mạch của người nghe.
 >   - Toàn bộ nội dung kịch bản (kể cả thuật ngữ kỹ thuật, code-switching tiếng Anh) **BẮT BUỘC do 1 giọng Zen Miền Tây duy nhất đọc xuyên suốt từ đầu tới cuối**.
-> - **Tốc độ đọc chuẩn (Calibrated Speed)**: **`0.94x`** (Bắt buộc cho toàn bộ nội dung tiếng Việt của kênh ZENPHAM, bao gồm video phân tích chuyên sâu 16:9 "Tôi Làm Việc" và Tech Shorts 9:16). Nhịp 0.94x đảm bảo sự điềm tĩnh, suy tưởng, đĩnh đạc, rõ nét từng âm vị toán & kỹ thuật, tạo khoảng trống chiêm nghiệm cho người xem.
+> - **Tốc độ đọc chuẩn (Calibrated Speed)**: **`1.0x` native (TTS V0-Sense)** (Bắt buộc cho toàn bộ nội dung tiếng Việt của kênh ZENPHAM, bao gồm video phân tích chuyên sâu 16:9 "Tôi Làm Việc" và Tech Shorts 9:16; cấm `atempo < 1.0`). Nhịp đọc tự nhiên 1.0x cùng khoảng ngắt 120–220ms từ dấu phẩy đảm bảo sự điềm tĩnh, suy tưởng, đĩnh đạc, rõ nét từng âm vị toán & kỹ thuật, tạo khoảng trống chiêm nghiệm cho người xem.
 > - **Engine TTS Mặc Định (Default Synthesizer)**: **V8 Enhanced VieNeu-TTS** (VieNeu-TTS v3 Turbo 48kHz Streaming kết hợp Chuỗi Master Giọng Đọc 5 Giai Đoạn - Studio Vocal Mastering Chain: Highpass 80Hz, De-mud EQ 300Hz, Presence EQ 3.8kHz, Air Treble 9kHz, EBU R128 Loudnorm -15 LUFS). GPU OmniVoice (F5-TTS 24kHz) giữ vai trò dự phòng thứ cấp (Secondary Fallback).
 > - **Profile âm thanh**: Tiêu chuẩn âm thanh phòng thu **48000 Hz Stereo**, EBU R128 `loudnorm=I=-14.5:LRA=7:TP=-1.5` kết hợp 5-Stage Studio Vocal Mastering Chain.
 
@@ -418,14 +418,14 @@ python3 assets/scripts_video/re_tts_all.py --episodes 11,21 --force
 - **Zero Burned-in Subtitles (Master MP4 100% Sạch)**: Video master xuất xưởng tuyệt đối **KHÔNG nhúng cứng phụ đề (Zero Hardsub / Zero Karaoke Sub)** lên khung hình để tránh mọi xung đột, đè chữ lên vùng đồ họa toán học Manim (Zone 5 & đáy màn hình).
 - **Phụ đề mềm CC độc lập (`.srt`)**: Xuất file `.srt` chuẩn (tối đa 10–12 từ/cue, hiển thị 1.0s–3.5s) để tải lên YouTube Closed Captions (CC), cho phép khán giả tùy chọn bật/tắt tự do.
 
-### 🎙️ TIÊU CHUẨN V8 WAVE EXPRESSION TTS (KẾ THỪA & ĐỒNG BỘ TOÀN WORKSPACE VỚI KÊNH BIẾT ĐỊA LÝ TỪ BA TÔI)
+### 🎙️ TIÊU CHUẨN TTS V0-SENSE (KẾ THỪA & ĐỒNG BỘ TOÀN WORKSPACE VỚI KÊNH BIẾT ĐỊA LÝ TỪ BA TÔI)
 > [!IMPORTANT]
 > **ĐỒNG BỘ & DÙNG CHUNG CỐT LÕI (SHARED CORE ACROSS CHANNELS):**
-> Tiêu chuẩn **V8 Wave Expression TTS** được nghiên cứu và phát triển chung giữa đội ngũ kỹ nghệ của hai kênh **ZENPHAM** và **BIẾT ĐỊA LÝ TỪ BA TÔI** (`assets/scripts_video/vietnamese_expressive_tts_research.md`). Hai kênh chia sẻ 100% động cơ lõi tại `assets/scripts_video/vietnamese_expressive_prosody.py`, từ điển tự học `prosody_dictionary.json`, và skill toàn cục `vietnamese-expressive-tts`.
+> Tiêu chuẩn **TTS V0-Sense** được áp dụng chung cho hai kênh **ZENPHAM** và **BIẾT ĐỊA LÝ TỪ BA TÔI** (AGENTS.md §1.4). Hai kênh chia sẻ 100% động cơ lõi tại `assets/scripts_video/tts_v0_sense_synthesizer.py` (đọc trực tiếp kịch bản gốc, không tiền xử lý văn bản) và skill toàn cục `vietnamese-expressive-tts`.
 >
 > **Khác biệt về định vị Persona giữa 2 kênh:**
 > - **Kênh Biết Địa Lý Từ Ba Tôi**: Persona "Người cha giải thích cho con", ấm áp, tình cảm gia đình, thuận thiên sông nước, tốc độ tự nhiên 1.05x - 1.08x (phóng sự tài liệu) hoặc 0.96x - 1.02x (đoạn triết lý).
-> - **Kênh ZENPHAM ("Tôi Làm Việc" / Reality Decode)**: Persona "Kỹ sư thực thi điềm tĩnh", mộc mạc, suy tư, không melodrama (cấm "phòng lab 2h sáng"), tôn trọng vẻ đẹp toán học và sự tao nhã của hệ thống. Tốc độ chuẩn **0.94x** (kẹp trần $\le 0.98x$), giữ khoảng trống chiêm nghiệm cho người xem theo dõi hoạt họa Manim 2K và các phép biến đổi vi tích phân / ma trận.
+> - **Kênh ZENPHAM ("Tôi Làm Việc" / Reality Decode)**: Persona "Kỹ sư thực thi điềm tĩnh", mộc mạc, suy tư, không melodrama (cấm "phòng lab 2h sáng"), tôn trọng vẻ đẹp toán học và sự tao nhã của hệ thống. Tốc độ chuẩn **1.0x** native (TTS V0-Sense, cấm `atempo < 1.0`), giữ khoảng trống chiêm nghiệm cho người xem theo dõi hoạt họa Manim 2K và các phép biến đổi vi tích phân / ma trận.
 
 - **1. Bảo Toàn Cụm Từ Ghép Nguyên Khối (Zero-Split Invariant — 500+ Lexical Units)**:
   - Khóa chặt mọi từ ghép 2-3 tiếng: bao phủ cả thuật ngữ AI / Toán học (*năng lực tính toán, lan truyền ngược, đạo hàm riêng, hàm mất mát, điểm cực tiểu, ma trận hessian, không gian tiềm ẩn, nút thắt cổ chai, độ phức tạp bậc hai...*) lẫn từ vựng văn hóa Nam Bộ / Thủy văn kế thừa từ kênh Địa Lý (*đồng bằng, phù sa, triều cường, xâm nhập mặn, con nước lớn ròng...*).

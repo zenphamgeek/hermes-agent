@@ -115,7 +115,7 @@ Khi một AI Agent nhận lệnh sản xuất liên tục nhiều tập (ví d�
 ```mermaid
 graph TD
     A["Tập N: Bắt đầu Task Mới (Ngữ cảnh tươi mới 100%)"] --> B["1. Plan & Kịch bản 6 cảnh (Toán học hóa)"]
-    B --> C["2. TTS OmniVoice (Zen Miền Tây 0.94x, >= 480s)"]
+    B --> C["2. TTS V0-Sense (VieNeu-TTS v3 Turbo, 1.0x native, >= 480s)"]
     C --> D["3. Manim Code Đầy Đủ (Multi-phase + Ambient Motion)"]
     D --> E["4. Render & Dựng Master Video 2K QHD (2560x1440)"]
     E --> F["5. Visual QA Thật (freezedetect <= 4s, view_file xem ảnh)"]

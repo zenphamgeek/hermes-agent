@@ -68,8 +68,8 @@ Hệ thống sản xuất và tự động hóa xuất bản toàn diện cho k�
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ TẦNG 3: SẢN XUẤT THUYẾT MINH GOLD TTS (V8 EXPRESSIVE PROSODY)               │
-│ - Chuẩn duy nhất: V8 Expressive Prosody (`vietnamese-expressive-tts`)       │
+│ TẦNG 3: SẢN XUẤT THUYẾT MINH GOLD TTS (TTS V0-SENSE)                        │
+│ - Chuẩn duy nhất: TTS V0-Sense (`tts_v0_sense_synthesizer.py`)              │
 │ - Khóa nguyên khối từ ghép (Zero-split invariant) & điều biến 24 Wave       │
 │ - Hybrid Acoustic Guard: Kẹp trần speed <= 0.98x, chống méo tiếng / nuốt âm │
 │ - Đơn giọng Zen Miền Tây điềm tĩnh khoa học (F0 ~114-121Hz)                 │
