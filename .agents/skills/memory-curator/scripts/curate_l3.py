@@ -203,16 +203,16 @@ class FleetJudge:
             return json.loads(resp.read().decode("utf-8"))
 
     def judge_nodes(self) -> list[str]:
-        nodes = self._http("GET", "/api/fleet/nodes")
+        nodes = self._http("GET", "/api/fleet/nodes", timeout=45)
         nodes = nodes.get("nodes", nodes) if isinstance(nodes, dict) else nodes
         items = nodes.values() if isinstance(nodes, dict) else nodes
         ok = [n["name"] for n in items
               if n.get("label") in JUDGE_ROLES
-              and str(n.get("status", "")).lower() not in {"error", "unauthenticated"}]
+              and str(n.get("status", "")).lower() != "unauthenticated"]  # transient "error" still tried
         return sorted(ok, key=lambda n: (n != self.preferred, n))
 
     def _run_batch(self, batch: list[dict], allowed: list[str]) -> tuple[list, str]:
-        last = "no Judge/Auditor node available"
+        errs: list[str] = []
         for node in allowed[:2]:
             try:
                 job = self._http("POST", "/api/fleet/run-sync",
@@ -220,20 +220,20 @@ class FleetJudge:
                                   "node_name": node, "timeout": self.timeout},
                                  timeout=self.timeout + 60)
             except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
-                last = f"{node}: transport error {exc}"
+                errs.append(f"{node}: transport error {exc}")
                 continue
             ran_on = job.get("node_name", "")
             if ran_on not in allowed:
-                last = f"{node}: rerouted to non-judge node {ran_on!r}"
+                errs.append(f"{node}: rerouted to non-judge node {ran_on!r}")
                 continue
             if job.get("status") != "completed":
-                last = f"{ran_on}: job status {job.get('status')!r} {str(job.get('stderr', ''))[:200]}"
+                errs.append(f"{ran_on}: job status {job.get('status')!r} {str(job.get('stderr', ''))[:200]}")
                 continue
             try:
                 return parse_verdict_array(job.get("clean_response") or job.get("stdout") or ""), ran_on
             except JudgeError as exc:
-                last = f"{ran_on}: {exc}"
-        raise JudgeError(last)
+                errs.append(f"{ran_on}: {exc}")
+        raise JudgeError(" ; ".join(errs) or "no Judge/Auditor node available")
 
     def judge(self, candidates: list[dict]) -> dict[str, Verdict | JudgeError]:
         out: dict[str, Verdict | JudgeError] = {}
