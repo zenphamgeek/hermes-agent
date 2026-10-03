@@ -19,6 +19,7 @@ ZERO-FAKE-PASS INVARIANT:
 """
 
 import io
+import os
 import time
 import base64
 import torch
@@ -68,7 +69,7 @@ DEFAULT_GUIDANCE = 5.0
 
 # ── Modal worker class ───────────────────────────────────────────────────────
 @app.cls(
-    gpu="A100-80GB",                  # Minimum required: A10G (24GB). A100-80GB headroom.
+    gpu=os.environ.get("QWEN_GPU", "A100-80GB"),  # Minimum required: A10G (24GB). Default A100-80GB headroom.
     scaledown_window=300,             # Keep warm 5 minutes after last request
     timeout=900,                      # 15 min timeout (cold-start + large-batch)
     memory=32768,                     # 32GB RAM (model + decode buffer)

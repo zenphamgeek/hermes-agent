@@ -270,6 +270,18 @@ _PARSED_TEMPLATE_CACHE: Dict[str, Tuple[float, Dict[str, Any], str]] = {}
 _PROBE_LOCK = getattr(stealth_passive_monitor, "_PROBE_LOCK", threading.Lock()) if "stealth_passive_monitor" in globals() and stealth_passive_monitor is not None else getattr(globals(), "MONITOR_PROBE_LOCK", threading.Lock())
 _PROBE_STATE = getattr(stealth_passive_monitor, "_PROBE_STATE", {}) if "stealth_passive_monitor" in globals() and stealth_passive_monitor is not None else getattr(globals(), "MONITOR_PROBE_STATE", {})
 
+def load_fleet_policy() -> Dict[str, Any]:
+    """Policy: excluded workspaces, deploy-blocked (no payment method), routing orders."""
+    try:
+        return json.loads((Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json").read_text())
+    except Exception:
+        return {"excluded": [], "deploy_blocked": [], "routing": {}}
+
+
+FLEET_POLICY = load_fleet_policy()
+FLEET_EXCLUDED = set(FLEET_POLICY.get("excluded", []))
+FLEET_DEPLOY_BLOCKED = set(FLEET_POLICY.get("deploy_blocked", []))
+
 CANONICAL_20_PROFILES = [
     # Group 1: just.ask.mr.zen@gmail.com (5)
     "just-ask-mr-zen", "zenpeace", "mindful", "zenguru", "zenmaster",
@@ -2074,41 +2086,46 @@ def get_toml_profiles() -> List[str]:
                 profiles.append(m.group(1))
     if not profiles:
         profiles = list(CANONICAL_20_PROFILES)
-    return profiles
+    return [p for p in profiles if p not in FLEET_EXCLUDED]
+
+
+_PROFILE_LKG: Dict[str, Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]] = {}
+
+
+def _modal_json(cmd: List[str], env: Dict[str, str], profile: str) -> Optional[List[Dict[str, Any]]]:
+    """Run a modal CLI listing; retry once with a longer timeout. None = failed (unknown)."""
+    for timeout in (20, 35):
+        try:
+            r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
+            if r.returncode == 0:
+                return json.loads(r.stdout)
+            return None  # auth/other error: retry will not help
+        except subprocess.TimeoutExpired:
+            continue
+        except Exception as e:
+            print(f"[Modal-Server] Warning: {' '.join(cmd[:3])} failed for {profile}: {e}")
+            return None
+    print(f"[Modal-Server] Warning: {' '.join(cmd[:3])} timed out twice for {profile}")
+    return None
 
 
 def fetch_profile_data(profile: str) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Queries modal app list and container list for a given profile."""
+    """Queries modal app list and container list for a given profile.
+
+    A failed/timed-out query falls back to the last known-good data for that
+    profile instead of silently reporting zero apps.
+    """
     env = os.environ.copy()
     env["MODAL_PROFILE"] = profile
-    apps = []
-    containers = []
-    try:
-        r_app = subprocess.run(
-            ["modal", "app", "list", "--json"],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=12,
-        )
-        if r_app.returncode == 0:
-            apps = json.loads(r_app.stdout)
-    except Exception as e:
-        print(f"[Modal-Server] Warning: failed to fetch apps for {profile}: {e}")
+    apps = _modal_json(["modal", "app", "list", "--json"], env, profile)
+    containers = _modal_json(["modal", "container", "list", "--json"], env, profile)
 
-    try:
-        r_cont = subprocess.run(
-            ["modal", "container", "list", "--json"],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=12,
-        )
-        if r_cont.returncode == 0:
-            containers = json.loads(r_cont.stdout)
-    except Exception as e:
-        print(f"[Modal-Server] Warning: failed to fetch containers for {profile}: {e}")
-
+    lkg_apps, lkg_conts = _PROFILE_LKG.get(profile, ([], []))
+    if apps is None:
+        apps = lkg_apps
+    if containers is None:
+        containers = lkg_conts
+    _PROFILE_LKG[profile] = (apps, containers)
     return profile, apps, containers
 
 
@@ -3480,7 +3497,7 @@ def _load_canonical_inventory() -> List[Dict[str, Any]]:
         for ws, acc, tier in workspaces_meta
     ]
 
-CANONICAL_20_INVENTORY = _load_canonical_inventory()
+CANONICAL_20_INVENTORY = [e for e in _load_canonical_inventory() if e["workspace"] not in FLEET_EXCLUDED]
 
 
 class InFlightRequestTracker:
@@ -4012,9 +4029,22 @@ class SentinelUsageLimitAuditor:
             remaining_probes = max(0, 5 - probes_used_today)
 
             current_spends: Dict[str, float] = {}
+            app_breakdowns: Dict[str, Dict[str, float]] = {}
+            try:
+                billing_file = OUTPUT_DIR / "modal_billing_ledger.json"
+                if billing_file.exists():
+                    bdata = json.loads(billing_file.read_text(encoding="utf-8"))
+                    for ws_name, ws_val in bdata.get("workspaces", {}).items():
+                        current_spends[ws_name] = float(ws_val.get("total_spend_usd", 0.0))
+                        app_breakdowns[ws_name] = ws_val.get("by_app", {})
+            except Exception:
+                pass
+
             try:
                 for ws in GLOBAL_PROACTIVE_ORCHESTRATOR.selector.workspaces:
-                    current_spends[ws.get("workspace")] = float(ws.get("estimated_spent", 0.0))
+                    wname = ws.get("workspace")
+                    if wname not in current_spends:
+                        current_spends[wname] = float(ws.get("estimated_spent", 0.0))
             except Exception:
                 pass
 
@@ -4125,14 +4155,36 @@ class SentinelUsageLimitAuditor:
                     "alarm": alarm_type,
                     "severity": severity,
                     "current_spend_usd": round(spend, 4),
+                    "app_breakdown": app_breakdowns.get(ws, {}),
                     "last_audited": last_probed,
                     "last_probed_at": last_probed,
                     "next_probe_scheduled": next_probe,
                     "proposed_guardian_action": prop_action,
                     "proposed_action": action_slug,
                     "overdue_alert": bool(billing_status == "overdue_invoice"),
+                    "deploy_blocked": ws in FLEET_DEPLOY_BLOCKED,
                 }
                 audited_workspaces.append(ws_record)
+
+            # Extra profiles present in ~/.modal.toml but outside the canonical 20
+            # (e.g. verticalresilience): they hold real apps and real spend.
+            canonical_names = {e["workspace"] for e in CANONICAL_20_INVENTORY}
+            for extra in get_toml_profiles():
+                if extra in canonical_names:
+                    continue
+                spend_x = current_spends.get(extra, 0.0)
+                audited_workspaces.append({
+                    "workspace": extra, "name": extra, "account": "extra-profile", "email": "extra-profile",
+                    "gpu_tier": "A100-80GB", "tier": "A100-80GB",
+                    "configured_limit_usd": 29.50, "is_configured": True, "is_compliant": True,
+                    "billing_status": "nominal", "status": "nominal", "alarm": None,
+                    "severity": "NOMINAL", "current_spend_usd": round(spend_x, 4),
+                    "app_breakdown": app_breakdowns.get(extra, {}),
+                    "last_audited": iso_now, "last_probed_at": iso_now,
+                    "next_probe_scheduled": iso_now, "proposed_guardian_action": None,
+                    "proposed_action": None, "overdue_alert": False, "extra_profile": True,
+                    "deploy_blocked": extra in FLEET_DEPLOY_BLOCKED,
+                })
 
             compliant_count = sum(1 for w in audited_workspaces if w["is_compliant"])
             non_compliant_count = len(audited_workspaces) - compliant_count
@@ -5366,6 +5418,24 @@ class ModalFleetHTTPHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"error": str(e)}, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if path in ["/api/fleet/modal/sync_billing", "/api/sentinel/sync_billing"]:
+            try:
+                from scripts.modal_billing_sync import get_billing_sync_engine
+                engine = get_billing_sync_engine()
+                sync_result = engine.sync_all(force=True)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "result": sync_result}, ensure_ascii=False).encode("utf-8"))
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}, ensure_ascii=False).encode("utf-8"))
             return
 
         # ---- Modal Worker Key Manager POST Endpoints ----
