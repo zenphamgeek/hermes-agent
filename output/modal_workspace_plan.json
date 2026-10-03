@@ -1,0 +1,1006 @@
+{
+  "version": "2.0.0",
+  "generated": "2026-10-03",
+  "rule": "Max 1 heavy (A100) app + 1 light app per workspace; keep spend < $20/ws; ceiling invariant <= $20.00",
+  "evidence": "modal billing report MTD + token validation 2026-10-03",
+  "move_order": "deploy new copy -> verify health -> only then stop old duplicate (never stop first)",
+  "policy_summary": {
+    "total_registered_workspaces": 24,
+    "active_fleet_workspaces": 23,
+    "excluded_workspaces_count": 1,
+    "deploy_ready_count": 10,
+    "deploy_blocked_count": 12,
+    "unverified_token_count": 1,
+    "ceiling_limit_usd": 20.0,
+    "skip_spend_threshold_usd": 25.0,
+    "default_credit_limit_usd": 30.0
+  },
+  "qwen_img_21_routing_order": [
+    "lovenovel",
+    "mvlm",
+    "zenonmind",
+    "mojopham",
+    "verticalresilience"
+  ],
+  "qwen_image_edit_t4_routing_order": [
+    "mvlm",
+    "mojopham",
+    "diatts",
+    "zenpeace",
+    "mindful",
+    "asmr"
+  ],
+  "new_deploy_candidates": [
+    "lovenovel",
+    "zenonmind",
+    "mvlm",
+    "vieturbo",
+    "vrag",
+    "zenonts",
+    "insimind",
+    "nhatrophamvu",
+    "mojopham",
+    "verticalresilience"
+  ],
+  "deploy_ok": [
+    "insimind",
+    "lovenovel",
+    "mojopham",
+    "mvlm",
+    "nhatrophamvu",
+    "verticalresilience",
+    "vieturbo",
+    "vrag",
+    "zenonmind",
+    "zenonts"
+  ],
+  "deploy_blocked": [
+    "asmr",
+    "diatts",
+    "mindful",
+    "phi4",
+    "pvvsf",
+    "r2rgraph",
+    "vi2vi",
+    "zenguru",
+    "zenllm",
+    "zenmaster",
+    "zennchat",
+    "zenpeace"
+  ],
+  "deploy_blocked_reason": "Modal: 'Please add a payment method' on new GPU deploy (probe 2026-10-03). Existing apps keep running; no new deploys.",
+  "unverified_token": [
+    "just-ask-mr-zen"
+  ],
+  "excluded": [
+    "motion"
+  ],
+  "excluded_reason": {
+    "motion": "Workspace paused on Modal (ac-IZOdoGglIV04WnAGJohvuY); token kept, excluded from active fleet."
+  },
+  "motion_reallocation_manifest": [
+    {
+      "app_id": "omnivoice-tts-worker",
+      "required_gpu": "T4",
+      "origin_workspace": "motion",
+      "target_primary_workspace": "vieturbo",
+      "target_secondary_workspace": "vrag",
+      "target_gpu_tier": "T4",
+      "migration_status": "reallocated_deploy_ok",
+      "rationale": "High-quality Vietnamese TTS running on low MTD workspaces with T4 compatibility."
+    },
+    {
+      "app_id": "supertonic-tts-worker",
+      "required_gpu": "T4",
+      "origin_workspace": "motion",
+      "target_primary_workspace": "vieturbo",
+      "target_secondary_workspace": "insimind",
+      "target_gpu_tier": "T4",
+      "migration_status": "reallocated_deploy_ok",
+      "rationale": "Secondary TTS synthesis engine reallocated to vieturbo."
+    },
+    {
+      "app_id": "xtts-voice-clone-worker",
+      "required_gpu": "T4",
+      "origin_workspace": "motion",
+      "target_primary_workspace": "vieturbo",
+      "target_secondary_workspace": "vrag",
+      "target_gpu_tier": "T4",
+      "migration_status": "reallocated_deploy_ok",
+      "rationale": "Voice cloning model reallocated to low-spend T4 workspace."
+    },
+    {
+      "app_id": "hermes-liveportrait",
+      "required_gpu": "T4",
+      "origin_workspace": "motion",
+      "target_primary_workspace": "zenonts",
+      "target_secondary_workspace": "vrag",
+      "target_gpu_tier": "T4",
+      "migration_status": "reallocated_deploy_ok",
+      "rationale": "LivePortrait face kinetics reallocated to zenonts (current MTD $0.0077)."
+    },
+    {
+      "app_id": "hermes-faceswap",
+      "required_gpu": "T4",
+      "origin_workspace": "motion",
+      "target_primary_workspace": "vrag",
+      "target_secondary_workspace": "nhatrophamvu",
+      "target_gpu_tier": "T4",
+      "migration_status": "reallocated_deploy_ok",
+      "rationale": "FaceSwap pipeline reallocated to vrag and nhatrophamvu."
+    },
+    {
+      "app_id": "hermes-lipsync",
+      "required_gpu": "T4",
+      "origin_workspace": "motion",
+      "target_primary_workspace": "nhatrophamvu",
+      "target_secondary_workspace": "zenonts",
+      "target_gpu_tier": "T4",
+      "migration_status": "reallocated_deploy_ok",
+      "rationale": "Wav2Lip / MuseTalk neural lipsync reallocated to nhatrophamvu (current MTD $0.0275)."
+    },
+    {
+      "app_id": "unlimited-ocr",
+      "required_gpu": "L4",
+      "origin_workspace": "motion",
+      "target_primary_workspace": "insimind",
+      "target_secondary_workspace": "vieturbo",
+      "target_gpu_tier": "L4",
+      "migration_status": "reallocated_deploy_ok",
+      "rationale": "Document OCR inference assigned to insimind (L4 tier, current MTD $0.0286)."
+    },
+    {
+      "app_id": "video-motion",
+      "required_gpu": "T4",
+      "origin_workspace": "motion",
+      "target_primary_workspace": "vrag",
+      "target_secondary_workspace": "mvlm",
+      "target_gpu_tier": "T4",
+      "migration_status": "reallocated_deploy_ok",
+      "rationale": "Video motion processing reallocated to vrag."
+    }
+  ],
+  "target": {
+    "lovenovel": [
+      "hermes-qwen-img-21",
+      "vieneu-tts-worker"
+    ],
+    "mvlm": [
+      "hermes-qwen-img-21",
+      "hermes-neural-ltxvideo",
+      "qwen-image-edit-worker",
+      "vieneu-worker-mvlm",
+      "video-sf"
+    ],
+    "zenonmind": [
+      "hermes-wan-s2v",
+      "hermes-qwen-img-21",
+      "vieneu-tts-worker"
+    ],
+    "mojopham": [
+      "hermes-comfyui-engine",
+      "hermes-neural-ltxvideo",
+      "qwen-image-edit-worker",
+      "vieneu-worker-mojopham"
+    ],
+    "verticalresilience": [
+      "hermes-qwen-img-21",
+      "hermes-neural-ltxvideo",
+      "graydoom-qwen-image-21-edit"
+    ],
+    "vieturbo": [
+      "vieneu-tts-worker",
+      "omnivoice-tts-worker",
+      "supertonic-tts-worker",
+      "xtts-voice-clone-worker"
+    ],
+    "vrag": [
+      "vieneu-worker-vrag",
+      "vieneu-tts-worker-2",
+      "hermes-faceswap",
+      "video-motion",
+      "omnivoice-tts-worker"
+    ],
+    "zenonts": [
+      "vieneu-tts-worker",
+      "hermes-liveportrait",
+      "hermes-lipsync"
+    ],
+    "insimind": [
+      "vieneu-tts-worker",
+      "unlimited-ocr"
+    ],
+    "nhatrophamvu": [
+      "vieneu-tts-worker",
+      "hermes-lipsync",
+      "hermes-faceswap"
+    ],
+    "diatts": [
+      "omnivoice-tts-worker",
+      "qwen-image-edit-worker",
+      "vieneu-tts-worker",
+      "hermes-liveportrait",
+      "hermes-deep-lipsync",
+      "hermes-segment-swapface",
+      "video-sf"
+    ],
+    "vi2vi": [
+      "video-sf",
+      "gemma-4-31b-app",
+      "hermes-segment-swapface"
+    ],
+    "r2rgraph": [
+      "vieneu-tts-worker",
+      "hermes-qwen-img-21",
+      "hermes-segment-swapface"
+    ],
+    "zenmaster": [
+      "omnivoice-tts-worker",
+      "hermes-qwen-img-21"
+    ],
+    "motion": []
+  },
+  "workspaces": {
+    "lovenovel": {
+      "workspace": "lovenovel",
+      "account": "zenonmind@gmail.com",
+      "gpu_tier": "A100-80GB",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 0.7057,
+      "projected_spend_usd": 4.5,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.2943,
+      "credit_available_usd": 29.2943,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "hermes-qwen-img-21",
+          "gpu_tier": "A100-80GB",
+          "role": "primary_qwen_image_load",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "vieneu-tts-worker",
+          "gpu_tier": "T4",
+          "role": "light_audio_service",
+          "activation_status": "active"
+        }
+      ]
+    },
+    "mvlm": {
+      "workspace": "mvlm",
+      "account": "mojopham@gmail.com",
+      "gpu_tier": "A100-80GB",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 5.7628,
+      "projected_spend_usd": 8.5,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 24.2372,
+      "credit_available_usd": 24.2372,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "hermes-qwen-img-21",
+          "gpu_tier": "A100-80GB",
+          "role": "secondary_qwen_image_load",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "hermes-neural-ltxvideo",
+          "gpu_tier": "A100-80GB",
+          "role": "video_diffusion_engine",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "qwen-image-edit-worker",
+          "gpu_tier": "T4",
+          "role": "image_editing_service",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "vieneu-worker-mvlm",
+          "gpu_tier": "T4",
+          "role": "light_audio_service",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "video-sf",
+          "gpu_tier": "T4",
+          "role": "video_processing",
+          "activation_status": "active"
+        }
+      ]
+    },
+    "zenonmind": {
+      "workspace": "zenonmind",
+      "account": "zenonmind@gmail.com",
+      "gpu_tier": "A100-80GB",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 14.7057,
+      "projected_spend_usd": 16.5,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 15.2943,
+      "credit_available_usd": 15.2943,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "hermes-wan-s2v",
+          "gpu_tier": "A100-80GB",
+          "role": "primary_sound_to_video_avatar",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "hermes-qwen-img-21",
+          "gpu_tier": "A100-80GB",
+          "role": "tertiary_qwen_image_load",
+          "activation_status": "standby"
+        },
+        {
+          "app_id": "vieneu-tts-worker",
+          "gpu_tier": "T4",
+          "role": "light_audio_service",
+          "activation_status": "active"
+        }
+      ]
+    },
+    "mojopham": {
+      "workspace": "mojopham",
+      "account": "mojopham@gmail.com",
+      "gpu_tier": "A100-80GB",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 17.5918,
+      "projected_spend_usd": 18.5,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 12.4082,
+      "credit_available_usd": 12.4082,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "hermes-comfyui-engine",
+          "gpu_tier": "A100-80GB",
+          "role": "comfyui_core_pipeline",
+          "activation_status": "active_frozen_scale"
+        },
+        {
+          "app_id": "hermes-neural-ltxvideo",
+          "gpu_tier": "A100-80GB",
+          "role": "video_diffusion_engine",
+          "activation_status": "active_frozen_scale"
+        },
+        {
+          "app_id": "qwen-image-edit-worker",
+          "gpu_tier": "T4",
+          "role": "image_editing_service",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "vieneu-worker-mojopham",
+          "gpu_tier": "T4",
+          "role": "light_audio_service",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "hermes-qwen-img-21",
+          "gpu_tier": "A100-80GB",
+          "role": "quarantine_fallback_only",
+          "activation_status": "standby"
+        }
+      ]
+    },
+    "verticalresilience": {
+      "workspace": "verticalresilience",
+      "account": "verticalresilience@gmail.com",
+      "gpu_tier": "A100-80GB",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 17.1623,
+      "projected_spend_usd": 18.2,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 12.8377,
+      "credit_available_usd": 12.8377,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "hermes-qwen-img-21",
+          "gpu_tier": "A100-80GB",
+          "role": "quarantine_fallback_only",
+          "activation_status": "standby"
+        },
+        {
+          "app_id": "hermes-neural-ltxvideo",
+          "gpu_tier": "A100-80GB",
+          "role": "video_diffusion_engine",
+          "activation_status": "active_frozen_scale"
+        },
+        {
+          "app_id": "graydoom-qwen-image-21-edit",
+          "gpu_tier": "T4",
+          "role": "image_editing_service",
+          "activation_status": "active"
+        }
+      ]
+    },
+    "vieturbo": {
+      "workspace": "vieturbo",
+      "account": "zenonmind@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 0.0294,
+      "projected_spend_usd": 1.2,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.9706,
+      "credit_available_usd": 29.9706,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "vieneu-tts-worker",
+          "gpu_tier": "T4",
+          "role": "primary_vietnamese_tts",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "omnivoice-tts-worker",
+          "gpu_tier": "T4",
+          "role": "reallocated_from_motion",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "supertonic-tts-worker",
+          "gpu_tier": "T4",
+          "role": "reallocated_from_motion",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "xtts-voice-clone-worker",
+          "gpu_tier": "T4",
+          "role": "reallocated_from_motion",
+          "activation_status": "active"
+        }
+      ]
+    },
+    "vrag": {
+      "workspace": "vrag",
+      "account": "mojopham@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 0.5789,
+      "projected_spend_usd": 2.2,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.4211,
+      "credit_available_usd": 29.4211,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "vieneu-worker-vrag",
+          "gpu_tier": "T4",
+          "role": "audio_synthesis_service",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "vieneu-tts-worker-2",
+          "gpu_tier": "T4",
+          "role": "secondary_audio_service",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "hermes-faceswap",
+          "gpu_tier": "T4",
+          "role": "reallocated_from_motion",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "video-motion",
+          "gpu_tier": "T4",
+          "role": "reallocated_from_motion",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "omnivoice-tts-worker",
+          "gpu_tier": "T4",
+          "role": "backup_omnivoice",
+          "activation_status": "active"
+        }
+      ]
+    },
+    "zenonts": {
+      "workspace": "zenonts",
+      "account": "zenonmind@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 0.0077,
+      "projected_spend_usd": 1.0,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.9923,
+      "credit_available_usd": 29.9923,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "vieneu-tts-worker",
+          "gpu_tier": "T4",
+          "role": "primary_audio_service",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "hermes-liveportrait",
+          "gpu_tier": "T4",
+          "role": "reallocated_from_motion",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "hermes-lipsync",
+          "gpu_tier": "T4",
+          "role": "reallocated_from_motion",
+          "activation_status": "standby"
+        }
+      ]
+    },
+    "insimind": {
+      "workspace": "insimind",
+      "account": "zenonmind@gmail.com",
+      "gpu_tier": "L4",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 0.0286,
+      "projected_spend_usd": 0.8,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.9714,
+      "credit_available_usd": 29.9714,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "vieneu-tts-worker",
+          "gpu_tier": "L4",
+          "role": "primary_audio_service",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "unlimited-ocr",
+          "gpu_tier": "L4",
+          "role": "reallocated_from_motion",
+          "activation_status": "active"
+        }
+      ]
+    },
+    "nhatrophamvu": {
+      "workspace": "nhatrophamvu",
+      "account": "nhatrophamvu@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_ok",
+      "can_deploy": true,
+      "current_spend_usd": 0.0275,
+      "projected_spend_usd": 1.2,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.9725,
+      "credit_available_usd": 29.9725,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "vieneu-tts-worker",
+          "gpu_tier": "T4",
+          "role": "primary_audio_service",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "hermes-lipsync",
+          "gpu_tier": "T4",
+          "role": "reallocated_from_motion",
+          "activation_status": "active"
+        },
+        {
+          "app_id": "hermes-faceswap",
+          "gpu_tier": "T4",
+          "role": "reallocated_from_motion",
+          "activation_status": "standby"
+        }
+      ]
+    },
+    "diatts": {
+      "workspace": "diatts",
+      "account": "mojopham@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.1462,
+      "projected_spend_usd": 0.25,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.8538,
+      "credit_available_usd": 29.8538,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "omnivoice-tts-worker",
+          "gpu_tier": "T4",
+          "role": "legacy_audio_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "qwen-image-edit-worker",
+          "gpu_tier": "T4",
+          "role": "legacy_image_editing",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "vieneu-tts-worker",
+          "gpu_tier": "T4",
+          "role": "legacy_audio_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "hermes-liveportrait",
+          "gpu_tier": "T4",
+          "role": "legacy_portrait_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "hermes-deep-lipsync",
+          "gpu_tier": "T4",
+          "role": "legacy_lipsync_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "hermes-segment-swapface",
+          "gpu_tier": "T4",
+          "role": "legacy_faceswap_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "video-sf",
+          "gpu_tier": "T4",
+          "role": "legacy_video_service",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "mindful": {
+      "workspace": "mindful",
+      "account": "just.ask.mr.zen@gmail.com",
+      "gpu_tier": "A100-80GB",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0091,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.9909,
+      "credit_available_usd": 29.9909,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "hermes-qwen-img-21",
+          "gpu_tier": "A100-80GB",
+          "role": "legacy_qwen_image",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "qwen-image-edit-worker",
+          "gpu_tier": "T4",
+          "role": "legacy_image_editing",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "zenpeace": {
+      "workspace": "zenpeace",
+      "account": "just.ask.mr.zen@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 30.0,
+      "credit_available_usd": 30.0,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "video-sf",
+          "gpu_tier": "T4",
+          "role": "legacy_video_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "qwen-image-edit-worker",
+          "gpu_tier": "T4",
+          "role": "legacy_image_editing",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "asmr": {
+      "workspace": "asmr",
+      "account": "nhatrophamvu@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 30.0,
+      "credit_available_usd": 30.0,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "qwen-image-edit-worker",
+          "gpu_tier": "T4",
+          "role": "legacy_image_editing",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "whisper-asr",
+          "gpu_tier": "T4",
+          "role": "legacy_speech_recognition",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "pvvsf": {
+      "workspace": "pvvsf",
+      "account": "nhatrophamvu@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 30.0,
+      "credit_available_usd": 30.0,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "video-sf",
+          "gpu_tier": "T4",
+          "role": "legacy_swapface_service",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "phi4": {
+      "workspace": "phi4",
+      "account": "nhatrophamvu@gmail.com",
+      "gpu_tier": "L4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 30.0,
+      "credit_available_usd": 30.0,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "phi4-endpoint",
+          "gpu_tier": "L4",
+          "role": "legacy_llm_inference",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "vi2vi": {
+      "workspace": "vi2vi",
+      "account": "nhatrophamvu@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 30.0,
+      "credit_available_usd": 30.0,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "video-sf",
+          "gpu_tier": "T4",
+          "role": "legacy_video_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "gemma-4-31b-app",
+          "gpu_tier": "T4",
+          "role": "legacy_llm_inference",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "hermes-segment-swapface",
+          "gpu_tier": "T4",
+          "role": "legacy_faceswap_service",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "r2rgraph": {
+      "workspace": "r2rgraph",
+      "account": "nhatrophamvu@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.013,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.987,
+      "credit_available_usd": 29.987,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "vieneu-tts-worker",
+          "gpu_tier": "T4",
+          "role": "legacy_audio_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "hermes-qwen-img-21",
+          "gpu_tier": "A100-80GB",
+          "role": "legacy_qwen_image",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "hermes-segment-swapface",
+          "gpu_tier": "T4",
+          "role": "legacy_faceswap_service",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "zenllm": {
+      "workspace": "zenllm",
+      "account": "nhatrophamvu@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0072,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.9928,
+      "credit_available_usd": 29.9928,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "vieneu-tts-worker",
+          "gpu_tier": "T4",
+          "role": "legacy_audio_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "hermes-segment-swapface",
+          "gpu_tier": "T4",
+          "role": "legacy_faceswap_service",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "zenmaster": {
+      "workspace": "zenmaster",
+      "account": "just.ask.mr.zen@gmail.com",
+      "gpu_tier": "A100-80GB",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0069,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 29.9931,
+      "credit_available_usd": 29.9931,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "omnivoice-tts-worker",
+          "gpu_tier": "T4",
+          "role": "legacy_audio_service",
+          "activation_status": "frozen_existing_nominal"
+        },
+        {
+          "app_id": "hermes-qwen-img-21",
+          "gpu_tier": "A100-80GB",
+          "role": "legacy_qwen_image",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "zennchat": {
+      "workspace": "zennchat",
+      "account": "nhatrophamvu@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 30.0,
+      "credit_available_usd": 30.0,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "hermes-segment-swapface",
+          "gpu_tier": "T4",
+          "role": "legacy_faceswap_service",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "zenguru": {
+      "workspace": "zenguru",
+      "account": "just.ask.mr.zen@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "deploy_blocked",
+      "can_deploy": false,
+      "current_spend_usd": 0.0,
+      "projected_spend_usd": 0.05,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 30.0,
+      "credit_available_usd": 30.0,
+      "billing_status": "nominal",
+      "allocated_apps": [
+        {
+          "app_id": "video-sf",
+          "gpu_tier": "T4",
+          "role": "legacy_video_service",
+          "activation_status": "frozen_existing_nominal"
+        }
+      ]
+    },
+    "just-ask-mr-zen": {
+      "workspace": "just-ask-mr-zen",
+      "account": "just.ask.mr.zen@gmail.com",
+      "gpu_tier": "A100-80GB",
+      "deploy_status": "unverified_token",
+      "can_deploy": false,
+      "current_spend_usd": 0.0,
+      "projected_spend_usd": 0.0,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 30.0,
+      "credit_available_usd": 30.0,
+      "billing_status": "nominal",
+      "allocated_apps": []
+    },
+    "motion": {
+      "workspace": "motion",
+      "account": "mojopham@gmail.com",
+      "gpu_tier": "T4",
+      "deploy_status": "paused_excluded",
+      "can_deploy": false,
+      "current_spend_usd": 0.0,
+      "projected_spend_usd": 0.0,
+      "budget_limit_usd": 30.0,
+      "headroom_usd": 0.0,
+      "credit_available_usd": 0.0,
+      "billing_status": "paused",
+      "allocated_apps": []
+    }
+  },
+  "pending_after_token_refresh": {
+    "mindful": [
+      "hermes-qwen-img-21",
+      "qwen-image-edit-worker"
+    ],
+    "zenpeace": [
+      "video-sf",
+      "qwen-image-edit-worker"
+    ],
+    "asmr": [
+      "qwen-image-edit-worker",
+      "whisper-asr"
+    ],
+    "pvvsf": [
+      "video-sf"
+    ],
+    "phi4": [
+      "phi4-endpoint"
+    ],
+    "zenllm": [
+      "vieneu-tts-worker",
+      "hermes-segment-swapface"
+    ],
+    "zennchat": [
+      "hermes-segment-swapface"
+    ],
+    "zenguru": [
+      "video-sf"
+    ],
+    "just-ask-mr-zen": []
+  }
+}
