@@ -212,5 +212,3 @@ node_modules
 # .agents: track rules/skills/migrations only (memory-curator L3 versioning)
 .agents/teamwork/
 .agents/**/__pycache__/
-# contains Modal token IDs - keep out of git until redacted
-.agents/rules/05_modal_gpu_fleet_and_token_invariants.md
