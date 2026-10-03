@@ -2267,14 +2267,21 @@ def build_apps_catalog(force_refresh: bool = False) -> Dict[str, Any]:
                     "View API": {"url": f"https://{profile}--hermes-comfyui-engine-comfyuirunner-view.modal.run", "method": "GET", "action": "view"},
                 }
             elif any(k in desc for k in ["hermes-qwen-img-21", "qwen-img-21", "qwenimg21", "qwen-image-edit-worker", "qwen-image", "qwen"]):
-                hw = "A100-80GB"
-                endpoint = f"https://{profile}--hermes-qwen-img-21-qwenimg21worker-health.modal.run"
                 target_cat = "qwen_img_21"
-                endpoints = {
-                    "Health": {"url": f"https://{profile}--hermes-qwen-img-21-qwenimg21worker-health.modal.run", "method": "GET", "action": "health"},
-                    "Generate": {"url": f"https://{profile}--hermes-qwen-img-21-qwenimg21worker-generate.modal.run", "method": "POST", "action": "generate"},
-                    "Edit": {"url": f"https://{profile}--hermes-qwen-img-21-qwenimg21worker-edit.modal.run", "method": "POST", "action": "edit"},
-                }
+                if "hermes-qwen-img-21" in desc:
+                    hw = "A100-80GB"
+                    endpoint = f"https://{profile}--hermes-qwen-img-21-qwenimg21worker-health.modal.run"
+                    endpoints = {
+                        "Health": {"url": f"https://{profile}--hermes-qwen-img-21-qwenimg21worker-health.modal.run", "method": "GET", "action": "health"},
+                        "Generate": {"url": f"https://{profile}--hermes-qwen-img-21-qwenimg21worker-generate.modal.run", "method": "POST", "action": "generate"},
+                        "Edit": {"url": f"https://{profile}--hermes-qwen-img-21-qwenimg21worker-edit.modal.run", "method": "POST", "action": "edit"},
+                    }
+                else:
+                    hw = "T4 / A10G"
+                    endpoint = f"https://{profile}--{app.get('Description')}-api.modal.run"
+                    endpoints = {
+                        "API": {"url": f"https://{profile}--{app.get('Description')}-api.modal.run", "method": "POST", "action": "api"},
+                    }
             elif "ltx" in desc:
                 hw = "A100-80GB"
                 endpoint = f"https://{profile}--{app.get('Description')}-api-generate.modal.run"
