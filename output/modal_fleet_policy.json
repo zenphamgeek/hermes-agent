@@ -36,6 +36,11 @@
   "routing": {
     "qwen_img_21": {
       "has_app": [
+        "zenonts",
+        "insimind",
+        "vrag",
+        "vieturbo",
+        "nhatrophamvu",
         "lovenovel",
         "mvlm",
         "zenonmind",
@@ -54,6 +59,11 @@
     },
     "qwen_image_edit_t4": {
       "has_app": [
+        "zenonts",
+        "insimind",
+        "vrag",
+        "vieturbo",
+        "nhatrophamvu",
         "mvlm",
         "mojopham",
         "diatts",
@@ -79,8 +89,7 @@
       "zenonts",
       "insimind",
       "nhatrophamvu",
-      "mojopham",
-      "verticalresilience"
+      "mojopham"
     ]
   },
   "overdue_invoice": [],

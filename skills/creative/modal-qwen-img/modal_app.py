@@ -22,6 +22,7 @@ import io
 import os
 import time
 import base64
+import inspect
 import torch
 import modal
 from typing import Dict, Any, Optional, List
@@ -68,12 +69,17 @@ DEFAULT_GUIDANCE = 5.0
 
 
 # ── Modal worker class ───────────────────────────────────────────────────────
-@app.cls(
-    gpu=os.environ.get("QWEN_GPU", "A100-80GB"),  # Minimum required: A10G (24GB). Default A100-80GB headroom.
-    scaledown_window=300,             # Keep warm 5 minutes after last request
-    timeout=900,                      # 15 min timeout (cold-start + large-batch)
-    memory=32768,                     # 32GB RAM (model + decode buffer)
-)
+_cls_kwargs: Dict[str, Any] = {
+    "gpu": os.environ.get("QWEN_GPU", "A100-80GB"),  # Minimum required: A10G (24GB). Default A100-80GB headroom.
+    "timeout": 900,                                  # 15 min timeout (cold-start + large-batch)
+    "memory": 32768,                                 # 32GB RAM (model + decode buffer)
+}
+if "scaledown_window" in inspect.signature(modal.App.cls).parameters:
+    _cls_kwargs["scaledown_window"] = 120
+else:
+    _cls_kwargs["container_idle_timeout"] = 120
+
+@app.cls(**_cls_kwargs)
 class QwenImg21Worker:
 
     @modal.enter()
