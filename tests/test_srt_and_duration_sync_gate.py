@@ -105,3 +105,75 @@ def test_all_episodes_metadata_duration_derived_from_actual_files():
             assert abs(duration_s - real_dur) < 0.5, (
                 f"Drift detected in {meta_file}: metadata says {duration_s}s, artifact is {real_dur}s"
             )
+
+
+def test_tri_artifact_atomic_consistency_gate():
+    """
+    Tri-Artifact Atomic Gate:
+    Enforces atomic 3-way consistency across:
+    (metadata.duration_seconds, srt_last_cue_end, description_last_chapter).
+    Guarantees captions, chapters, and video container boundaries never desynchronize.
+    """
+    tap_dir = STAGING_DIR / "tap_01"
+    if not tap_dir.exists():
+        pytest.skip("S1E1 staging directory not found")
+
+    meta_file = tap_dir / "metadata.json"
+    srt_file = tap_dir / "subtitles_s1_ep01_masterclass.srt"
+    desc_file = tap_dir / "description.txt"
+
+    assert meta_file.exists(), f"metadata.json missing at {meta_file}"
+    assert srt_file.exists(), f"SRT file missing at {srt_file}"
+    assert desc_file.exists(), f"description.txt missing at {desc_file}"
+
+    # 1. Metadata duration
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    dur_s = float(meta["duration_seconds"])
+
+    # 2. SRT last cue end
+    cues = parse_srt_cues(srt_file)
+    assert len(cues) > 0, "SRT file must contain cues"
+    last_cue_end = cues[-1][2]
+
+    # 3. Description last chapter marker
+    desc_text = desc_file.read_text(encoding="utf-8")
+    ch_matches = re.findall(r"(\d{2}):(\d{2})\s+([^\n]+)", desc_text)
+    assert len(ch_matches) > 0, "description.txt must contain chapter markers"
+
+    last_ch_m, last_ch_s, last_ch_title = ch_matches[-1]
+    last_ch_time = int(last_ch_m) * 60 + int(last_ch_s)
+
+    # Invariant A: Total video container bounds
+    assert last_cue_end <= dur_s, (
+        f"SRT last cue ({last_cue_end:.2f}s) exceeds metadata duration ({dur_s:.2f}s)"
+    )
+    assert last_ch_time <= dur_s, (
+        f"Last chapter marker ({last_ch_time}s) exceeds metadata duration ({dur_s:.2f}s)"
+    )
+
+    # Invariant B: Closing Mosaic headroom (>= 7.5s buffer for 8.00s closing screen)
+    closing_headroom = dur_s - last_cue_end
+    assert closing_headroom >= 7.5, (
+        f"Closing mosaic headroom ({closing_headroom:.2f}s) is under the 7.5s minimum"
+    )
+
+    # Invariant C: Chapter-to-SRT Synchrony (chapter marker aligns within 2.5s of narration end)
+    chapter_cue_drift = abs(last_ch_time - last_cue_end)
+    assert chapter_cue_drift <= 2.5, (
+        f"Desync between last chapter ({last_ch_time}s) and SRT end ({last_cue_end:.2f}s): drift={chapter_cue_drift:.2f}s > 2.5s"
+    )
+
+
+def test_zero_atempo_slowdown_in_synthesis_scripts():
+    """Verify zero artificial speech stretching (atempo < 1.0) in all video synthesis scripts."""
+    synth_scripts = list((REPO_ROOT / "assets" / "scripts_video").glob("*.py"))
+    assert len(synth_scripts) > 0, "No synthesis scripts found in assets/scripts_video"
+
+    slowdown_pattern = re.compile(r"atempo\s*=?\s*0\.[0-9]+")
+    for script_file in synth_scripts:
+        content = script_file.read_text(encoding="utf-8", errors="replace")
+        matches = slowdown_pattern.findall(content)
+        assert len(matches) == 0, (
+            f"Artificial speech slowdown (atempo < 1.0) detected in {script_file.name}: {matches}"
+        )
+
