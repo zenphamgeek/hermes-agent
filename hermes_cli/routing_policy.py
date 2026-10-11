@@ -325,8 +325,9 @@ def verify_routing_attestation_ledger(ledger_path: Optional[Path] = None) -> Tup
                 account = str(entry.get("account", "")).lower()
                 model = str(entry.get("model", "")).lower()
                 verdict = str(entry.get("verdict", "")).upper()
+                is_redacted = entry.get("redacted", False) or account == "[redacted]"
 
-                if verdict == "ALLOWED":
+                if verdict == "ALLOWED" and not is_redacted:
                     # Check Invariant 1: Ultra Gemini-only
                     is_ultra = any(u in account for u in IMMUTABLE_ULTRA_ACCOUNTS)
                     is_claude = any(c in model for c in ("claude", "opus", "sonnet"))
@@ -353,6 +354,62 @@ def verify_routing_attestation_ledger(ledger_path: Optional[Path] = None) -> Tup
         violations.append(f"Ledger read error: {e}")
 
     return len(violations) == 0, violations
+
+
+def redact_routing_attestation_record(
+    task_id: str,
+    ledger_path: Optional[Path] = None,
+    redacted_reason: str = "GDPR_RIGHT_TO_ERASURE",
+) -> int:
+    """Tombstones and crypto-shreds identifying fields of an attestation record by task_id.
+
+    Reconciles immutable auditability with right-to-erasure (GDPR 72h SLA) by preserving
+    the entry structure and timestamp while zeroing/redacting identifying account data.
+
+    Returns the number of records redacted.
+    """
+    target_ledger = ledger_path or DEFAULT_ATTESTATION_LEDGER_PATH
+    if not target_ledger.is_file():
+        return 0
+
+    redacted_count = 0
+    updated_lines: List[str] = []
+    now = time.time()
+
+    with open(target_ledger, "r", encoding="utf-8") as f:
+        for line in f:
+            line_str = line.strip()
+            if not line_str:
+                continue
+            try:
+                entry = json.loads(line_str)
+            except Exception:
+                updated_lines.append(line_str)
+                continue
+
+            if str(entry.get("task_id", "")) == str(task_id):
+                redacted_count += 1
+                entry["account"] = "[REDACTED]"
+                entry["model"] = "[REDACTED]"
+                if entry.get("violation_reason"):
+                    entry["violation_reason"] = "[REDACTED]"
+                entry["redacted"] = True
+                entry["redacted_at"] = now
+                entry["redacted_reason"] = redacted_reason
+                # Recompute tombstone digest preserving task_id and policy_version
+                tombstone_payload = f"TOMBSTONE:{entry.get('policy_version', '1.0.0')}:{now:.4f}:{entry.get('task_id')}:{redacted_reason}"
+                entry["digest"] = hashlib.sha256(tombstone_payload.encode("utf-8")).hexdigest()
+
+            updated_lines.append(json.dumps(entry))
+
+    if redacted_count > 0:
+        temp_ledger = target_ledger.with_suffix(".tmp")
+        with open(temp_ledger, "w", encoding="utf-8") as f:
+            for ul in updated_lines:
+                f.write(ul + "\n")
+        temp_ledger.replace(target_ledger)
+
+    return redacted_count
 
 
 # ---------------------------------------------------------------------------

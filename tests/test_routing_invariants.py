@@ -485,6 +485,63 @@ def test_gemini_compound_outage_never_touches_nebula(ultra_avail: bool, pro_gemi
         assert node not in IMMUTABLE_NEBULA_NODES, f"Gemini task breached Nebula boundary: {node}"
 
 
+def test_redact_routing_attestation_record_crypto_shredding(tmp_path):
+    """Verifies that 72h right-to-erasure / crypto-shredding tombstones sensitive fields while preserving ledger integrity."""
+    import json
+    from hermes_cli.routing_policy import (
+        record_routing_attestation,
+        redact_routing_attestation_record,
+        verify_routing_attestation_ledger,
+    )
+
+    ledger_file = tmp_path / "test_ledger.jsonl"
+
+    # Append 3 records
+    rec1 = record_routing_attestation("pro-1", "claude-opus-5-5-high", "ALLOWED", ledger_path=ledger_file, task_id="task-100")
+    rec2 = record_routing_attestation("ultra-2", "gemini-3.1-pro-high", "ALLOWED", ledger_path=ledger_file, task_id="task-200")
+    rec3 = record_routing_attestation("sunward", "claude-sonnet-5-5-high", "ALLOWED", ledger_path=ledger_file, task_id="task-300")
+
+    is_valid, violations = verify_routing_attestation_ledger(ledger_file)
+    assert is_valid, f"Initial ledger should be valid: {violations}"
+
+    # Redact task-200 (GDPR Right to Erasure within 72h)
+    redacted_count = redact_routing_attestation_record("task-200", ledger_path=ledger_file, redacted_reason="GDPR_RIGHT_TO_ERASURE")
+    assert redacted_count == 1
+
+    # Verify task-200 fields are shredded
+    records = []
+    with open(ledger_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                records.append(json.loads(line.strip()))
+
+    assert len(records) == 3
+
+    r1 = next(r for r in records if r["task_id"] == "task-100")
+    assert r1["account"] == "pro-1"
+    assert r1.get("redacted") is not True
+
+    r2 = next(r for r in records if r["task_id"] == "task-200")
+    assert r2["account"] == "[REDACTED]"
+    assert r2["model"] == "[REDACTED]"
+    assert r2["redacted"] is True
+    assert r2["redacted_reason"] == "GDPR_RIGHT_TO_ERASURE"
+    assert "redacted_at" in r2
+    assert r2["digest"] != rec2["digest"]  # Digest updated to tombstone hash
+
+    r3 = next(r for r in records if r["task_id"] == "task-300")
+    assert r3["account"] == "sunward"
+    assert r3.get("redacted") is not True
+
+    # Ledger verification must pass with zero violations on lawful tombstones
+    is_valid_after, violations_after = verify_routing_attestation_ledger(ledger_file)
+    assert is_valid_after, f"Ledger with tombstoned records must remain valid: {violations_after}"
+    assert len(violations_after) == 0
+
+    # Redacting non-existent task returns 0
+    assert redact_routing_attestation_record("nonexistent-task", ledger_path=ledger_file) == 0
+
+
 
 
 

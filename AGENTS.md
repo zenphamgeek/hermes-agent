@@ -73,8 +73,9 @@ Whenever a task requires non-trivial code generation, refactoring, architectural
   - Autonomous Decomposed Pipeline: `call_mcp_tool(ServerName="agy-fleet", ToolName="fleet_autonomous_enqueue", Arguments={"prompt": "...", "priority": 5, "metadata": {"preferred_node": "lthn.Ariana"}})`
   - Multi-Perspective Council & Parallel Verification: `call_mcp_tool(ServerName="agy-fleet", ToolName="fleet_parallel", Arguments={"prompt": "..."})`
 - **Node Routing Persona Standards**:
-  - **Standard Pro Nodes (Default)**: Route high-throughput vibe-coding and unit test generation to Pro nodes (`pro-1` / `innoria.team`, `node-4`..`node-8`, `team-3` / `coderedgen`) using `gemini-3.8-flash-high` or `gemini-3.1-pro-high`.
-  - **Ultra Offload Persona (`lthn.Ariana`)**: When the user requests "chuyển tải sang lthn.Ariana", or for complex architectural proofs, deep debugging, and high-complexity tasks ($\ge 2.5$), route directly to **`lthn.Ariana`** (`ultra-2` / `claude-opus-5-5-high` or `claude-sonnet-5-5-high`).
+  - **Standard Pro Nodes (Default)**: Route high-throughput vibe-coding and unit test generation to Pro nodes (`pro-1`, `node-4`..`node-8`, `team-3`) using `gemini-3.8-flash-high` or `gemini-3.1-pro-high`.
+  - **Ultra Offload Persona (`lthn.Ariana`)**: When the user requests "chuyển tải sang lthn.Ariana", or for complex architectural proofs, deep debugging, and high-complexity tasks ($\ge 2.5$), route directly to **`lthn.Ariana`** (`ultra-2`) using `gemini-3.1-pro-high`. Ultra accounts NEVER serve Claude.
+- **Ultra Accounts Gemini-Only & Zero-Claude-Quota Invariant**: All Ultra-tier accounts (`ultra-2` / `lthn.Ariana`, etc.) MUST strictly and exclusively serve Gemini models (`gemini-3.1-pro-high`, `gemini-3.8-flash-high`). It is ABSOLUTELY FORBIDDEN to consume Claude quota (`claude-opus-5-5-high`, `claude-sonnet-5-5-high`, Claude Thinking) of Ultra accounts when running Fleet tasks. All Claude tasks MUST run on Pro CLI nodes or Nebula API.
 - **Local Application & Verification**: Receive clean structured code output from Fleet nodes, apply changes locally using `replace_file_content` or `write_to_file`, and run local test quality gates to ensure 100% verified correctness.
 - **Fleet-Run vs Subagent Decision Tree** (CRITICAL — prevents misuse):
   - `fleet_run`: For **standalone generation** tasks where ALL context is in the prompt. Fleet nodes run in `--print` mode — **NO filesystem access**. Always paste relevant code/schemas into the prompt.
@@ -96,6 +97,13 @@ All developer tools, monitoring dashboards, operational cockpits, and telemetry 
 - **Decoupled RPC Transport**: UI layers must interface via decoupled RPC abstractions mirroring Odoo 20's `useService("rpc")`, ensuring zero code rewrite when transitioning from standalone REST to Odoo JSON-RPC / ORM.
 - **Odoo 20 Semantic QWeb Directives**: Layout templates must follow native QWeb standards. Prohibit deprecated `t-esc` and `t-raw`; enforce `<t t-out="...">` and mandatory `t-key` on all client `<t t-foreach="...">` loops.
 - **Visual Convergence & Rule 29 Parity**: Blend Bootstrap 5 utility classes with ZENPHAM Neo-Noir Obsidian tokens (`#080a0f`, `#0c0d12`, `#38bdf8`, `#ffd700`, `#10b981`, `#ef4444`). Strictly eliminate thick, opaque card box containers (`card-body`) in favor of borderless floating tiles with subtle hairlines. *(See `.agents/rules/06_autonomous_action_and_odoo_owl_ui_standards.md`)*.
+
+### 1.14. Claude Routing Hierarchy (Pro-First Then Nebula), Ultra Gemini-Only & Nebula Opus 4.8 Exclusive Invariant
+- **Claude Pro-First Mandate**: Khi cần dùng Claude (`claude-opus-5-5-high`, `claude-sonnet-5-5-high`, `claude-opus-4-6-thinking`), hệ thống BẮT BUỘC ưu tiên **Pro-first** (các tài khoản Pro CLI nodes có hạn ngạch Claude trong `pro-claude-pool` định nghĩa tại `fleet_roster.yml` / `fleet_roster.defaults.yml`).
+- **Nebula Fallback (Opus 4.8 Only & Zero-Gemini Mandate)**: CHỈ KHI toàn bộ các node Pro Claude CLI cạn hạn ngạch, bị rate-limit hoặc bận, hệ thống mới tự động chuyển hướng fallback sang **Nebula API Gateway (`b.ai`)**.
+  - **Nebula Chỉ Có Duy Nhất Claude Opus 4.8 (`claude-opus-4.8`)**: Nebula hoàn toàn KHÔNG CÓ Gemini!
+  - **Tuyệt Đối Không Hỏi Nebula về Gemini**: Cấm ngặt việc gửi request Gemini, điều phối (routing) hoặc thăm dò (query/probe) mô hình Gemini tới Nebula. Mọi tác vụ Gemini bắt buộc phải chạy trên các node AGY CLI (Ultra/Pro).
+- **Strict Gemini-Only for Ultra Tier**: Tất cả các tài khoản Ultra (`ultra-2` / `lthn.Ariana`, v.v.) TUYỆT ĐỐI KHÔNG được tiêu hao hạn ngạch Claude cho các tác vụ Fleet, chỉ phục vụ suy luận chuyên sâu và thẩm định chứng minh Gemini (`gemini-3.1-pro-high`, `gemini-3.8-flash-high`). Ultra accounts vĩnh viễn bị loại khỏi candidate pool của Claude.
 
 ---
 

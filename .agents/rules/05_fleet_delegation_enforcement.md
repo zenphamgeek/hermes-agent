@@ -33,6 +33,16 @@ When a task requires **non-trivial code generation, refactoring, or analysis** (
 2. ❌ **Never use `invoke_subagent` when `fleet_run` would suffice** (wastes orchestrator quota)
 3. ❌ **Never send `fleet_run` a task that requires reading files** without pasting the file content into the prompt (fleet nodes have no disk access in --print mode)
 4. ❌ **Never claim "delegated to fleet" without actually calling fleet_run** — this is fabrication
+5. ❌ **Never route Claude tasks to Ultra accounts**: Ultra accounts (`ultra-2` / `lthn.Ariana`, etc.) STRICTLY serve Gemini models (`gemini-3.1-pro-high`, `gemini-3.8-flash-high`). Consuming Claude quota on Ultra accounts for Fleet tasks is ABSOLUTELY FORBIDDEN.
+6. ❌ **Never send Gemini tasks to Nebula or query Nebula for Gemini**: Nebula API Gateway (`b.ai`) ONLY supports Claude Opus 4.8 (`claude-opus-4.8`) and does NOT have Gemini models. Cấm ngặt việc hỏi hoặc điều phối Gemini sang Nebula.
+
+## Rule: Claude Routing Hierarchy (Pro-First Then Nebula), Ultra Gemini-Only & Nebula Opus 4.8 Invariant
+
+1. **Claude Pro-First Mandate**: When Claude models (`claude-sonnet-5-5-high`, `claude-opus-5-5-high`, `claude-opus-4-6-thinking`) are required, the scheduler MUST prioritize **Pro-first** (Pro CLI nodes with available Claude quota in `pro-claude-pool` defined in untracked `fleet_roster.yml` / `fleet_roster.defaults.yml`).
+2. **Nebula API Fallback (Claude Opus 4.8 Only & Zero-Gemini Mandate)**: ONLY when ALL Pro CLI Claude nodes have exhausted their quota, are rate-limited, or are busy, the system automatically falls back to **Nebula API Gateway (`nebula` / `b.ai`)**.
+   - **Nebula ONLY has Claude Opus 4.8 (`claude-opus-4.8`)**: Nebula does NOT have Gemini!
+   - **Never Ask Nebula about Gemini**: Never route Gemini models or query Nebula for Gemini tasks. All Gemini tasks MUST strictly run on AGY CLI nodes (Ultra/Pro).
+3. **Ultra Accounts Strictly Gemini-Only**: Ultra accounts (`ultra-2` / `lthn.Ariana`) exist exclusively for high-complexity Gemini inference (`gemini-3.1-pro-high`, `gemini-3.8-flash-high`). Consuming Claude quota on Ultra accounts for Fleet tasks is ABSOLUTELY FORBIDDEN. Ultra accounts are permanently excluded from Claude routing pools.
 
 ### Self-Check Before Responding
 
@@ -40,3 +50,5 @@ Before producing any code block >20 lines, ask yourself:
 - "Am I generating this inline instead of delegating?"
 - "Could this be a fleet_run task if I paste enough context?"
 - "Did I actually call fleet_run/fleet_parallel, or am I about to fabricate?"
+- "If routing Claude, did I verify it NEVER touches an Ultra account?"
+- "If routing Gemini, did I verify it NEVER touches Nebula (Nebula only has Opus 4.8)?"
