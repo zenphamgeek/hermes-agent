@@ -132,13 +132,15 @@ def test_tri_artifact_atomic_consistency_gate():
 
     # 2. SRT last cue end
     cues = parse_srt_cues(srt_file)
-    assert len(cues) > 0, "SRT file must contain cues"
+    # Pre-Mortem #3 Guard: Empty-input or truncated parse detection
+    assert len(cues) >= 50, f"Pre-Mortem #3: SRT file must contain >= 50 cues, found only {len(cues)}"
     last_cue_end = cues[-1][2]
 
     # 3. Description last chapter marker
     desc_text = desc_file.read_text(encoding="utf-8")
     ch_matches = re.findall(r"(\d{2}):(\d{2})\s+([^\n]+)", desc_text)
-    assert len(ch_matches) > 0, "description.txt must contain chapter markers"
+    # Pre-Mortem #3 Guard: Empty-input chapter marker detection
+    assert len(ch_matches) >= 3, f"Pre-Mortem #3: description.txt must contain >= 3 chapter markers, found only {len(ch_matches)}"
 
     last_ch_m, last_ch_s, last_ch_title = ch_matches[-1]
     last_ch_time = int(last_ch_m) * 60 + int(last_ch_s)
@@ -162,6 +164,23 @@ def test_tri_artifact_atomic_consistency_gate():
     assert chapter_cue_drift <= 2.5, (
         f"Desync between last chapter ({last_ch_time}s) and SRT end ({last_cue_end:.2f}s): drift={chapter_cue_drift:.2f}s > 2.5s"
     )
+
+    # Invariant D: Pre-Mortem #2 Guard: Media-vs-Metadata verification
+    # Validates that metadata.json duration matches the real ffprobe encoded MP4 container
+    media_file = tap_dir / "master_2k.mp4"
+    if media_file.exists():
+        import subprocess
+        probe_cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "json",
+            str(media_file)
+        ]
+        probe_meta = json.loads(subprocess.check_output(probe_cmd).decode())
+        real_media_dur = float(probe_meta["format"]["duration"])
+        assert abs(dur_s - real_media_dur) < 0.1, (
+            f"Pre-Mortem #2: Metadata duration ({dur_s}s) deviates from real MP4 artifact ({real_media_dur:.3f}s) by >= 0.1s!"
+        )
 
 
 def test_zero_atempo_slowdown_in_synthesis_scripts():
