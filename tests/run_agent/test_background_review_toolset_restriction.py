@@ -85,13 +85,12 @@ def test_background_review_matches_parent_toolset_config():
     )
 
 
-def test_background_review_installs_thread_local_whitelist():
-    """The review fork must install a memory/skills-only thread-local whitelist.
+def test_background_review_installs_empty_thread_local_whitelist():
+    """The report-only review fork must deny every mutating runtime tool.
 
-    The schema-level toolset narrowing was lifted (for prefix-cache parity),
-    so #15204's safety contract now relies on the runtime whitelist gate to
-    deny terminal/send_message/delegate_task at dispatch time. Verify the
-    whitelist is set with exactly the memory+skills tool names.
+    The inherited schema stays byte-identical for prefix-cache parity, while
+    the thread-local dispatch gate denies all calls. Human-approved proposals
+    are applied later through the CLI.
     """
     import run_agent
     from hermes_cli import plugins as _plugins
@@ -121,18 +120,8 @@ def test_background_review_installs_thread_local_whitelist():
         )
 
     assert "whitelist" in captured, "set_thread_tool_whitelist was not called"
-    whitelist = captured["whitelist"]
-    # memory + skills tools must be allowed
-    assert "memory" in whitelist
-    assert "skill_manage" in whitelist
-    assert "skill_view" in whitelist
-    assert "skills_list" in whitelist
-    # dangerous tools must NOT be in the whitelist
-    assert "terminal" not in whitelist
-    assert "send_message" not in whitelist
-    assert "delegate_task" not in whitelist
-    assert "web_search" not in whitelist
-    assert "execute_code" not in whitelist
+    assert captured["whitelist"] == set()
+    assert captured["deny_msg_fmt"]
 
 
 
