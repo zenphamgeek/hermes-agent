@@ -317,6 +317,88 @@ def test_fleet_routing_enforce_flag_and_degrade(monkeypatch):
     _reset_guard_override_state()
 
 
+def test_sovereign_policy_manifest_invariants():
+    """Nebula Finding 5: Sovereign Policy Manifest formal specs."""
+    from hermes_cli.routing_policy import (
+        SOVEREIGN_POLICY_MANIFEST,
+        Tier,
+        Family,
+        GEMINI_MODELS,
+        CLAUDE_MODELS,
+        IMMUTABLE_NEBULA_MODELS,
+    )
+
+    ultra_spec = SOVEREIGN_POLICY_MANIFEST[Tier.ULTRA]
+    assert Family.GEMINI in ultra_spec.allowed_families
+    assert Family.CLAUDE in ultra_spec.forbidden_families
+    assert ultra_spec.allowed_models == GEMINI_MODELS
+
+    nebula_spec = SOVEREIGN_POLICY_MANIFEST[Tier.NEBULA]
+    assert Family.CLAUDE in nebula_spec.allowed_families
+    assert Family.GEMINI in nebula_spec.forbidden_families
+    assert nebula_spec.allowed_models == IMMUTABLE_NEBULA_MODELS
+
+    pro_spec = SOVEREIGN_POLICY_MANIFEST[Tier.PRO]
+    assert Family.CLAUDE in pro_spec.allowed_families
+    assert Family.GEMINI in pro_spec.allowed_families
+    assert len(pro_spec.forbidden_families) == 0
+
+
+def test_assert_node_tier_compliance():
+    """Nebula Finding 5: Nodes cannot claim unauthorized tiers in untracked rosters."""
+    from hermes_cli.routing_policy import assert_node_tier_compliance, RoutingViolation, Tier
+
+    # Valid claims
+    assert_node_tier_compliance("ultra-2", "ultra")
+    assert_node_tier_compliance("lthn.ariana", Tier.ULTRA)
+    assert_node_tier_compliance("nebula", "nebula")
+    assert_node_tier_compliance("b.ai", Tier.NEBULA)
+    assert_node_tier_compliance("pro-1", "pro")
+    assert_node_tier_compliance("sunward", Tier.PRO)
+
+    # Tampered claims fail closed
+    with pytest.raises(RoutingViolation, match=r"Config Integrity Violation.*Ultra account"):
+        assert_node_tier_compliance("ultra-2", "pro")
+
+    with pytest.raises(RoutingViolation, match=r"Config Integrity Violation.*Ultra account"):
+        assert_node_tier_compliance("lthn.ariana", "nebula")
+
+    with pytest.raises(RoutingViolation, match=r"Config Integrity Violation.*Nebula node"):
+        assert_node_tier_compliance("nebula", "pro")
+
+    with pytest.raises(RoutingViolation, match=r"Config Integrity Violation.*Nebula node"):
+        assert_node_tier_compliance("b.ai", "ultra")
+
+
+def test_verify_roster_consistency_detects_tier_tampering(tmp_path: Path):
+    """Configuration Integrity: Roster consistency fails if an Ultra node claims Pro tier."""
+    import yaml
+    from hermes_cli.routing_policy import verify_roster_consistency, RoutingViolation
+
+    tampered_roster = tmp_path / "fleet_roster_tampered.yml"
+    roster_data = {
+        "version": "1.0",
+        "pools": {
+            "pro-claude-pool": {
+                "nodes": [
+                    {"alias": "pro-1", "tier": "pro"},
+                    {"alias": "ultra-2", "tier": "pro"},  # Tampered tier!
+                ]
+            }
+        }
+    }
+    with open(tampered_roster, "w", encoding="utf-8") as f:
+        yaml.dump(roster_data, f)
+
+    is_consistent, violations = verify_roster_consistency(tampered_roster, fail_closed=False)
+    assert not is_consistent
+    assert any("Ultra account" in v or "CRITICAL ROSTER DRIFT" in v for v in violations)
+
+    with pytest.raises(RoutingViolation):
+        verify_roster_consistency(tampered_roster, fail_closed=True)
+
+
+
 
 
 

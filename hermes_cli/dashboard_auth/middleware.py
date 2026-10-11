@@ -92,11 +92,18 @@ def _path_is_public(path: str) -> bool:
       mounts. Segment-prefix-matched so ``/assets/foo.css`` lights up via
       ``/assets/``, while preventing ``/loginadmin`` from matching ``/login``.
 
-    Canonicalization:
+    Canonicalization & Fail-Closed:
       Decodes URL-encoded octets and normalizes path traversal (e.g. `%2e%2e`, `//`)
-      before matching against allowlists to prevent traversal bypasses.
+      before matching against allowlists. Fails closed (returns False) on any
+      malformed input or decoding error.
     """
-    clean_path = posixpath.normpath(unquote(path)).rstrip("/") or "/"
+    if not path or not isinstance(path, str):
+        return False
+    try:
+        clean_path = posixpath.normpath(unquote(path)).rstrip("/") or "/"
+    except Exception:
+        return False
+
     if clean_path in PUBLIC_API_PATHS:
         return True
     return any(

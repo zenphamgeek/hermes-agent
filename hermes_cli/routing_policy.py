@@ -104,6 +104,72 @@ is_allowed = is_routing_allowed
 
 
 # ---------------------------------------------------------------------------
+# Sovereign Policy Manifest & Tier Compliance Assertion (Nebula Finding 5)
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class PolicyTierSpec:
+    """Immutable formal specification for a routing tier."""
+    tier: Tier
+    allowed_families: frozenset[Family]
+    allowed_models: frozenset[str]
+    forbidden_families: frozenset[Family]
+    immutable_nodes: frozenset[str]
+    description: str
+
+
+SOVEREIGN_POLICY_MANIFEST: Dict[Tier, PolicyTierSpec] = {
+    Tier.ULTRA: PolicyTierSpec(
+        tier=Tier.ULTRA,
+        allowed_families=frozenset({Family.GEMINI}),
+        allowed_models=GEMINI_MODELS,
+        forbidden_families=frozenset({Family.CLAUDE}),
+        immutable_nodes=IMMUTABLE_ULTRA_ACCOUNTS,
+        description="Ultra nodes for high-complexity Gemini inference (strictly Gemini-only to protect Claude quota)",
+    ),
+    Tier.PRO: PolicyTierSpec(
+        tier=Tier.PRO,
+        allowed_families=frozenset({Family.CLAUDE, Family.GEMINI}),
+        allowed_models=CLAUDE_MODELS | GEMINI_MODELS,
+        forbidden_families=frozenset(),
+        immutable_nodes=frozenset({"pro-1", "sunward", "insilos", "binhthuong", "justaskgao", "team-3"}),
+        description="Pro CLI nodes with Claude quota (Claude Pro-first + Gemini)",
+    ),
+    Tier.NEBULA: PolicyTierSpec(
+        tier=Tier.NEBULA,
+        allowed_families=frozenset({Family.CLAUDE}),
+        allowed_models=IMMUTABLE_NEBULA_MODELS,
+        forbidden_families=frozenset({Family.GEMINI}),
+        immutable_nodes=IMMUTABLE_NEBULA_NODES,
+        description="Nebula API gateway (strictly fallback-only, strictly Claude Opus 4.8)",
+    ),
+}
+
+
+def assert_node_tier_compliance(node_alias: str, claimed_tier: str | Tier) -> None:
+    """Validates that a node strictly conforms to its immutable policy tier constraints.
+
+    Prevents configuration tampering where an untracked roster reclassifies an Ultra account
+    as Pro (which would breach the Ultra Gemini-only invariant) or Nebula as Pro.
+    """
+    node_lower = node_alias.strip().lower()
+    claimed_tier_str = claimed_tier.value.lower() if isinstance(claimed_tier, Tier) else str(claimed_tier).strip().lower()
+
+    is_ultra = any(u in node_lower for u in IMMUTABLE_ULTRA_ACCOUNTS)
+    is_nebula = any(n in node_lower for n in IMMUTABLE_NEBULA_NODES)
+
+    if is_ultra and claimed_tier_str != "ultra":
+        raise RoutingViolation(
+            f"Config Integrity Violation: Node {node_alias!r} is an immutable Ultra account "
+            f"and cannot claim tier {claimed_tier_str!r}. Ultra accounts are strictly Gemini-only."
+        )
+    if is_nebula and claimed_tier_str != "nebula":
+        raise RoutingViolation(
+            f"Config Integrity Violation: Node {node_alias!r} is an immutable Nebula node "
+            f"and cannot claim tier {claimed_tier_str!r}. Nebula is strictly Claude Opus 4.8 only."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Dynamic Roster Pool Discovery (Additive Only — Cannot Declassify Invariants)
 # ---------------------------------------------------------------------------
 _ROSTER_CACHE_TIME: float = 0.0
@@ -440,6 +506,23 @@ def verify_roster_consistency(
                         f"CRITICAL ROSTER DRIFT: Ultra account/alias {c_alias!r} found in pro-claude-pool! "
                         f"Ultra accounts strictly serve Gemini only."
                     )
+
+            # Tier compliance checks across all declared pools (Nebula Finding 5)
+            for pool_name, pool_data in pools.items():
+                if not isinstance(pool_data, dict):
+                    continue
+                pool_nodes = pool_data.get("nodes", [])
+                if not isinstance(pool_nodes, list):
+                    continue
+                for node_entry in pool_nodes:
+                    if isinstance(node_entry, dict):
+                        alias = str(node_entry.get("alias", "")).strip().lower()
+                        tier = str(node_entry.get("tier", "")).strip().lower()
+                        if alias and tier:
+                            try:
+                                assert_node_tier_compliance(alias, tier)
+                            except RoutingViolation as rv:
+                                violations.append(str(rv))
     except Exception as err:
         violations.append(f"Roster parsing error: {err}")
 
