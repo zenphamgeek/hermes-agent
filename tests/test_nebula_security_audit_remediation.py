@@ -303,4 +303,14 @@ def test_f2_approval_asset_checksums_provenance():
             )
 
 
+def test_f1_approval_payloads_zero_secrets():
+    """Verify approval manifest payloads contain zero secret tokens, client secrets, or OAuth credentials."""
+    from tools.verify_approval_provenance import audit_approvals
+
+    total, clean, errors = audit_approvals(verbose=False)
+    assert total > 0, "Expected at least 1 approval file"
+    assert not errors, f"Approval secret scanning failed with {len(errors)} errors: {errors}"
+
+
+
 
