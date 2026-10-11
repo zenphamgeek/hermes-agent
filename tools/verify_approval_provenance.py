@@ -108,12 +108,35 @@ def audit_publish_payload(payload: Any, context: str = "publish", allowlist: lis
     return check_for_secrets(payload, path=context, allowlist=allowlist)
 
 
+def sanitize_audit_log_string(val: Any, max_len: int = 500) -> str:
+    """Sanitize string destined for audit logs against stored XSS, HTML injection, and control code injection.
+
+    Entropy Contract: treat audit sink as untrusted input.
+    - Strips non-printable ASCII control characters.
+    - Strips ANSI terminal escape sequences.
+    - Escapes HTML entities (&, <, >, ", ') to prevent stored XSS when viewed in Web UIs.
+    - Clamps length to max_len.
+    """
+    import html
+
+    if not isinstance(val, str):
+        val = str(val) if val is not None else ""
+    # Strip ASCII control characters except standard space
+    cleaned = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", val)
+    # Strip ANSI terminal escape sequences
+    cleaned = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", cleaned)
+    # HTML escape to neutralize stored injection
+    escaped = html.escape(cleaned.strip(), quote=True)
+    return escaped[:max_len]
+
+
 def enforce_publish_gate(payload: Any, context: str = "publish") -> None:
     """Hard release gate before invoking external publish APIs (YouTube, Webhooks).
 
     If secret patterns are detected:
     - If HERMES_ALLOW_PUBLISH_OVERRIDE=1 is set, requires HERMES_OVERRIDE_REASON (>=15 chars),
       verifies second actor if HERMES_REQUIRE_SECOND_ACTOR=1,
+      sanitizes all fields against stored XSS/HTML injection (Entropy Contract),
       logs the break-glass event to .security/publish_overrides.log (failing closed if sink is unwritable),
       and proceeds with warning.
     - Otherwise, raises SecurityAuditFailure and terminates the upload.
@@ -149,15 +172,22 @@ def enforce_publish_gate(payload: Any, context: str = "publish") -> None:
         else:
             authorized_by = os.environ.get("HERMES_OVERRIDE_ACTOR", "").strip() or current_user
 
+        # Sanitize all audit fields against stored XSS, HTML injection, and control characters (Entropy Contract)
+        safe_reason = sanitize_audit_log_string(override_reason, max_len=500)
+        safe_actor = sanitize_audit_log_string(authorized_by, max_len=100)
+        safe_operator = sanitize_audit_log_string(current_user, max_len=100)
+        safe_context = sanitize_audit_log_string(context, max_len=100)
+        safe_leaks = [sanitize_audit_log_string(s, max_len=200) for s in leaks[:3]]
+
         # Log the break-glass bypass with audit trail (fail-closed if unwritable)
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "context": context,
+            "context": safe_context,
             "leak_count": len(leaks),
-            "leaks_sample": leaks[:3],
-            "reason": override_reason,
-            "authorized_by": authorized_by,
-            "operator": current_user,
+            "leaks_sample": safe_leaks,
+            "reason": safe_reason,
+            "authorized_by": safe_actor,
+            "operator": safe_operator,
         }
         try:
             OVERRIDES_LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -168,7 +198,7 @@ def enforce_publish_gate(payload: Any, context: str = "publish") -> None:
                 f"Break-glass audit sink unavailable ({e}); refusing unlogged break-glass override"
             ) from e
 
-        print(f"⚠️ [SECURITY BREAK-GLASS] Publish allowed with warning under override: '{override_reason}' by {authorized_by}")
+        print(f"⚠️ [SECURITY BREAK-GLASS] Publish allowed with warning under override: '{safe_reason}' by {safe_actor}")
         return
 
     raise SecurityAuditFailure(

@@ -500,6 +500,41 @@ def test_f1_publish_allowlist_schema_validation(monkeypatch, tmp_path):
         load_publish_allowlist(strict=True)
 
 
+def test_f1_publish_payload_break_glass_sanitizes_stored_injection_entropy_contract(monkeypatch, tmp_path):
+    """Verify break-glass audit sink sanitizes stored XSS, HTML, and ANSI control codes (Entropy Contract)."""
+    from tools.verify_approval_provenance import enforce_publish_gate
+
+    dirty_payload = "Bearer sk-ant-api03-FakeKeyForEntropyContractTest-12345"
+    log_file = tmp_path / "sanitized_overrides.log"
+    monkeypatch.setattr("tools.verify_approval_provenance.OVERRIDES_LOG", log_file)
+    monkeypatch.setenv("HERMES_ALLOW_PUBLISH_OVERRIDE", "1")
+
+    # Malicious injection payload in reason, actor, and context
+    malicious_reason = "Emergency fix <script>alert('xss')</script> \x1b[31;1mANSI_INJECTION\x1b[0m \x07\x08\x0c\x7fCONTROL_CHARS"
+    malicious_actor = "SecOps Lead <img src=x onerror=alert(1)>"
+    monkeypatch.setenv("HERMES_OVERRIDE_REASON", malicious_reason)
+    monkeypatch.setenv("HERMES_OVERRIDE_ACTOR", malicious_actor)
+
+    enforce_publish_gate(dirty_payload, context="malicious_<tag>_context")
+
+    assert log_file.is_file()
+    entry = json.loads(log_file.read_text(encoding="utf-8").strip())
+
+    # 1. Zero raw unescaped HTML tags
+    assert "<script>" not in entry["reason"]
+    assert "&lt;script&gt;" in entry["reason"]
+    assert "<img" not in entry["authorized_by"]
+    assert "&lt;img" in entry["authorized_by"]
+    assert "<tag>" not in entry["context"]
+    assert "&lt;tag&gt;" in entry["context"]
+
+    # 2. Zero raw ANSI escape codes or control characters
+    assert "\x1b[" not in entry["reason"]
+    assert "\x07" not in entry["reason"]
+    assert "\x7f" not in entry["reason"]
+    assert "ANSI_INJECTION" in entry["reason"]
+
+
 def test_f3_duration_reconciliation_integrity():
     """Verify scene_timings.json reconciles with metadata.json and description timestamps."""
     timings_path = REPO_ROOT / "assets" / "scripts_video" / "audio" / "series_01" / "tap_01" / "scene_timings.json"
