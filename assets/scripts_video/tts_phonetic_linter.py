@@ -19,9 +19,15 @@ import re
 import sys
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPTS_DIR))
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.append(str(SCRIPTS_DIR))
 
-from tts_pronunciation import normalize_for_omnivoice, load_lexicon
+from tts_pronunciation import normalize_for_omnivoice
+
+# Approved technical acronyms and terms read naturally in Vietnamese narration without phonetic rewriting
+APPROVED_ACRONYMS: frozenset[str] = frozenset({
+    "AI", "ECE", "GPU", "CUDA", "LLM", "API", "CPU", "RAM", "SRT", "TTS", "VRAM", "RL", "OODA"
+})
 
 def lint_text(text: str, filename: str = "") -> list[str]:
     violations: list[str] = []
@@ -40,13 +46,10 @@ def lint_text(text: str, filename: str = "") -> list[str]:
 
     # 3. Normalization & Unmapped English check
     normalized, report = normalize_for_omnivoice(text)
-    unmapped = report.get("unmapped_english", [])
+    unmapped = report.get("unmapped_english", []) if isinstance(report, dict) else []
     
-    # Filter out approved acronyms that are naturally read in Vietnamese if any
-    filtered_unmapped = []
-    for term in unmapped:
-        # Ignore common Vietnamese single/double initials if any
-        filtered_unmapped.append(term)
+    # Filter out approved acronyms that are naturally read in Vietnamese
+    filtered_unmapped = [term for term in unmapped if term.upper() not in APPROVED_ACRONYMS]
         
     if filtered_unmapped:
         violations.append(f"Phát hiện thuật ngữ tiếng Anh / từ viết tắt trơ trọi chưa qua từ điển: {filtered_unmapped}")
@@ -87,7 +90,15 @@ def main():
     parser.add_argument("--episode", default="tap_01", help="Episode name (e.g. tap_01, tap_03)")
     args = parser.parse_args()
 
-    ep_dir = Path(args.dir) if args.dir else SCRIPTS_DIR / f"episode_logistics_{args.episode}"
+    # CWE-22 Path Traversal Guard: validate episode name format
+    if args.dir:
+        ep_dir = Path(args.dir)
+    else:
+        if not re.fullmatch(r"^[A-Za-z0-9_\-]+$", args.episode):
+            print(f"❌ Tên tập không hợp lệ (CWE-22 path traversal guard): {args.episode!r}")
+            sys.exit(2)
+        ep_dir = SCRIPTS_DIR / f"episode_logistics_{args.episode}"
+
     print("=" * 75)
     print(f"🎙️  TTS PHONETIC & PRONUNCIATION LINTER: {ep_dir.name}")
     print("=" * 75)
