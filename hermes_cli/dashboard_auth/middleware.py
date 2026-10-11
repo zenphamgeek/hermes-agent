@@ -67,6 +67,18 @@ _GATE_PUBLIC_PREFIXES: tuple[str, ...] = (
 )
 
 
+def _matches_gate_prefix(clean_path: str, prefix: str) -> bool:
+    """Exact segment boundary prefix matching.
+
+    Prevents /loginadmin from matching /login, while allowing /assets/foo.css
+    to match /assets/ and /login to match /login.
+    """
+    norm_prefix = prefix.rstrip("/")
+    if clean_path == norm_prefix:
+        return True
+    return clean_path.startswith(norm_prefix + "/")
+
+
 def _path_is_public(path: str) -> bool:
     """True if ``path`` bypasses the OAuth auth gate.
 
@@ -77,8 +89,8 @@ def _path_is_public(path: str) -> bool:
       exactly (no prefix expansion) so adding ``/api/status`` doesn't
       accidentally expose ``/api/status/secret-extension``.
     * :data:`_GATE_PUBLIC_PREFIXES` — auth-bootstrap routes and static
-      mounts. Prefix-matched so ``/assets/foo.css`` lights up via
-      ``/assets/``.
+      mounts. Segment-prefix-matched so ``/assets/foo.css`` lights up via
+      ``/assets/``, while preventing ``/loginadmin`` from matching ``/login``.
 
     Canonicalization:
       Decodes URL-encoded octets and normalizes path traversal (e.g. `%2e%2e`, `//`)
@@ -88,7 +100,7 @@ def _path_is_public(path: str) -> bool:
     if clean_path in PUBLIC_API_PATHS:
         return True
     return any(
-        clean_path == prefix.rstrip("/") or clean_path.startswith(prefix)
+        _matches_gate_prefix(clean_path, prefix)
         for prefix in _GATE_PUBLIC_PREFIXES
     )
 

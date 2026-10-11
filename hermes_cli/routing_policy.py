@@ -306,7 +306,12 @@ def assert_routing_legal(
     Attestation: Emits a tamper-evident record to .routing_attestation_ledger.jsonl on every call.
     """
     global _GUARD_OVERRIDE_TIMESTAMP, _GUARD_OVERRIDE_MODE
-    guard_mode = os.environ.get("FLEET_ROUTING_GUARD", "enforce").strip().lower()
+    guard_mode = os.environ.get(
+        "FLEET_ROUTING_GUARD",
+        os.environ.get("FLEET_ROUTING_ENFORCE", "enforce")
+    ).strip().lower()
+    if guard_mode == "block":
+        guard_mode = "enforce"
 
     if guard_mode in ("warn", "off"):
         now = time.time()
@@ -342,14 +347,20 @@ def assert_routing_legal(
 
     violation_msg: Optional[str] = None
 
-    # Ultra accounts strictly serve Gemini only
+    # Ultra accounts strictly serve Gemini only (reject Claude and any non-Gemini model)
     is_ultra = any(u in account_lower for u in ultra_accounts)
     is_claude = any(c in model_lower for c in ("claude", "opus", "sonnet"))
-    if is_ultra and is_claude:
-        violation_msg = (
-            f"Claude model {model!r} routed to Ultra account {account!r} "
-            f"(Ultra accounts strictly serve Gemini only to protect Claude quota)"
-        )
+    if is_ultra:
+        if is_claude:
+            violation_msg = (
+                f"Claude model {model!r} routed to Ultra account {account!r} "
+                f"(Ultra accounts strictly serve Gemini only to protect Claude quota)"
+            )
+        elif not any(g in model_lower for g in ("gemini", "flash")):
+            violation_msg = (
+                f"Non-Gemini model {model!r} routed to Ultra account {account!r} "
+                f"(Ultra accounts strictly serve approved Gemini models only)"
+            )
 
     # Nebula nodes strictly serve Claude Opus 4.8 only (zero Gemini)
     if not violation_msg:
@@ -377,6 +388,8 @@ def assert_routing_legal(
 # Aliases for backward compatibility and protocol conformance
 assert_routing_invariant = assert_routing_legal
 assert_routing_allowed = assert_routing_legal
+enforce_routing_invariant = assert_routing_legal
+enforce_routing_policy = assert_routing_legal
 
 
 # ---------------------------------------------------------------------------

@@ -268,5 +268,55 @@ def test_offline_fallback_cascade_fails_closed():
         assert_routing_legal("nebula", "gemini-3.8-flash-high")
 
 
+def test_enforce_routing_invariant_alias_and_unknown_model_fail_closed():
+    """Nebula Dialectic Synthesis: enforce_routing_invariant rejects Claude and unknown models on Ultra."""
+    from hermes_cli.routing_policy import enforce_routing_invariant, RoutingViolation
+
+    # Ultra rejects Claude
+    with pytest.raises(RoutingViolation, match="Ultra accounts strictly serve Gemini only"):
+        enforce_routing_invariant("ultra-2", "claude-opus-5-5-high")
+
+    # Ultra rejects unknown/non-approved models (fail-closed on unknown model)
+    with pytest.raises(RoutingViolation, match="Non-Gemini model"):
+        enforce_routing_invariant("ultra-2", "gpt-4o")
+
+    # Nebula rejects Gemini
+    with pytest.raises(RoutingViolation, match="Nebula strictly serves Claude Opus 4.8 only"):
+        enforce_routing_invariant("nebula", "gemini-3.1-pro-high")
+
+    # Nebula rejects non-opus-4.8 Claude models
+    with pytest.raises(RoutingViolation, match="Nebula only serves claude-opus-4.8"):
+        enforce_routing_invariant("nebula", "claude-sonnet-5-5-high")
+
+    # Pro can serve Gemini and Claude
+    enforce_routing_invariant("pro-1", "gemini-3.8-flash-high")
+    enforce_routing_invariant("pro-1", "claude-opus-5-5-high")
+
+
+def test_fleet_routing_enforce_flag_and_degrade(monkeypatch):
+    """SRE Emergency Degrade: FLEET_ROUTING_ENFORCE=warn logs warning without throwing."""
+    from hermes_cli.routing_policy import (
+        assert_routing_legal,
+        RoutingViolation,
+        _reset_guard_override_state,
+    )
+
+    _reset_guard_override_state()
+    # 1. By default or with block, it raises
+    monkeypatch.setenv("FLEET_ROUTING_ENFORCE", "block")
+    monkeypatch.delenv("FLEET_ROUTING_GUARD", raising=False)
+    with pytest.raises(RoutingViolation):
+        assert_routing_legal("ultra-2", "claude-opus-5-5-high")
+
+    # 2. When degraded to warn by SRE, it does not raise
+    monkeypatch.setenv("FLEET_ROUTING_ENFORCE", "warn")
+    _reset_guard_override_state()
+    # Should not raise exception
+    assert_routing_legal("ultra-2", "claude-opus-5-5-high")
+
+    _reset_guard_override_state()
+
+
+
 
 

@@ -231,6 +231,26 @@ def test_invalid_cookie_returns_401_on_api(gated_app):
     assert r.status_code == 401
 
 
+def test_mutating_and_sensitive_endpoints_require_auth(gated_app):
+    """Assert all mutating/sensitive endpoints strictly reject unauthenticated calls."""
+    probed_endpoints = [
+        ("post", "/api/trae/toggle"),
+        ("post", "/api/trae/unblock"),
+        ("post", "/api/trae/send"),
+        ("post", "/api/trae/new-task"),
+        ("get", "/api/sessions"),
+        ("post", "/api/env/reveal"),
+    ]
+    for method, path in probed_endpoints:
+        caller = getattr(gated_app, method)
+        kwargs = {"json": {}} if method != "get" else {}
+        resp = caller(path, **kwargs)
+        assert resp.status_code == 401, (
+            f"SECURITY VIOLATION: Endpoint '{path}' ({method.upper()}) was not protected by auth gate! "
+            f"Status: {resp.status_code}, Body: {resp.text}"
+        )
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -356,5 +376,133 @@ def test_all_providers_unreachable_returns_503(_gated_state):
     r = client.get("/api/auth/me")
     assert r.status_code == 503
     assert "unreachable" in r.text.lower()
+
+
+def test_public_api_paths_reconciliation_ci_guard():
+    """CI Guard: Reconcile all PUBLIC_API_PATHS against web_server routes.
+
+    Enforces that:
+    1. No mutating endpoints (POST/PUT/DELETE/PATCH) are in PUBLIC_API_PATHS,
+       except /api/cron/fire which carries independent NAS-minted JWT auth.
+    2. Sensitive control routes (/api/trae/toggle, unblock, send) must NEVER
+       bypass authentication.
+    3. Every entry in PUBLIC_API_PATHS is accounted for and safe for public probes.
+    """
+    from hermes_cli.dashboard_auth.public_paths import PUBLIC_API_PATHS
+
+    # Assert forbidden mutating routes are strictly absent
+    forbidden_mutating_routes = {
+        "/api/trae/toggle",
+        "/api/trae/unblock",
+        "/api/trae/send",
+        "/api/trae/new-task",
+        "/api/trae/smart-unblock",
+        "/api/trae/click",
+    }
+    for forbidden in forbidden_mutating_routes:
+        assert forbidden not in PUBLIC_API_PATHS, (
+            f"SECURITY VIOLATION: Mutating control route '{forbidden}' must not be in PUBLIC_API_PATHS allowlist!"
+        )
+
+    # Inspect all registered FastAPI routes on web_server.app
+    from starlette.routing import Route
+    routes_by_path = {}
+    for route in web_server.app.routes:
+        if isinstance(route, Route):
+            routes_by_path.setdefault(route.path, set()).update(route.methods or set())
+
+    # Reconcile each public path
+    allowed_mutating_exceptions = {"/api/cron/fire"}  # protected by NAS JWT
+    for path in PUBLIC_API_PATHS:
+        methods = routes_by_path.get(path, set())
+        mutating_methods = methods.intersection({"POST", "PUT", "DELETE", "PATCH"})
+        if mutating_methods and path not in allowed_mutating_exceptions:
+            pytest.fail(
+                f"SECURITY VIOLATION: Path '{path}' allows mutating methods {mutating_methods} "
+                f"while being in PUBLIC_API_PATHS without a cryptographic JWT exception!"
+            )
+
+    # Golden Snapshot Guard: Enforce exact set match to prevent silent drift (+1 / +2 PR leaks)
+    EXPECTED_CANONICAL_PUBLIC_PATHS = frozenset({
+        "/api/health",
+        "/api/status",
+        "/api/config/defaults",
+        "/api/config/schema",
+        "/api/model/info",
+        "/api/dashboard/themes",
+        "/api/dashboard/plugins",
+        "/api/cron/fire",
+        "/api/trae/status",
+    })
+    assert PUBLIC_API_PATHS == EXPECTED_CANONICAL_PUBLIC_PATHS, (
+        f"SECURITY VIOLATION: PUBLIC_API_PATHS allowlist drift detected! Any change to public paths "
+        f"requires an explicit update to EXPECTED_CANONICAL_PUBLIC_PATHS with security review.\n"
+        f"Added: {PUBLIC_API_PATHS - EXPECTED_CANONICAL_PUBLIC_PATHS}\n"
+        f"Removed: {EXPECTED_CANONICAL_PUBLIC_PATHS - PUBLIC_API_PATHS}"
+    )
+
+    # Metadata & Ownership Contract Guard (Nebula Dialectic Synthesis)
+    from hermes_cli.dashboard_auth.public_paths import PUBLIC_API_PATH_SPECS
+
+    approved_owners = {"core-infra", "frontend-spa", "models-team", "scheduler", "trae-agent"}
+    for spec in PUBLIC_API_PATH_SPECS:
+        assert spec.path.startswith("/api/"), f"Path must start with /api/: {spec.path}"
+        assert spec.reason and len(spec.reason) >= 15, f"Path {spec.path} missing descriptive security reason"
+        assert spec.owner in approved_owners, f"Path {spec.path} has unapproved owner: {spec.owner}"
+        assert len(spec.allowed_methods) >= 1, f"Path {spec.path} missing allowed_methods"
+        for method in spec.allowed_methods:
+            if method in {"POST", "PUT", "DELETE", "PATCH"}:
+                assert spec.path in allowed_mutating_exceptions, (
+                    f"Path {spec.path} allows mutating method {method} without JWT exception"
+                )
+
+    assert frozenset(s.path for s in PUBLIC_API_PATH_SPECS) == PUBLIC_API_PATHS, (
+        "PUBLIC_API_PATHS does not match PUBLIC_API_PATH_SPECS exactly"
+    )
+
+
+def test_negative_path_traversal_and_prefix_bypass_rejected(gated_app):
+    """Negative tests: verify prefix matching and path traversal cannot bypass the auth gate."""
+    # Prefix extension attempts on public paths must NOT be public
+    prefix_attempts = [
+        "/api/status/secret",
+        "/api/status/admin",
+        "/api/status-extra",
+        "/api/health/privileges",
+        "/api/config/defaults/passwords",
+        "/api/cron/fire/unauthorized",
+        "/api/trae/status/controls",
+    ]
+    for path in prefix_attempts:
+        resp = gated_app.get(path)
+        assert resp.status_code in {401, 404}, f"Expected 401 or 404 for prefix bypass attempt '{path}', got {resp.status_code}"
+
+    # Segment boundary bypass attempts (Nebula Adversarial Synthesis)
+    from hermes_cli.dashboard_auth.middleware import _path_is_public
+    assert _path_is_public("/loginadmin") is False
+    assert _path_is_public("/auth/loginadmin") is False
+    assert _path_is_public("/auth/logoutadmin") is False
+    assert _path_is_public("/api/auth/providersadmin") is False
+    assert _path_is_public("/assetsleak") is False
+    assert _path_is_public("/favicon.ico.bak") is False
+    # Valid public routes remain public
+    assert _path_is_public("/login") is True
+    assert _path_is_public("/login/") is True
+    assert _path_is_public("/assets/foo.css") is True
+    assert _path_is_public("/favicon.ico") is True
+
+    # Path traversal attempts
+    traversal_attempts = [
+        "/api/status/../trae/click",
+        "/api/health/../auth/me",
+        "/api/status/..;/trae/click",
+        "/api/status%2e%2e/trae/click",
+    ]
+    for path in traversal_attempts:
+        resp = gated_app.get(path)
+        assert resp.status_code in {401, 404}, f"Expected 401 or 404 for traversal attempt '{path}', got {resp.status_code}"
+
+
+
 
 
