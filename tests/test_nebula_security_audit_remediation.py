@@ -261,3 +261,46 @@ def test_f1_git_rev_list_zero_roster_objects():
             assert obj_name in ALLOWED_TEMPLATES, f"Found unauthorized fleet_roster object in git history: {line}"
 
 
+def test_f6_secret_registry_ssot_gitignore_parity():
+    """Verify programmatic SSOT parity between .security/secret_paths.registry and .gitignore."""
+    sync_tool = REPO_ROOT / "tools" / "sync_secret_registry.py"
+    assert sync_tool.is_file(), f"Sync tool missing at {sync_tool}"
+
+    proc = subprocess.run(
+        [sys.executable, str(sync_tool), "--check"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"SSOT parity check failed: {proc.stderr}\n{proc.stdout}"
+    assert "100% parity" in proc.stdout
+
+
+def test_f2_approval_asset_checksums_provenance():
+    """Verify approval records strictly bind cryptographic sha256 checksums to approved artifacts."""
+    import re
+    approvals_dir = REPO_ROOT / "approvals"
+    assert approvals_dir.is_dir()
+
+    approval_files = list(approvals_dir.glob("S*_EP*_APPROVAL.json"))
+    assert len(approval_files) > 0, "No approval manifest files found to audit"
+
+    HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+    for approval_path in approval_files:
+        data = json.loads(approval_path.read_text(encoding="utf-8"))
+        if data.get("decision") == "approved":
+            checksums = data.get("asset_checksums", {})
+            assert isinstance(checksums, dict) and len(checksums) > 0, (
+                f"{approval_path.name} approved without asset_checksums"
+            )
+            for asset_key, sha in checksums.items():
+                assert HEX64.match(sha), f"Malformed SHA-256 for {asset_key} in {approval_path.name}: {sha}"
+
+            closure = data.get("closure_sha256")
+            assert closure and HEX64.match(closure), (
+                f"{approval_path.name} approved with missing or malformed closure_sha256: {closure}"
+            )
+
+
+

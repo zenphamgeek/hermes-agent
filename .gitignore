@@ -21,6 +21,9 @@ act/
 .env.production.local
 .env.development
 .env.test
+fleet_roster.yml
+fleet_roster.json
+.fleet_roster.json
 .hermes-docker/
 .notebooklm-home/
 .notebooklm-cli-venv/
@@ -212,3 +215,15 @@ node_modules
 # .agents: track rules/skills/migrations only (memory-curator L3 versioning)
 .agents/teamwork/
 .agents/**/__pycache__/
+
+# --- BEGIN ECS SECRET REGISTRY (SSOT) ---
+# Generated automatically from .security/secret_paths.registry — DO NOT EDIT MANUALLY
+.env
+.env.local
+.env.production
+.env.secrets
+.fleet_roster.json
+fleet_roster.json
+fleet_roster.yml
+modal_token_profile.md
+# --- END ECS SECRET REGISTRY (SSOT) ---
