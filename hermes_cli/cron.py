@@ -6,6 +6,7 @@ pause/resume/run/remove, status, and tick.
 """
 
 import json
+import sqlite3
 import sys
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -215,13 +216,45 @@ def cron_runs(job_id: Optional[str] = None, limit: int = 20):
         print("No cron execution attempts recorded.")
         return
     for record in records:
+        cost = record.get("cost")
+        cost_s = f"  ${float(cost):.4f}" if cost is not None else ""
+        toks = record.get("tokens")
+        toks_s = f"  {int(toks)} tok" if toks else ""
         print(
             f"{record.get('id', '?')}  {record.get('status', '?'):<9}  "
             f"job={record.get('job_id', '?')}  source={record.get('source', '?')}  "
-            f"{record.get('claimed_at', '?')}"
+            f"{record.get('claimed_at', '?')}{cost_s}{toks_s}"
         )
         if record.get("error"):
             print(f"    {record['error']}")
+
+
+def cron_execution(execution_id: str) -> int:
+    """Show every persisted field for one execution attempt."""
+    from cron.executions import get_execution
+
+    try:
+        record = get_execution(execution_id)
+    except (OSError, ValueError) as exc:
+        print(color(f"Failed to read execution ledger: {exc}", Colors.RED), file=sys.stderr)
+        return 1
+    except sqlite3.DatabaseError as exc:
+        print(color(f"Failed to read execution ledger: {exc}", Colors.RED), file=sys.stderr)
+        return 1
+    if record is None:
+        print(color(f"Execution not found: {execution_id}", Colors.RED))
+        return 1
+
+    for key, value in record.items():
+        print(f"{key}: {value if value is not None else '-'}")
+    if record.get("status") == "unknown":
+        print()
+        print(color(
+            "Retry unavailable: this audit record cannot prove whether side effects ran; "
+            "the ledger has no safe retry/linkage API.",
+            Colors.YELLOW,
+        ))
+    return 0
 
 
 def cron_status():
@@ -565,6 +598,9 @@ def cron_command(args):
     if subcmd in {"runs", "history"}:
         cron_runs(getattr(args, "job_id", None), getattr(args, "limit", 20))
         return 0
+
+    if subcmd in {"execution", "inspect"}:
+        return cron_execution(args.execution_id)
 
     if subcmd == "notepad":
         return cron_notepad(args)

@@ -4817,6 +4817,23 @@ def _teardown_cron_agent(agent, job_id: str) -> None:
         logger.debug("Job '%s': failed to reap stale auxiliary clients: %s", job_id, e)
 
 
+def _agent_run_cost(agents: list) -> tuple:
+    """Pull estimated cost/tokens off the (first) deferred cron agent.
+
+    Returns (None, None) when no agent ran (config-blocked jobs make no LLM
+    call), so the ledger records nothing spent.
+    """
+    if not agents:
+        return None, None
+    a = agents[0]
+    cost = getattr(a, "session_estimated_cost_usd", None)
+    tokens = getattr(a, "session_total_tokens", None)
+    return (
+        float(cost) if cost is not None else None,
+        int(tokens) if tokens is not None else None,
+    )
+
+
 def run_one_job(
     job: dict, *, adapters=None, loop=None, verbose: bool = False,
     extra_prompt: Optional[str] = None,
@@ -4839,6 +4856,8 @@ def run_one_job(
     if not execution_id:
         execution_id = create_execution(job["id"], source="direct")["id"]
     try:
+        _deferred_agents: list = []  # bound before any raise so the outer
+        # except can still read cost off a deferred agent.
         # Pre-run dispatch claim (issue #38758): atomically commit a finite
         # one-shot's dispatch BEFORE its side effect runs, so a tick that dies
         # mid-execution (gateway kill, OOM, segfault, hard-timeout) cannot
@@ -4891,6 +4910,7 @@ def run_one_job(
                 job, defer_agent_teardown=_deferred_agents,
                 extra_prompt=extra_prompt,
             )
+            _run_cost, _run_tokens = _agent_run_cost(_deferred_agents)
         except BaseException:
             # run_job's finally still hands back the agent when it raises; tear
             # it down here so a failed run never leaks its async resources
@@ -5046,6 +5066,8 @@ def run_one_job(
             success=success,
             error=error,
             delivery_outcome=delivery_outcome,
+            cost=_run_cost,
+            tokens=_run_tokens,
         )
         return True
 
@@ -5071,7 +5093,11 @@ def run_one_job(
                 job["id"], record_err,
             )
         try:
-            finish_execution(execution_id, success=False, error=_err_text)
+            _exc_cost, _exc_tokens = _agent_run_cost(_deferred_agents)
+            finish_execution(
+                execution_id, success=False, error=_err_text,
+                cost=_exc_cost, tokens=_exc_tokens,
+            )
         except Exception as record_err:
             logger.error(
                 "Failed to finish execution record for job %s: %s",

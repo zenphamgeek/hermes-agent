@@ -49,9 +49,17 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
              claimed_at TEXT NOT NULL,
              started_at TEXT,
              finished_at TEXT,
-             error TEXT
+             error TEXT,
+             cost REAL,
+             tokens INTEGER
            )"""
     )
+    # Additive migration for stores created before cost/tokens existed.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(executions)")}
+    if "cost" not in cols:
+        conn.execute("ALTER TABLE executions ADD COLUMN cost REAL")
+    if "tokens" not in cols:
+        conn.execute("ALTER TABLE executions ADD COLUMN tokens INTEGER")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_executions_job_claimed "
         "ON executions(job_id, claimed_at DESC, id DESC)"
@@ -175,16 +183,22 @@ def mark_execution_running(execution_id: str) -> Optional[Dict[str, Any]]:
 def finish_execution(
     execution_id: str, *, success: bool, error: Optional[str] = None,
     delivery_outcome: Optional[str] = None,
+    cost: Optional[float] = None, tokens: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Write a terminal result once; terminal attempts cannot be rewritten."""
+    """Write a terminal result once; terminal attempts cannot be rewritten.
+
+    ``cost`` (estimated USD) and ``tokens`` are recorded best-effort from the
+    run's agent counters; both default to NULL when unknown.
+    """
     now = _hermes_now().isoformat()
     status = "completed" if success else "failed"
     detail = None if success else (str(error) if error else "unknown failure")
     with _transaction() as conn:
         cur = conn.execute(
-            """UPDATE executions SET status=?, finished_at=?, error=?
-               WHERE id=? AND status IN ('claimed','running')""",
-            (status, now, detail, execution_id),
+            """UPDATE executions SET status=?, finished_at=?, error=?,
+                   cost=?, tokens=?
+               WHERE id=? AND status IN ('claimed','running') """,
+            (status, now, detail, cost, tokens, execution_id),
         )
         if cur.rowcount != 1:
             return None
@@ -255,6 +269,14 @@ def list_executions(
             params,
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_execution(execution_id: str) -> Optional[Dict[str, Any]]:
+    """Return one execution attempt by its durable ID."""
+    with _transaction() as conn:
+        return _record(conn.execute(
+            "SELECT * FROM executions WHERE id=?", (str(execution_id),)
+        ).fetchone())
 
 
 def latest_execution(job_id: str) -> Optional[Dict[str, Any]]:

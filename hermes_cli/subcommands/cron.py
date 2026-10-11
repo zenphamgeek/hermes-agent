@@ -225,6 +225,11 @@ def build_cron_parser(subparsers, *, cmd_cron: Callable) -> None:
     cron_runs.add_argument("job_id", nargs="?", help="Optional job ID filter")
     cron_runs.add_argument("--limit", type=int, default=20, help="Rows to show (1-500)")
 
+    cron_execution = cron_subparsers.add_parser(
+        "execution", aliases=["inspect"], help="Inspect one execution attempt"
+    )
+    cron_execution.add_argument("execution_id", help="Execution attempt ID")
+
     # cron notepad — per-job durable KV scratchpad (injected into the job
     # prompt each run; the running agent writes it via this CLI).
     cron_notepad = cron_subparsers.add_parser(
