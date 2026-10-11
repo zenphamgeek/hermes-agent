@@ -52,8 +52,10 @@ def main():
 
     master_audio = AUDIO_DIR / "master_audio_series_01_tap_01.wav"
     if not master_audio.exists():
-        print(f"❌ Master audio missing: {master_audio}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Missing master audio: {master_audio}")
+
+    if master_audio.stat().st_size < 1024:
+        raise ValueError(f"Corrupt or empty master audio (size {master_audio.stat().st_size}B < 1KB): {master_audio}")
 
     audio_total_dur = get_duration(master_audio)
     print(f"[*] Master Audio Duration: {audio_total_dur:.2f}s ({audio_total_dur/60:.2f} min)")
@@ -62,11 +64,18 @@ def main():
     for idx in range(1, 9):
         w = AUDIO_DIR / f"scene_{idx:02d}.wav"
         if not w.exists():
-            print(f"❌ Missing scene audio: {w}")
-            sys.exit(1)
+            raise FileNotFoundError(f"Missing required scene audio: {w}")
+
+        size_bytes = w.stat().st_size
+        if size_bytes < 1024:
+            raise ValueError(f"Corrupt or empty scene audio (size {size_bytes}B < 1KB): {w}")
+
         dur = get_duration(w)
+        if dur < 5.0:
+            raise ValueError(f"Abnormally truncated scene audio duration ({dur:.2f}s < 5.0s): {w}")
+
         scene_audio_durs[idx] = dur
-        print(f"   Scene {idx:02d} Audio: {dur:.2f}s")
+        print(f"   Scene {idx:02d} Audio: {dur:.2f}s (verified non-empty)")
 
     # Path to immutable brand clips
     OPENER_STINGER = REPO_ROOT / "assets" / "brand" / "zenpham-brand-kit" / "zenpham_opener_clip_2k60_muxed.mp4"
@@ -75,6 +84,14 @@ def main():
     for brand_clip, label in [(OPENER_STINGER, "opener stinger"), (CLOSING_CTA, "closing cta")]:
         if not brand_clip.is_file():
             raise FileNotFoundError(f"Missing required brand asset ({label}): {brand_clip}")
+
+    # Multi-Layer Pre-Assembly Duration Reconciliation (CWE-345)
+    expected_assembly_dur = sum(scene_audio_durs.values()) + get_duration(OPENER_STINGER) + get_duration(CLOSING_CTA)
+    if not (580.0 <= expected_assembly_dur <= 630.0):
+        raise ValueError(
+            f"Pre-assembly duration reconciliation failed: sum of scenes + brand clips = "
+            f"{expected_assembly_dur:.2f}s, outside target [580.0s, 630.0s]"
+        )
 
 
     # Encode each scene clip with tpad & mux with its corresponding scene audio
@@ -203,6 +220,11 @@ def main():
         raise ValueError(f"Expected Stereo (2ch), got {a_stream['channels']}")
     if not (580.0 <= final_dur <= 630.0):
         raise ValueError(f"Expected duration ~600-620s (VieNeu V0-Expression), got {final_dur:.2f}s")
+    if abs(final_dur - expected_assembly_dur) > 1.5:
+        raise ValueError(
+            f"Post-assembly duration divergence: assembled video {final_dur:.2f}s diverges from "
+            f"expected components sum {expected_assembly_dur:.2f}s by > 1.5s"
+        )
     print(f"   [✓] Resolution: {v_stream['width']}x{v_stream['height']}")
     print(f"   [✓] Frame Rate: {v_stream['r_frame_rate']}")
     print(f"   [✓] Audio: {a_stream['sample_rate']}Hz, {a_stream['channels']}ch Stereo")

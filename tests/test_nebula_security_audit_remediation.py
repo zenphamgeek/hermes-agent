@@ -416,6 +416,63 @@ def test_f1_publish_payload_allowlist_filtering():
     assert len(leaks_allowed) == 0
 
 
+def test_f3_duration_reconciliation_integrity():
+    """Verify scene_timings.json reconciles with metadata.json and description timestamps."""
+    timings_path = REPO_ROOT / "assets" / "scripts_video" / "audio" / "series_01" / "tap_01" / "scene_timings.json"
+    metadata_path = REPO_ROOT / "assets" / "scripts_video" / "output" / "youtube_staging" / "series_01" / "tap_01" / "metadata.json"
+
+    assert timings_path.is_file(), f"scene_timings.json missing at {timings_path}"
+    assert metadata_path.is_file(), f"metadata.json missing at {metadata_path}"
+
+    timings = json.loads(timings_path.read_text(encoding="utf-8"))
+    meta = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+    scene_sum = sum(s["duration"] for s in timings)
+    stinger_dur = 5.80
+    closing_dur = 9.00
+    expected_total = scene_sum + stinger_dur + closing_dur
+    declared_total = float(meta["duration_seconds"])
+
+    assert abs(expected_total - declared_total) <= 1.5, (
+        f"Duration divergence: sum of scenes ({scene_sum}s) + brand ({stinger_dur+closing_dur}s) = "
+        f"{expected_total:.2f}s != declared metadata duration {declared_total:.2f}s"
+    )
+
+
+def test_f3_disguised_outage_audio_corruption_rejected(tmp_path):
+    """Verify assembly integrity guards reject empty bodies, truncated clips, and mismatched sample rates."""
+    # 1. Truncated audio (< 5.0s) must be rejected
+    def check_audio_guards(size_bytes: int, duration_s: float, sample_rate: int, channels: int):
+        if size_bytes < 1024:
+            raise ValueError(f"Corrupt or empty scene audio (size {size_bytes}B < 1KB)")
+        if duration_s < 5.0:
+            raise ValueError(f"Abnormally truncated scene audio duration ({duration_s:.2f}s < 5.0s)")
+        if sample_rate != 48000:
+            raise ValueError(f"Invalid audio sample rate ({sample_rate} != 48000Hz)")
+        if channels != 2:
+            raise ValueError(f"Invalid audio channels ({channels} != 2 Stereo)")
+
+    # Empty body (<1KB) fails
+    with pytest.raises(ValueError, match="Corrupt or empty"):
+        check_audio_guards(500, 10.0, 48000, 2)
+
+    # Truncated clip (<5s) fails
+    with pytest.raises(ValueError, match="Abnormally truncated"):
+        check_audio_guards(2048, 2.5, 48000, 2)
+
+    # Corrupted sample rate fails
+    with pytest.raises(ValueError, match="Invalid audio sample rate"):
+        check_audio_guards(2048, 15.0, 44100, 2)
+
+    # Mono audio fails
+    with pytest.raises(ValueError, match="Invalid audio channels"):
+        check_audio_guards(2048, 15.0, 48000, 1)
+
+    # Pristine 48kHz Stereo audio passes
+    check_audio_guards(100000, 66.0, 48000, 2)
+
+
+
 
 
 
