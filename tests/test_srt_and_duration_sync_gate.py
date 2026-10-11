@@ -159,6 +159,12 @@ def test_tri_artifact_atomic_consistency_gate():
         f"Closing mosaic headroom ({closing_headroom:.2f}s) is under the 7.5s minimum"
     )
 
+    # Invariant B2: Chapter-Tail Headroom Contract (budget [7.5s, 12.0s] for 8.00s closing screen)
+    chapter_tail_headroom = dur_s - last_ch_time
+    assert 7.5 <= chapter_tail_headroom <= 12.0, (
+        f"Chapter-tail headroom ({chapter_tail_headroom:.2f}s) outside Closing Mosaic budget [7.5s, 12.0s]"
+    )
+
     # Invariant C: Chapter-to-SRT Synchrony (chapter marker aligns within 2.5s of narration end)
     chapter_cue_drift = abs(last_ch_time - last_cue_end)
     assert chapter_cue_drift <= 2.5, (
@@ -250,6 +256,12 @@ def validate_tri_artifact_spec(duration_s, cues, chapters, media_duration=None):
         f"Closing mosaic headroom ({closing_headroom:.2f}s) is under the 7.5s minimum"
     )
 
+    # Invariant B2: Chapter-Tail Headroom Contract (budget [7.5s, 12.0s] for 8.00s closing screen)
+    chapter_tail_headroom = duration_s - last_ch_time
+    assert 7.5 <= chapter_tail_headroom <= 12.0, (
+        f"Chapter-tail headroom ({chapter_tail_headroom:.2f}s) outside Closing Mosaic budget [7.5s, 12.0s]"
+    )
+
     # Invariant C: Chapter-to-SRT Synchrony
     chapter_cue_drift = abs(last_ch_time - last_cue_end)
     assert chapter_cue_drift <= 2.5, (
@@ -296,11 +308,11 @@ def test_tri_artifact_differential_fuzzing_oracle():
     with pytest.raises(AssertionError, match="under the 7.5s minimum"):
         validate_tri_artifact_spec(base_dur, mutated_cues_headroom, base_chapters, base_media_dur)
 
-    # 4. Mutation C: Chapter marker desynchronized by > 2.5s
-    mutated_chapters_desync = list(base_chapters)
-    mutated_chapters_desync[-1] = (550, "Early closing")
+    # 4. Mutation C: Chapter marker desynchronized by > 2.5s (cue ends early at 595s while chapter is 601s)
+    mutated_cues_desync = list(base_cues)
+    mutated_cues_desync[-1] = (59, 580.0, 595.0, "Early closing cue")
     with pytest.raises(AssertionError, match="drift="):
-        validate_tri_artifact_spec(base_dur, base_cues, mutated_chapters_desync, base_media_dur)
+        validate_tri_artifact_spec(base_dur, mutated_cues_desync, base_chapters, base_media_dur)
 
     # 5. Mutation D: Media container duration drifts by >= 0.1s
     with pytest.raises(AssertionError, match="deviates from real MP4 artifact"):
@@ -319,5 +331,54 @@ def test_tri_artifact_differential_fuzzing_oracle():
     mutated_cues_overlap[1] = (1, 5.0, 15.0, "Overlapping cue")  # cue 0 ends at 8.0, cue 1 starts at 5.0
     with pytest.raises(AssertionError, match="Cue overlap detected"):
         validate_tri_artifact_spec(base_dur, mutated_cues_overlap, base_chapters, base_media_dur)
+
+    # 9. Mutation H: Chapter-tail headroom too tight (< 7.5s)
+    mutated_chapters_tight = list(base_chapters)
+    mutated_chapters_tight[-1] = (607, "Too late closing")  # 609.87 - 607 = 2.87s < 7.5s
+    with pytest.raises(AssertionError, match="outside Closing Mosaic budget"):
+        validate_tri_artifact_spec(base_dur, base_cues, mutated_chapters_tight, base_media_dur)
+
+    # 10. Mutation I: Chapter-tail headroom too wide (> 12.0s)
+    mutated_chapters_wide = list(base_chapters)
+    mutated_chapters_wide[-1] = (595, "Too early closing")  # 609.87 - 595 = 14.87s > 12.0s
+    with pytest.raises(AssertionError, match="outside Closing Mosaic budget"):
+        validate_tri_artifact_spec(base_dur, base_cues, mutated_chapters_wide, base_media_dur)
+
+
+def test_chapter_tail_closing_mosaic_headroom_contract():
+    """
+    Chapter-Tail Closing Mosaic Headroom Contract Gate:
+    Enforces that published metadata.duration_seconds provides exactly [7.5s, 12.0s]
+    of runway after the final chapter marker for the 8.00s Series Mosaic Closing Screen.
+    Prevents closing screen truncation or black-frame overruns.
+    """
+    for tap_dir in STAGING_DIR.glob("tap_*"):
+        meta_file = tap_dir / "metadata.json"
+        desc_file = tap_dir / "description.txt"
+        if not (meta_file.exists() and desc_file.exists()):
+            continue
+
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        dur_s = float(meta.get("duration_seconds") or meta.get("duration", 0))
+        if dur_s <= 0:
+            continue
+
+        desc_text = desc_file.read_text(encoding="utf-8")
+        ch_matches = re.findall(r"(\d{2}):(\d{2})\s+([^\n]+)", desc_text)
+        if not ch_matches:
+            continue
+
+        last_m, last_s, last_title = ch_matches[-1]
+        last_ch_seconds = int(last_m) * 60 + int(last_s)
+
+        # Runway must accommodate the 8.00s Closing Mosaic with [7.5s, 12.0s] bounds
+        headroom = dur_s - last_ch_seconds
+        assert 7.5 <= headroom <= 12.0, (
+            f"Closing Mosaic headroom violation in {tap_dir.name}: "
+            f"metadata={dur_s:.2f}s, last_chapter={last_ch_seconds}s ({last_m}:{last_s}), "
+            f"headroom={headroom:.2f}s (must be in [7.5s, 12.0s])"
+        )
+
+
 
 
