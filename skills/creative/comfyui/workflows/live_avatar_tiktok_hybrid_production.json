@@ -1,0 +1,172 @@
+{
+  "_meta": {
+    "title": "Live Avatar TikTok SOTA Hybrid Production Workflow",
+    "description": "Audio-driven 9:16 vertical TikTok livestream commerce & singing avatar. Decoupled LivePortrait macro-motion + MuseTalk viseme inpainting + FaceDetailer restoration.",
+    "model": "LivePortrait-MuseTalk-Hybrid",
+    "aspect_ratio": "9:16 (720x1280 base / 1080x1920 upscale)",
+    "tier": "NVIDIA RTX 5000 / A100-80GB"
+  },
+  "1": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "Load 9:16 Bust Anchor Portrait" },
+    "inputs": {
+      "image": "live_avatar_bust_portrait_9_16.png"
+    }
+  },
+  "2": {
+    "class_type": "LoadAudio",
+    "_meta": { "title": "Load Spoken Voiceover (TTS-Service 48kHz Stereo)" },
+    "inputs": {
+      "audio": "benchmark_script1_commerce_trucly_mastered.wav"
+    }
+  },
+  "3": {
+    "class_type": "DownloadAndLoadLivePortraitModels",
+    "_meta": { "title": "Load LivePortrait Foundation Weights" },
+    "inputs": {
+      "precision": "fp16",
+      "mode": "human"
+    }
+  },
+  "4": {
+    "class_type": "LivePortraitCropper",
+    "_meta": { "title": "Attention ROI Face Cropper (9:16 Bust Anchor)" },
+    "inputs": {
+      "pipeline": ["3", 0],
+      "image": ["1", 0],
+      "crop_factor": 1.7,
+      "dsize": 512,
+      "scale": 2.3
+    }
+  },
+  "5": {
+    "class_type": "LivePortraitAudioMotionConditioner",
+    "_meta": { "title": "Audio Dynamics to Head/Chest Motion" },
+    "inputs": {
+      "pipeline": ["3", 0],
+      "audio": ["2", 0],
+      "fps": 25,
+      "motion_intensity": 1.05,
+      "blink_interval_mean": 3.2,
+      "breathing_frequency": 0.25,
+      "head_pitch_scale": 1.2,
+      "head_yaw_scale": 0.9,
+      "head_roll_scale": 0.6
+    }
+  },
+  "6": {
+    "class_type": "LivePortraitProcess",
+    "_meta": { "title": "Implicit Keypoint Warping Engine" },
+    "inputs": {
+      "pipeline": ["3", 0],
+      "source_image": ["1", 0],
+      "crop_info": ["4", 0],
+      "motion_data": ["5", 0],
+      "lip_zero": true,
+      "eye_retargeting": true
+    }
+  },
+  "7": {
+    "class_type": "LivePortraitComposite",
+    "_meta": { "title": "Composite to 9:16 Vertical Canvas" },
+    "inputs": {
+      "orig_source": ["1", 0],
+      "processed_image": ["6", 0],
+      "crop_info": ["4", 0]
+    }
+  },
+  "8": {
+    "class_type": "MuseTalkModelLoader",
+    "_meta": { "title": "Load MuseTalk 1.5 Whisper UNet" },
+    "inputs": {
+      "version": "v15",
+      "unet_model": "musetalkV15/unet.pth",
+      "vae_type": "sd-vae-ft-mse",
+      "whisper_model": "whisper-tiny",
+      "precision": "fp16"
+    }
+  },
+  "9": {
+    "class_type": "MuseTalkInpainter",
+    "_meta": { "title": "MuseTalk 1.5 Sub-35ms Lipsync Inpainter" },
+    "inputs": {
+      "musetalk_pipe": ["8", 0],
+      "video_frames": ["7", 0],
+      "audio": ["2", 0],
+      "fps": 25,
+      "batch_size": 8,
+      "bbox_shift": 0,
+      "extra_margin": 10,
+      "parsing_mode": "face_parse_bisnet",
+      "left_cheek_width": 0.15,
+      "right_cheek_width": 0.15
+    }
+  },
+  "10": {
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": { "title": "YOLOv8-Face Bounding Box Detector" },
+    "inputs": {
+      "model_name": "face_yolov8m.pt"
+    }
+  },
+  "11": {
+    "class_type": "SAMLoader",
+    "_meta": { "title": "Segment Anything ViT-B Loader" },
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "AUTO"
+    }
+  },
+  "12": {
+    "class_type": "FaceRestoreModelLoader",
+    "_meta": { "title": "CodeFormer Model Loader" },
+    "inputs": {
+      "model_name": "codeformer.pth"
+    }
+  },
+  "13": {
+    "class_type": "FaceDetailer",
+    "_meta": { "title": "Attention ROI Face Detailer (Pore & Teeth Recovery)" },
+    "inputs": {
+      "image": ["9", 0],
+      "model": null,
+      "clip": null,
+      "vae": null,
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 42,
+      "steps": 1,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.22,
+      "feather": 14,
+      "noise_mask": true,
+      "force_inpaint": false,
+      "bbox_detector": ["10", 0],
+      "sam_model_opt": ["11", 0],
+      "face_restore_model": ["12", 0],
+      "codeformer_fidelity": 0.85
+    }
+  },
+  "14": {
+    "class_type": "CreateVideo",
+    "_meta": { "title": "Create Video from Detailed Frames & Spoken Audio" },
+    "inputs": {
+      "images": ["13", 0],
+      "audio": ["2", 0],
+      "fps": 25.0
+    }
+  },
+  "15": {
+    "class_type": "SaveVideo",
+    "_meta": { "title": "Assemble & Save Final TikTok 9:16 MP4" },
+    "inputs": {
+      "video": ["14", 0],
+      "filename_prefix": "live_avatar_tiktok_sota",
+      "format": "auto",
+      "codec": "auto"
+    }
+  }
+}

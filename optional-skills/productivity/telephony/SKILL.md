@@ -4,14 +4,29 @@ description: Provision Twilio numbers, SMS/MMS, and AI outbound calls.
 version: 1.0.0
 author: Nous Research
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [telephony, phone, sms, mms, voice, twilio, bland.ai, vapi, calling, texting]
-    related_skills: [maps, google-workspace, agentmail]
+    tags:
+    - telephony
+    - phone
+    - sms
+    - mms
+    - voice
+    - twilio
+    - bland.ai
+    - vapi
+    - calling
+    - texting
+    related_skills:
+    - maps
+    - google-workspace
+    - agentmail
     category: productivity
 ---
-
 # Telephony — Numbers, Calls, and Texts without Core Tool Changes
 
 This optional skill gives Hermes practical phone capabilities while keeping telephony out of the core tool list.
@@ -25,6 +40,13 @@ It ships with a helper script, `scripts/telephony.py`, that can:
 - make direct Twilio calls using TwiML `<Say>` or `<Play>`
 - import the owned Twilio number into Vapi
 - place outbound AI calls through Bland.ai or Vapi
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to provision twilio numbers, sms/mms, and ai outbound calls.
+- Executing automated telephony workflows and tasks.
 
 ## What this solves
 

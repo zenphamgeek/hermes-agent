@@ -4,14 +4,26 @@ description: Constrain LLM output with grammars; guarantee valid JSON.
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [guidance, transformers]
-platforms: [linux, macos, windows]
+dependencies:
+- guidance
+- transformers
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Prompt Engineering, Guidance, Constrained Generation, Structured Output, JSON Validation, Grammar, Microsoft Research, Format Enforcement, Multi-Step Workflows]
-
+    tags:
+    - Prompt Engineering
+    - Guidance
+    - Constrained Generation
+    - Structured Output
+    - JSON Validation
+    - Grammar
+    - Microsoft Research
+    - Format Enforcement
+    - Multi-Step Workflows
 ---
-
 # Guidance: Constrained LLM Generation
 
 ## When to Use This Skill

@@ -1,5 +1,10 @@
 {
-  "_comment": "SDXL img2img: load an input image, encode to latent, denoise partially. Use --input-image image=./photo.png with run_workflow.py. Lower 'denoise' value preserves more of the source image.",
+  "_meta": {
+    "title": "SDXL 1.0 Image-to-Image",
+    "description": "SDXL img2img: load an input image, encode to latent, denoise partially. Use --input-image image=./photo.png with run_workflow.py. Lower 'denoise' value preserves more of the source image.",
+    "model": "SDXL 1.0",
+    "tier": "NVIDIA T4 / RTX 5000"
+  },
   "1": {
     "class_type": "LoadImage",
     "_meta": {"title": "Load Source Image"},

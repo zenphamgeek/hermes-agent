@@ -4,14 +4,26 @@ description: Fully sharded data-parallel training for large models.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [torch>=2.0, transformers]
-platforms: [linux, macos]
+dependencies:
+- torch>=2.0
+- transformers
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Distributed Training, PyTorch, FSDP, Data Parallel, Sharding, Mixed Precision, CPU Offloading, FSDP2, Large-Scale Training]
-
+    tags:
+    - Distributed Training
+    - PyTorch
+    - FSDP
+    - Data Parallel
+    - Sharding
+    - Mixed Precision
+    - CPU Offloading
+    - FSDP2
+    - Large-Scale Training
 ---
-
 # Pytorch-Fsdp Skill
 
 Assistance with pytorch-fsdp development, generated from official documentation.

@@ -4,14 +4,28 @@ description: Transcribe and translate speech in 99 languages.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [openai-whisper, transformers, torch]
-platforms: [linux, macos]
+dependencies:
+- openai-whisper
+- transformers
+- torch
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Whisper, Speech Recognition, ASR, Multimodal, Multilingual, OpenAI, Speech-To-Text, Transcription, Translation, Audio Processing]
-
+    tags:
+    - Whisper
+    - Speech Recognition
+    - ASR
+    - Multimodal
+    - Multilingual
+    - OpenAI
+    - Speech-To-Text
+    - Transcription
+    - Translation
+    - Audio Processing
 ---
-
 # Whisper - Robust Speech Recognition
 
 OpenAI's multilingual speech recognition model.

@@ -1,17 +1,31 @@
 ---
 name: dspy
-description: "DSPy: declarative LM programs, auto-optimize prompts, RAG."
+description: 'DSPy: declarative LM programs, auto-optimize prompts, RAG.'
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [dspy, openai, anthropic]
-platforms: [linux, macos, windows]
+dependencies:
+- dspy
+- openai
+- anthropic
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Prompt Engineering, DSPy, Declarative Programming, RAG, Agents, Prompt Optimization, LM Programming, Stanford NLP, Automatic Optimization, Modular AI]
-
+    tags:
+    - Prompt Engineering
+    - DSPy
+    - Declarative Programming
+    - RAG
+    - Agents
+    - Prompt Optimization
+    - LM Programming
+    - Stanford NLP
+    - Automatic Optimization
+    - Modular AI
 ---
-
 # DSPy: Declarative Language Model Programming
 
 ## When to Use This Skill

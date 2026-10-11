@@ -4,15 +4,23 @@ description: Find accounts for a username across 400+ platforms.
 version: 1.0.0
 author: unmodeled-tyler
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [osint, security, username, social-media, reconnaissance]
+    tags:
+    - osint
+    - security
+    - username
+    - social-media
+    - reconnaissance
     category: security
 prerequisites:
-  commands: [sherlock]
+  commands:
+  - sherlock
 ---
-
 # Sherlock OSINT Username Search
 
 Hunt down social media accounts by username across 400+ social networks using the [Sherlock Project](https://github.com/sherlock-project/sherlock).

@@ -1,17 +1,32 @@
 ---
 name: outlines
-description: "Outlines: structured JSON/regex/Pydantic LLM generation."
+description: 'Outlines: structured JSON/regex/Pydantic LLM generation.'
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [outlines, transformers, vllm, pydantic]
-platforms: [linux, macos, windows]
+dependencies:
+- outlines
+- transformers
+- vllm
+- pydantic
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Prompt Engineering, Outlines, Structured Generation, JSON Schema, Pydantic, Local Models, Grammar-Based Generation, vLLM, Transformers, Type Safety]
-
+    tags:
+    - Prompt Engineering
+    - Outlines
+    - Structured Generation
+    - JSON Schema
+    - Pydantic
+    - Local Models
+    - Grammar-Based Generation
+    - vLLM
+    - Transformers
+    - Type Safety
 ---
-
 # Outlines: Structured Text Generation
 
 ## When to Use This Skill

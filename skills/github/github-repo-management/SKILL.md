@@ -1,19 +1,37 @@
 ---
 name: github-repo-management
-description: "Clone/create/fork repos; manage remotes, releases."
+description: Clone/create/fork repos; manage remotes, releases.
 version: 1.1.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [GitHub, Repositories, Git, Releases, Secrets, Configuration]
-    related_skills: [github-auth, github-pr-workflow, github-issues]
+    tags:
+    - GitHub
+    - Repositories
+    - Git
+    - Releases
+    - Secrets
+    - Configuration
+    related_skills:
+    - github-auth
+    - github-pr-workflow
+    - github-issues
 ---
-
 # GitHub Repository Management
 
 Create, clone, fork, configure, and manage GitHub repositories. Each section shows `gh` first, then the `git` + `curl` fallback.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to clone/create/fork repos; manage remotes, releases.
+- Executing automated github repo management workflows and tasks.
 
 ## Prerequisites
 

@@ -1,16 +1,23 @@
 ---
 name: competitor-news-monitor
-description: "Watch named companies for material news; cited digests."
+description: Watch named companies for material news; cited digests.
 version: 0.1.0
 author: Ben Barclay (benbarclay), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Competitors, News, Market-Research, Monitoring]
-    related_skills: [blogwatcher]
+    tags:
+    - Competitors
+    - News
+    - Market-Research
+    - Monitoring
+    related_skills:
+    - blogwatcher
 ---
-
 # Competitor News Monitor
 
 Track a declared company set and report only material, new developments with primary-source evidence. This is not a generic page-diff watcher: it applies company-news categories, source hierarchy, event deduplication, and business significance. Setup runs once in the foreground; the recurring check runs as a `cronjob` tick (the `competitor-watch` automation blueprint scaffolds this).

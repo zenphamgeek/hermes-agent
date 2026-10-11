@@ -1,5 +1,10 @@
 {
-  "_comment": "SDXL text-to-image at 1024x1024. Required model: sd_xl_base_1.0.safetensors (or any SDXL checkpoint).",
+  "_meta": {
+    "title": "SDXL 1.0 Text-to-Image",
+    "description": "SDXL text-to-image at 1024x1024. Required model: sd_xl_base_1.0.safetensors (or any SDXL checkpoint).",
+    "model": "SDXL 1.0",
+    "tier": "NVIDIA T4 / RTX 5000"
+  },
   "3": {
     "class_type": "KSampler",
     "_meta": {"title": "KSampler"},

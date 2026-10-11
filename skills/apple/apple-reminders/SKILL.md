@@ -1,17 +1,24 @@
 ---
 name: apple-reminders
-description: "Apple Reminders via remindctl: add, list, complete."
+description: 'Apple Reminders via remindctl: add, list, complete.'
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [macos]
+platforms:
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Reminders, tasks, todo, macOS, Apple]
+    tags:
+    - Reminders
+    - tasks
+    - todo
+    - macOS
+    - Apple
 prerequisites:
-  commands: [remindctl]
+  commands:
+  - remindctl
 ---
-
 # Apple Reminders
 
 Use `remindctl` to manage Apple Reminders directly from the terminal. Tasks sync across all Apple devices via iCloud.

@@ -4,14 +4,25 @@ description: Create, read, edit Excel .xlsx workbooks and CSVs.
 version: 1.1.0
 author: Nous Research
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [excel, spreadsheet, xlsx, csv, openpyxl, productivity]
+    tags:
+    - excel
+    - spreadsheet
+    - xlsx
+    - csv
+    - openpyxl
+    - productivity
     category: productivity
-    related_skills: [docx, pdf, powerpoint]
+    related_skills:
+    - docx
+    - pdf
+    - powerpoint
 ---
-
 # Xlsx Skill
 
 Work with Excel .xlsx workbooks using Python and openpyxl: build styled

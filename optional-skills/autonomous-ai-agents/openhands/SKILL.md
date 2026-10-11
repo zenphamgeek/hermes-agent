@@ -4,13 +4,23 @@ description: Delegate coding to OpenHands CLI (model-agnostic, LiteLLM).
 version: 0.1.0
 author: Tim Koepsel (xzessmedia), Hermes Agent
 license: MIT
-platforms: [linux, macos]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Coding-Agent, OpenHands, Model-Agnostic, LiteLLM]
-    related_skills: [claude-code, codex, opencode, hermes-agent]
+    tags:
+    - Coding-Agent
+    - OpenHands
+    - Model-Agnostic
+    - LiteLLM
+    related_skills:
+    - claude-code
+    - codex
+    - opencode
+    - hermes-agent
 ---
-
 # OpenHands CLI
 
 Delegate coding tasks to the [OpenHands CLI](https://github.com/All-Hands-AI/OpenHands) via the `terminal` tool. OpenHands is model-agnostic: any LiteLLM-supported provider (OpenAI, Anthropic, OpenRouter, DeepSeek, Ollama, vLLM, etc.).

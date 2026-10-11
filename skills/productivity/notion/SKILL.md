@@ -1,24 +1,41 @@
 ---
 name: notion
-description: "Notion API + ntn CLI: pages, databases, markdown, Workers."
+description: 'Notion API + ntn CLI: pages, databases, markdown, Workers.'
 version: 2.0.0
 author: community
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 prerequisites:
-  env_vars: [NOTION_API_KEY]
+  env_vars:
+  - NOTION_API_KEY
 metadata:
   hermes:
-    tags: [Notion, Productivity, Notes, Database, API, CLI, Workers]
+    tags:
+    - Notion
+    - Productivity
+    - Notes
+    - Database
+    - API
+    - CLI
+    - Workers
     homepage: https://developers.notion.com
 ---
-
 # Notion
 
 Talk to Notion two ways. Same integration token works for both — pick by what's available.
 
 ◆ **`ntn` CLI** — Notion's official CLI. Shorter syntax, one-line file uploads, required for Workers. macOS + Linux only as of May 2026 (Windows support "coming soon"). **Default when installed.**
 ◆ **HTTP + curl** — works everywhere including Windows. **Default fallback** when `ntn` isn't installed.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to notion api + ntn cli: pages, databases, markdown, workers.
+- Executing automated notion workflows and tasks.
 
 ## Setup
 

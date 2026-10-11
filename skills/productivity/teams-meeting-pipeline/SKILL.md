@@ -4,19 +4,30 @@ description: Teams meeting summaries, job replay, Graph subscriptions.
 version: 1.1.0
 author: Hermes Agent + Teknium
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 prerequisites:
-  env_vars: [MSGRAPH_TENANT_ID, MSGRAPH_CLIENT_ID, MSGRAPH_CLIENT_SECRET]
-  commands: [hermes]
+  env_vars:
+  - MSGRAPH_TENANT_ID
+  - MSGRAPH_CLIENT_ID
+  - MSGRAPH_CLIENT_SECRET
+  commands:
+  - hermes
 metadata:
   hermes:
-    tags: [Teams, Microsoft Graph, Meetings, Productivity, Operations]
+    tags:
+    - Teams
+    - Microsoft Graph
+    - Meetings
+    - Productivity
+    - Operations
     related_docs:
-      - /docs/guides/microsoft-graph-app-registration
-      - /docs/user-guide/messaging/teams-meetings
-      - /docs/guides/operate-teams-meeting-pipeline
+    - /docs/guides/microsoft-graph-app-registration
+    - /docs/user-guide/messaging/teams-meetings
+    - /docs/guides/operate-teams-meeting-pipeline
 ---
-
 # Teams Meeting Pipeline
 
 Use this skill whenever the user asks about Microsoft Teams meeting summaries, transcripts, recordings, action items, Graph subscriptions, or any operational question about the Teams meeting pipeline. Works in any language — the triggers below are examples, not an exhaustive list.

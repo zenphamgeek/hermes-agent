@@ -1,0 +1,159 @@
+{
+  "_meta": {
+    "title": "Wan2.2-S2V-14B Production: 9:16 Vertical Shorts Funnel (Face Enhanced)",
+    "description": "High-converting 9:16 vertical speech-to-video talking portrait for YouTube Shorts (50.00s funnel) with integrated CodeFormer Face Enhancer. Restores crisp teeth, eye micro-reflections, and skin micro-textures while preserving character fidelity.",
+    "model": "Wan2.2-S2V-14B",
+    "aspect_ratio": "9:16 (704x1024 base / 1080x1920 upscale)",
+    "tier": "NVIDIA A100-80GB"
+  },
+  "1": {
+    "class_type": "UNETLoader",
+    "_meta": { "title": "Load Wan2.2 S2V 14B UNET Foundation" },
+    "inputs": {
+      "unet_name": "wan2.2_s2v_14B_bf16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "Load UMT5-XXL Text Encoder" },
+    "inputs": {
+      "clip_name": "umt5_xxl_fp16.safetensors",
+      "type": "wan"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "_meta": { "title": "Load Wan 2.1 VAE" },
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "AudioEncoderLoader",
+    "_meta": { "title": "Load Speech Audio Encoder" },
+    "inputs": {
+      "audio_encoder_name": "audio_encoder.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "LoadAudio",
+    "_meta": { "title": "Input Shorts Spoken Voiceover (TTS V0-Sense 48kHz Stereo)" },
+    "inputs": {
+      "audio": "shorts_voiceover_chunk.wav"
+    }
+  },
+  "6": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "Input Vertical Portrait Anchor (9:16 Framing)" },
+    "inputs": {
+      "image": "avatar_portrait_9x16.png"
+    }
+  },
+  "7": {
+    "class_type": "AudioEncoderEncode",
+    "_meta": { "title": "Extract Phoneme & Prosody Embeddings" },
+    "inputs": {
+      "audio_encoder": ["4", 0],
+      "audio": ["5", 0]
+    }
+  },
+  "8": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Positive Engaging Vertical Host Prompt" },
+    "inputs": {
+      "clip": ["2", 0],
+      "text": "A charismatic Vietnamese tech host speaking directly to the viewer, direct engaging eye contact, energetic subtle head nodding, micro-smiles, crisp modern studio lighting with subtle obsidian-cyan rim light, photorealistic 8k, pristine skin texture, shallow depth of field, vertical 9:16 format"
+    }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Negative Prompt (Anti-Jitter & Distortion)" },
+    "inputs": {
+      "clip": ["2", 0],
+      "text": "distorted teeth, unnatural mouth movements, blurry, jittery, low quality, artifacting, cartoon, eye drift, morphing lips, bad hair edges, flickering, double chin"
+    }
+  },
+  "10": {
+    "class_type": "WanSoundImageToVideo",
+    "_meta": { "title": "Wan Sound & Image Latent Conditioning (9:16)" },
+    "inputs": {
+      "positive": ["8", 0],
+      "negative": ["9", 0],
+      "vae": ["3", 0],
+      "width": 704,
+      "height": 1024,
+      "length": 81,
+      "batch_size": 1,
+      "audio_encoder_output": ["7", 0],
+      "ref_image": ["6", 0]
+    }
+  },
+  "11": {
+    "class_type": "ModelSamplingSD3",
+    "_meta": { "title": "Flow Match Sampling Shift" },
+    "inputs": {
+      "model": ["1", 0],
+      "shift": 3.0
+    }
+  },
+  "12": {
+    "class_type": "KSampler",
+    "_meta": { "title": "KSampler Diffusion (35 Steps)" },
+    "inputs": {
+      "model": ["11", 0],
+      "positive": ["10", 0],
+      "negative": ["10", 1],
+      "latent_image": ["10", 2],
+      "seed": 101,
+      "steps": 35,
+      "cfg": 5.0,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1.0
+    }
+  },
+  "13": {
+    "class_type": "VAEDecode",
+    "_meta": { "title": "Decode Latents to Video Frames" },
+    "inputs": {
+      "samples": ["12", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "14": {
+    "class_type": "FaceRestoreModelLoader",
+    "_meta": { "title": "Load CodeFormer / GFPGAN Face Restorer" },
+    "inputs": {
+      "model_name": "codeformer.pth"
+    }
+  },
+  "15": {
+    "class_type": "FaceRestoreCFWithModel",
+    "_meta": { "title": "Face Enhancer (Micro-Detail, Eyes & Teeth Restoration)" },
+    "inputs": {
+      "facerestore_model": ["14", 0],
+      "image": ["13", 0],
+      "fidelity": 0.85
+    }
+  },
+  "16": {
+    "class_type": "CreateVideo",
+    "_meta": { "title": "Create Video from Enhanced Frames & Spoken Audio" },
+    "inputs": {
+      "images": ["15", 0],
+      "audio": ["5", 0],
+      "fps": 25.0
+    }
+  },
+  "17": {
+    "class_type": "SaveVideo",
+    "_meta": { "title": "Mux Pristine 9:16 MP4" },
+    "inputs": {
+      "video": ["16", 0],
+      "filename_prefix": "wan22_s2v_shorts_vertical_9x16",
+      "format": "auto",
+      "codec": "auto"
+    }
+  }
+}

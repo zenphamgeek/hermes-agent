@@ -4,14 +4,26 @@ description: Embedding database for RAG and semantic search.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [chromadb, sentence-transformers]
-platforms: [linux, macos, windows]
+dependencies:
+- chromadb
+- sentence-transformers
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [RAG, Chroma, Vector Database, Embeddings, Semantic Search, Open Source, Self-Hosted, Document Retrieval, Metadata Filtering]
-
+    tags:
+    - RAG
+    - Chroma
+    - Vector Database
+    - Embeddings
+    - Semantic Search
+    - Open Source
+    - Self-Hosted
+    - Document Retrieval
+    - Metadata Filtering
 ---
-
 # Chroma - Open-Source Embedding Database
 
 The AI-native database for building LLM applications with memory.

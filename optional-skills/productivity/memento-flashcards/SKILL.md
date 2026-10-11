@@ -1,17 +1,26 @@
 ---
 name: memento-flashcards
-description: "Spaced-repetition flashcards: create, review, quiz, export."
+description: 'Spaced-repetition flashcards: create, review, quiz, export.'
 version: 1.0.0
 author: Memento AI
 license: MIT
-platforms: [macos, linux]
+platforms:
+- macos
+- linux
+- windows
 metadata:
   hermes:
-    tags: [Education, Flashcards, Spaced Repetition, Learning, Quiz, YouTube]
-    requires_toolsets: [terminal]
+    tags:
+    - Education
+    - Flashcards
+    - Spaced Repetition
+    - Learning
+    - Quiz
+    - YouTube
+    requires_toolsets:
+    - terminal
     category: productivity
 ---
-
 # Memento Flashcards — Spaced-Repetition Flashcard Skill
 
 ## Overview

@@ -1,0 +1,1 @@
+/home/zen/hermes-agent/assets/scripts_video/wikimedia_footage_manager.py

@@ -4,16 +4,28 @@ description: Box manages cloud files, sharing, search, and metadata.
 version: 1.0.0
 author: Chris Kim (iskysun96), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 prerequisites:
-  commands: [box]
+  commands:
+  - box
 metadata:
   hermes:
-    tags: [Box, Productivity, Cloud Storage, Collaboration, Metadata, Content Extraction, CLI, SDK]
-    related_skills: [google-workspace]
+    tags:
+    - Box
+    - Productivity
+    - Cloud Storage
+    - Collaboration
+    - Metadata
+    - Content Extraction
+    - CLI
+    - SDK
+    related_skills:
+    - google-workspace
     homepage: https://developer.box.com/
 ---
-
 # Box
 
 Use Box as the cloud file system for file operations, collaboration, metadata, and document work. Run operations with Hermes' `terminal` tool and use the Box CLI; use the SDK guide when building an application.

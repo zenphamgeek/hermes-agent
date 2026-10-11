@@ -4,18 +4,35 @@ description: Roleplay a hostile user to find and triage UX pain points.
 version: 1.0.0
 author: Omni @ Comelse
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [qa, ux, testing, adversarial, dogfood, personas, user-testing]
-    related_skills: [dogfood]
+    tags:
+    - qa
+    - ux
+    - testing
+    - adversarial
+    - dogfood
+    - personas
+    - user-testing
+    related_skills:
+    - dogfood
 ---
-
 # Adversarial UX Test
 
 Roleplay the worst-case user for your product — the person who hates technology, doesn't want your software, and will find every reason to complain. Then filter their feedback through a pragmatism layer to separate real UX problems from "I hate computers" noise.
 
 Think of it as an automated "mom test" — but angry.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to roleplay a hostile user to find and triage ux pain points.
+- Executing automated adversarial ux test workflows and tasks.
 
 ## Why This Works
 

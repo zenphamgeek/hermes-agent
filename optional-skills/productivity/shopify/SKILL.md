@@ -4,32 +4,53 @@ description: Query Shopify Admin/Storefront GraphQL APIs via curl.
 version: 1.0.0
 author: community
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 prerequisites:
-  env_vars: [SHOPIFY_ACCESS_TOKEN, SHOPIFY_STORE_DOMAIN]
-  commands: [curl, jq]
+  env_vars:
+  - SHOPIFY_ACCESS_TOKEN
+  - SHOPIFY_STORE_DOMAIN
+  commands:
+  - curl
+  - jq
 required_environment_variables:
-  - name: SHOPIFY_ACCESS_TOKEN
-    prompt: Shopify Admin API access token (starts with shpat_)
-    help: "Shopify admin → Settings → Apps and sales channels → Develop apps → Create an app → API credentials. Token shown ONCE on install."
-  - name: SHOPIFY_STORE_DOMAIN
-    prompt: Your shop subdomain without protocol (e.g. my-store.myshopify.com)
-    help: "The permanent myshopify.com domain, not your custom domain."
-  - name: SHOPIFY_API_VERSION
-    prompt: Shopify API version (default 2026-01)
-    help: "Stable quarterly version. Override if you need an older one."
+- name: SHOPIFY_ACCESS_TOKEN
+  prompt: Shopify Admin API access token (starts with shpat_)
+  help: Shopify admin → Settings → Apps and sales channels → Develop apps → Create
+    an app → API credentials. Token shown ONCE on install.
+- name: SHOPIFY_STORE_DOMAIN
+  prompt: Your shop subdomain without protocol (e.g. my-store.myshopify.com)
+  help: The permanent myshopify.com domain, not your custom domain.
+- name: SHOPIFY_API_VERSION
+  prompt: Shopify API version (default 2026-01)
+  help: Stable quarterly version. Override if you need an older one.
 metadata:
   hermes:
-    tags: [Shopify, E-commerce, Commerce, API, GraphQL]
-    related_skills: [airtable, xurl]
+    tags:
+    - Shopify
+    - E-commerce
+    - Commerce
+    - API
+    - GraphQL
+    related_skills:
+    - airtable
+    - xurl
     homepage: https://shopify.dev/docs/api/admin-graphql
 ---
-
 # Shopify — Admin & Storefront GraphQL APIs
 
 Work with Shopify stores directly through `curl`: list products, manage inventory, pull orders, update customers, read metafields. No SDK, no app framework — just the GraphQL endpoint and a custom-app access token.
 
 The REST Admin API is legacy since 2024-04 and only receives security fixes. **Use GraphQL Admin** for all admin work. Use **Storefront GraphQL** for read-only customer-facing queries (products, collections, cart).
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to query shopify admin/storefront graphql apis via curl.
+- Executing automated shopify workflows and tasks.
 
 ## Prerequisites
 

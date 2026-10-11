@@ -4,13 +4,23 @@ description: Agent-native web search, deep research, and enrichment.
 version: 1.1.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Research, Web, Search, Deep-Research, Enrichment, CLI]
-    related_skills: [duckduckgo-search, mcporter]
+    tags:
+    - Research
+    - Web
+    - Search
+    - Deep-Research
+    - Enrichment
+    - CLI
+    related_skills:
+    - duckduckgo-search
+    - mcporter
 ---
-
 # Parallel CLI
 
 Use `parallel-cli` when the user explicitly wants Parallel, or when a terminal-native workflow would benefit from Parallel's vendor-specific stack for web search, extraction, deep research, enrichment, entity discovery, or monitoring.

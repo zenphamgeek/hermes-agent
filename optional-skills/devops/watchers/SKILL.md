@@ -4,15 +4,25 @@ description: Poll RSS, JSON APIs, and GitHub with watermark dedup.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [cron, polling, rss, github, http, automation, monitoring]
+    tags:
+    - cron
+    - polling
+    - rss
+    - github
+    - http
+    - automation
+    - monitoring
     category: devops
-    requires_toolsets: [terminal]
+    requires_toolsets:
+    - terminal
     related_skills: []
 ---
-
 # Watchers
 
 Poll external sources on an interval and react only to new items. Three ready-made scripts plus a shared watermark helper; wire them into a cron job (or run them ad-hoc from the terminal).

@@ -1,5 +1,10 @@
 {
-  "_comment": "Flux Dev text-to-image using the modern sampler chain (BasicScheduler/Guider/SamplerCustomAdvanced). Required: flux1-dev.safetensors (UNET), t5xxl_fp16.safetensors + clip_l.safetensors (CLIP), ae.safetensors (VAE).",
+  "_meta": {
+    "title": "Flux.1 Dev Text-to-Image",
+    "description": "Flux Dev text-to-image using the modern sampler chain (BasicScheduler/Guider/SamplerCustomAdvanced). Required: flux1-dev.safetensors (UNET), t5xxl_fp16.safetensors + clip_l.safetensors (CLIP), ae.safetensors (VAE).",
+    "model": "Flux.1 Dev",
+    "tier": "NVIDIA A100-80GB"
+  },
   "6": {
     "class_type": "CLIPTextEncode",
     "_meta": {"title": "Prompt"},

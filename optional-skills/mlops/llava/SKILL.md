@@ -1,17 +1,31 @@
 ---
 name: llava
-description: "Vision-language chat: VQA, captioning, image dialogue."
+description: 'Vision-language chat: VQA, captioning, image dialogue.'
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [transformers, torch, pillow]
-platforms: [linux, macos, windows]
+dependencies:
+- transformers
+- torch
+- pillow
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [LLaVA, Vision-Language, Multimodal, Visual Question Answering, Image Chat, CLIP, Vicuna, Conversational AI, Instruction Tuning, VQA]
-
+    tags:
+    - LLaVA
+    - Vision-Language
+    - Multimodal
+    - Visual Question Answering
+    - Image Chat
+    - CLIP
+    - Vicuna
+    - Conversational AI
+    - Instruction Tuning
+    - VQA
 ---
-
 # LLaVA - Large Language and Vision Assistant
 
 Open-source vision-language model for conversational image understanding.

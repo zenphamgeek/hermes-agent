@@ -4,12 +4,32 @@ description: Build integrated IS/BS/CF financial workbooks in Excel.
 version: 1.0.0
 author: Anthropic (adapted by Nous Research)
 license: Apache-2.0
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [finance, three-statement, income-statement, balance-sheet, cash-flow, excel, openpyxl, modeling]
-    related_skills: [excel-author, pptx-author, dcf-model, lbo-model]
+    tags:
+    - finance
+    - three-statement
+    - income-statement
+    - balance-sheet
+    - cash-flow
+    - excel
+    - openpyxl
+    - modeling
+    related_skills:
+    - excel-author
+    - pptx-author
+    - dcf-model
+    - lbo-model
 ---
+## When to Use
+
+Use this skill when:
+- The user asks to build integrated is/bs/cf financial workbooks in excel.
+- Executing automated 3 statement model workflows and tasks.
 
 ## Environment
 

@@ -1,0 +1,389 @@
+sources:
+  - id: VN_GOV_LEGAL
+    name: "Vietnam Government Official Legal Portal"
+    jurisdiction: VN
+    authority_level: A1_SIGNED_OFFICIAL
+    base_urls:
+      - https://vanban.chinhphu.vn/
+    allowed_hosts:
+      - vanban.chinhphu.vn
+    discovery:
+      strategies: [sitemap, paginated_index, attachment_links]
+      start_urls:
+        - https://vanban.chinhphu.vn/he-thong-van-ban
+    allowed_url_patterns:
+      - "https://vanban.chinhphu.vn/*"
+    denied_url_patterns:
+      - "*/login*"
+      - "*/captcha*"
+    content_classes:
+      - legal_document
+      - decree
+      - circular
+      - consolidated_document
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 60
+      retries: 4
+      honor_robots_txt: true
+      conditional_requests: true
+      retry_policy: adaptive_v1
+      max_retry_budget_minutes: 120
+      circuit_breaker_threshold: 8
+    acquisition:
+      unattended_required: true
+      preferred_channels: [official_api, bulk_export, http, browser_render]
+      sanctioned_fallback_sources: []
+      browser_render:
+        enabled: true
+        persistent_profile: false
+        solve_interactive_challenge: false
+        stealth: false
+        proxy_rotation: false
+      interactive_challenge_action: quarantine_and_fallback
+    license:
+      policy: PUBLIC_DOWNLOAD
+      entitlement_required: false
+    parsers: [html, pdf, docx]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 3 1 * *"
+
+  - id: VN_VBPL
+    name: "Vietnam National Legal Database"
+    jurisdiction: VN
+    authority_level: A2_OFFICIAL_DATABASE
+    base_urls:
+      - https://vbpl.vn/
+    allowed_hosts:
+      - vbpl.vn
+    discovery:
+      strategies: [sitemap, paginated_index, attachment_links]
+      start_urls:
+        - https://vbpl.vn/pages/portal.aspx
+    allowed_url_patterns:
+      - "https://vbpl.vn/*"
+    denied_url_patterns:
+      - "*/login*"
+      - "*/admin*"
+    content_classes:
+      - national_legal_database
+      - legal_metadata
+      - full_text_law
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 60
+      retries: 4
+      honor_robots_txt: true
+      conditional_requests: true
+      retry_policy: adaptive_v1
+      max_retry_budget_minutes: 120
+      circuit_breaker_threshold: 8
+    acquisition:
+      unattended_required: true
+      preferred_channels: [official_api, http, browser_render]
+      sanctioned_fallback_sources: []
+      browser_render:
+        enabled: true
+        persistent_profile: false
+        solve_interactive_challenge: false
+        stealth: false
+        proxy_rotation: false
+      interactive_challenge_action: quarantine_and_fallback
+    license:
+      policy: PUBLIC_DOWNLOAD
+      entitlement_required: false
+    parsers: [html, pdf, docx]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 3 1 * *"
+
+  - id: VN_CUSTOMS_TARIFF
+    name: "Vietnam Customs Official Tariff & Nomenclature"
+    jurisdiction: VN
+    authority_level: A1_SIGNED_OFFICIAL
+    base_urls:
+      - https://www.customs.gov.vn/
+    allowed_hosts:
+      - www.customs.gov.vn
+      - customs.gov.vn
+    discovery:
+      strategies: [paginated_index, attachment_links]
+      start_urls:
+        - https://www.customs.gov.vn/index.jsp?aid=183995&cid=25&pageId=2
+    allowed_url_patterns:
+      - "https://www.customs.gov.vn/*"
+      - "https://customs.gov.vn/*"
+    denied_url_patterns:
+      - "*/login*"
+    content_classes:
+      - tariff_schedule
+      - hs_nomenclature
+      - ahtn_sen_table
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 60
+      retries: 4
+      honor_robots_txt: true
+      conditional_requests: true
+      retry_policy: adaptive_v1
+      max_retry_budget_minutes: 120
+      circuit_breaker_threshold: 8
+    acquisition:
+      unattended_required: true
+      preferred_channels: [official_api, bulk_export, http, browser_render]
+      sanctioned_fallback_sources: []
+      browser_render:
+        enabled: true
+        persistent_profile: false
+        solve_interactive_challenge: false
+        stealth: false
+        proxy_rotation: false
+      interactive_challenge_action: quarantine_and_fallback
+    license:
+      policy: PUBLIC_DOWNLOAD
+      entitlement_required: false
+    parsers: [html, pdf, xlsx]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 3 1 * *"
+
+  - id: VN_CUSTOMS_RULINGS
+    name: "Vietnam Customs Public Classification Rulings"
+    jurisdiction: VN
+    authority_level: A2_OFFICIAL_DATABASE
+    base_urls:
+      - https://www.customs.gov.vn/
+    allowed_hosts:
+      - www.customs.gov.vn
+      - customs.gov.vn
+      - "kv*.customs.gov.vn"
+    discovery:
+      strategies: [sitemap, paginated_index, attachment_links]
+      start_urls:
+        - https://www.customs.gov.vn/index.jsp?cid=25
+    allowed_url_patterns:
+      - "https://www.customs.gov.vn/*"
+      - "https://*.customs.gov.vn/*"
+    denied_url_patterns:
+      - "*/login*"
+      - "*/captcha*"
+    content_classes:
+      - advance_classification_ruling
+      - classification_result
+      - correction_notice
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 60
+      retries: 4
+      honor_robots_txt: true
+      conditional_requests: true
+      retry_policy: adaptive_v1
+      max_retry_budget_minutes: 120
+      circuit_breaker_threshold: 8
+    acquisition:
+      unattended_required: true
+      preferred_channels: [official_api, bulk_export, http, browser_render]
+      sanctioned_fallback_sources: []
+      browser_render:
+        enabled: true
+        persistent_profile: false
+        solve_interactive_challenge: false
+        stealth: false
+        proxy_rotation: false
+      interactive_challenge_action: quarantine_and_fallback
+    license:
+      policy: PUBLIC_DOWNLOAD
+      entitlement_required: false
+    parsers: [html, pdf, docx]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 3 1 * *"
+
+  - id: VN_VNTR
+    name: "Vietnam National Trade Repository"
+    jurisdiction: VN
+    authority_level: A2_OFFICIAL_DATABASE
+    base_urls:
+      - https://vntr.moit.gov.vn/
+    allowed_hosts:
+      - vntr.moit.gov.vn
+    discovery:
+      strategies: [paginated_index, sitemap]
+      start_urls:
+        - https://vntr.moit.gov.vn/vi/administrative_rulings
+        - https://vntr.moit.gov.vn/vi/question-and-answer
+    allowed_url_patterns:
+      - "https://vntr.moit.gov.vn/*"
+    denied_url_patterns:
+      - "*/admin*"
+    content_classes:
+      - tariff_lines
+      - fta_schedules
+      - non_tariff_measures
+      - administrative_rulings
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 60
+      retries: 4
+      honor_robots_txt: true
+      conditional_requests: true
+      retry_policy: adaptive_v1
+      max_retry_budget_minutes: 120
+      circuit_breaker_threshold: 8
+    acquisition:
+      unattended_required: true
+      preferred_channels: [official_api, http, browser_render]
+      sanctioned_fallback_sources: []
+      browser_render:
+        enabled: true
+        persistent_profile: false
+        solve_interactive_challenge: false
+        stealth: false
+        proxy_rotation: false
+      interactive_challenge_action: quarantine_and_fallback
+    license:
+      policy: PUBLIC_DOWNLOAD
+      entitlement_required: false
+    parsers: [html, json, pdf]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 3 1 * *"
+
+  - id: ASEAN_AHTN
+    name: "ASEAN Harmonised Tariff Nomenclature"
+    jurisdiction: ASEAN
+    authority_level: A4_INTERGOVERNMENTAL
+    base_urls:
+      - https://asean.org/
+    allowed_hosts:
+      - asean.org
+    discovery:
+      strategies: [paginated_index, attachment_links]
+      start_urls:
+        - https://asean.org/our-communities/economic-community/asean-customs/areas-of-cooperation/
+        - https://asean.org/annex-2-tariff-schedules/
+    allowed_url_patterns:
+      - "https://asean.org/*"
+    denied_url_patterns:
+      - "*/wp-admin*"
+    content_classes:
+      - ahtn_nomenclature
+      - atiga_tariff_schedules
+      - psr_annexes
+      - correlation_tables
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 60
+      retries: 4
+      honor_robots_txt: true
+      conditional_requests: true
+      retry_policy: adaptive_v1
+      max_retry_budget_minutes: 120
+      circuit_breaker_threshold: 8
+    acquisition:
+      unattended_required: true
+      preferred_channels: [official_api, http, bulk_export]
+      sanctioned_fallback_sources: []
+      browser_render:
+        enabled: false
+      interactive_challenge_action: quarantine_and_fallback
+    license:
+      policy: PUBLIC_DOWNLOAD
+      entitlement_required: false
+    parsers: [html, pdf, xlsx]
+    schedule:
+      incremental: "0 2 * * 0"
+      full_reconcile: "0 3 1 * *"
+
+  - id: WCO_PUBLIC_META
+    name: "WCO Public Nomenclature Metadata"
+    jurisdiction: INT
+    authority_level: A4_INTERGOVERNMENTAL
+    base_urls:
+      - https://www.wcoomd.org/
+    allowed_hosts:
+      - www.wcoomd.org
+      - wcoomd.org
+    discovery:
+      strategies: [paginated_index]
+      start_urls:
+        - https://www.wcoomd.org/en/topics/nomenclature/instrument-and-tools/hs-nomenclature-2022-edition/hs-nomenclature-2022-edition.aspx
+    allowed_url_patterns:
+      - "https://www.wcoomd.org/*"
+    denied_url_patterns:
+      - "*/login*"
+    content_classes:
+      - hs_edition_metadata
+      - amendment_notices
+      - correlation_tables
+    fetch:
+      rate_limit_rps: 0.2
+      concurrency: 1
+      timeout_seconds: 60
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+      retry_policy: adaptive_v1
+      max_retry_budget_minutes: 60
+      circuit_breaker_threshold: 5
+    acquisition:
+      unattended_required: true
+      preferred_channels: [http]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: quarantine_and_fallback
+    license:
+      policy: PUBLIC_METADATA_ONLY
+      entitlement_required: false
+    parsers: [html, pdf]
+    schedule:
+      incremental: "0 2 * * 0"
+      full_reconcile: "0 3 1 * *"
+
+  - id: WCO_HS_CONTENT
+    name: "WCO HS Full Content and Explanatory Notes"
+    jurisdiction: INT
+    authority_level: A4_INTERGOVERNMENTAL
+    base_urls:
+      - https://www.wcotradetools.org/
+    allowed_hosts:
+      - www.wcotradetools.org
+      - wcotradetools.org
+    discovery:
+      strategies: [paginated_index]
+      start_urls:
+        - https://www.wcotradetools.org/
+    allowed_url_patterns:
+      - "https://www.wcotradetools.org/*"
+    denied_url_patterns: []
+    content_classes:
+      - wco_explanatory_notes
+      - classification_opinions
+    fetch:
+      rate_limit_rps: 0.2
+      concurrency: 1
+      timeout_seconds: 60
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+      retry_policy: adaptive_v1
+      max_retry_budget_minutes: 60
+      circuit_breaker_threshold: 5
+    acquisition:
+      unattended_required: true
+      preferred_channels: [official_api, bulk_export]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: quarantine_and_fallback
+    license:
+      policy: LICENSE_REQUIRED
+      entitlement_required: true
+    parsers: [html, json]
+    schedule:
+      incremental: "0 2 * * 0"
+      full_reconcile: "0 3 1 * *"

@@ -1,16 +1,28 @@
 ---
 name: weekly-review-planning
-description: "Weekly reset: commitments, stalled work, next-week plan."
+description: 'Weekly reset: commitments, stalled work, next-week plan.'
 version: 0.1.0
 author: Ben Barclay (benbarclay), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Weekly-Review, Planning, Tasks, Calendar, Productivity]
-    related_skills: [obsidian, notion, airtable, google-workspace, email-inbox-triage]
+    tags:
+    - Weekly-Review
+    - Planning
+    - Tasks
+    - Calendar
+    - Productivity
+    related_skills:
+    - obsidian
+    - notion
+    - airtable
+    - google-workspace
+    - email-inbox-triage
 ---
-
 # Weekly Review and Planning
 
 Run a bounded weekly reset across the user's chosen systems. This is a concrete recurring task, not a generic productivity methodology — the `weekly-review` Automation Blueprint schedules it as a cron job.

@@ -4,13 +4,22 @@ description: Hyperliquid market data, account history, trade review.
 version: 0.1.0
 author: Hugo Sequier (Hugo-SEQUIER), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Hyperliquid, Blockchain, Crypto, Trading, Perpetuals, Spot, DeFi]
+    tags:
+    - Hyperliquid
+    - Blockchain
+    - Crypto
+    - Trading
+    - Perpetuals
+    - Spot
+    - DeFi
     related_skills: []
 ---
-
 # Hyperliquid Skill
 
 Query Hyperliquid market and account data through the public `/info` endpoint.

@@ -4,16 +4,28 @@ description: Build, test, and deploy Python MCP servers.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [MCP, FastMCP, Python, Tools, Resources, Prompts, Deployment]
+    tags:
+    - MCP
+    - FastMCP
+    - Python
+    - Tools
+    - Resources
+    - Prompts
+    - Deployment
     homepage: https://gofastmcp.com
-    related_skills: [hermes-agent, mcporter]
+    related_skills:
+    - hermes-agent
+    - mcporter
 prerequisites:
-  commands: [python]
+  commands:
+  - python
 ---
-
 # FastMCP
 
 Build MCP servers in Python with FastMCP, validate them locally, install them into MCP clients, and deploy them as HTTP endpoints.

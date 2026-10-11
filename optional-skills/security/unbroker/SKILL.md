@@ -4,17 +4,32 @@ description: Autonomously remove your info from data-broker sites.
 version: 1.0.0
 author: SHL0MS (github.com/SHL0MS)
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 prerequisites:
-  commands: [python]
+  commands:
+  - python
 metadata:
   hermes:
-    tags: [privacy, data-broker, opt-out, ccpa, gdpr, security, doxxing]
+    tags:
+    - privacy
+    - data-broker
+    - opt-out
+    - ccpa
+    - gdpr
+    - security
+    - doxxing
     category: security
-    related_skills: [google-workspace, agentmail, himalaya, scrapling, osint-investigation]
+    related_skills:
+    - google-workspace
+    - agentmail
+    - himalaya
+    - scrapling
+    - osint-investigation
     homepage: https://github.com/NousResearch/hermes-agent
 ---
-
 # unbroker
 
 Find where a person's personal information (name, addresses, phone, email, relatives) is exposed on

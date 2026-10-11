@@ -2,16 +2,30 @@
 name: osint-investigation
 description: Follow the money via public records and sanctions data.
 version: 0.1.0
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 author: Hermes Agent (adapted from ShinMegamiBoson/OpenPlanter, MIT)
 license: MIT
 metadata:
   hermes:
-    tags: [osint, investigation, public-records, sec, sanctions, corporate-registry, property, courts, due-diligence, journalism]
+    tags:
+    - osint
+    - investigation
+    - public-records
+    - sec
+    - sanctions
+    - corporate-registry
+    - property
+    - courts
+    - due-diligence
+    - journalism
     category: research
-    related_skills: [domain-intel, arxiv]
+    related_skills:
+    - domain-intel
+    - arxiv
 ---
-
 # OSINT Investigation — Public Records Cross-Reference
 
 Investigative framework for public-records OSINT: government contracts,

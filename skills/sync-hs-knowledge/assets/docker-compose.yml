@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: hs-sync-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${HS_DB_NAME:-hs_knowledge}
+      POSTGRES_USER: ${HS_DB_USER:-hs_user}
+      POSTGRES_PASSWORD: ${HS_DB_PASSWORD:-hs_password}
+    ports:
+      - "${HS_DB_PORT:-5432}:5432"
+    volumes:
+      - hs_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${HS_DB_USER:-hs_user} -d ${HS_DB_NAME:-hs_knowledge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hs-sync-redis
+    restart: unless-stopped
+    ports:
+      - "${HS_REDIS_PORT:-6379}:6379"
+    volumes:
+      - hs_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: hs-sync-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${HS_MINIO_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${HS_MINIO_PASSWORD:-minio_password}
+    ports:
+      - "${HS_MINIO_PORT:-9000}:9000"
+      - "9001:9001"
+    volumes:
+      - hs_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  api:
+    build:
+      context: ..
+      dockerfile: assets/Dockerfile
+    container_name: hs-sync-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "${HS_API_PORT:-8000}:8000"
+    command: uvicorn service.api.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build:
+      context: ..
+      dockerfile: assets/Dockerfile
+    container_name: hs-sync-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file:
+      - .env
+    command: celery -A service.pipeline.tasks worker --loglevel=info -Q fetch,parse,index
+
+volumes:
+  hs_postgres_data:
+  hs_redis_data:
+  hs_minio_data:

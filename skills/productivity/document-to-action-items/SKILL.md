@@ -1,16 +1,27 @@
 ---
 name: document-to-action-items
-description: "Extract cited obligations, deadlines, tasks from documents."
+description: Extract cited obligations, deadlines, tasks from documents.
 version: 0.1.0
 author: Ben Barclay (benbarclay), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Documents, OCR, Action-Items, Deadlines, Extraction]
-    related_skills: [ocr-and-documents, pdf, docx, notion]
+    tags:
+    - Documents
+    - OCR
+    - Action-Items
+    - Deadlines
+    - Extraction
+    related_skills:
+    - ocr-and-documents
+    - pdf
+    - docx
+    - notion
 ---
-
 # Document to Action Items
 
 Turn documents into cited facts and proposed actions. Extraction is not legal advice, and low-confidence OCR or ambiguous language must remain visible. The `ocr-and-documents` / `pdf` / `docx` skills own extraction mechanics; this skill owns what happens to the extracted content.

@@ -4,18 +4,33 @@ description: List, auth, and call MCP servers/tools from the terminal.
 version: 1.0.0
 author: community
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [MCP, Tools, API, Integrations, Interop]
+    tags:
+    - MCP
+    - Tools
+    - API
+    - Integrations
+    - Interop
     homepage: https://mcporter.dev
 prerequisites:
-  commands: [npx]
+  commands:
+  - npx
 ---
-
 # mcporter
 
 Use `mcporter` to discover, call, and manage [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) servers and tools directly from the terminal.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to list, auth, and call mcp servers/tools from the terminal.
+- Executing automated mcporter workflows and tasks.
 
 ## Prerequisites
 

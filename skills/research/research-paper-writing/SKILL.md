@@ -1,21 +1,49 @@
 ---
 name: research-paper-writing
 title: Research Paper Writing Pipeline
-description: "Write ML papers for NeurIPS/ICML/ICLR: design→submit."
+description: 'Write ML papers for NeurIPS/ICML/ICLR: design→submit.'
 version: 1.1.0
 author: Orchestra Research
 license: MIT
-dependencies: [semanticscholar, arxiv, habanero, requests, scipy, numpy, matplotlib, SciencePlots]
-platforms: [linux, macos]
+dependencies:
+- semanticscholar
+- arxiv
+- habanero
+- requests
+- scipy
+- numpy
+- matplotlib
+- SciencePlots
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Research, Paper Writing, Experiments, ML, AI, NeurIPS, ICML, ICLR, ACL, AAAI, COLM, LaTeX, Citations, Statistical Analysis]
+    tags:
+    - Research
+    - Paper Writing
+    - Experiments
+    - ML
+    - AI
+    - NeurIPS
+    - ICML
+    - ICLR
+    - ACL
+    - AAAI
+    - COLM
+    - LaTeX
+    - Citations
+    - Statistical Analysis
     category: research
-    related_skills: [arxiv, subagent-driven-development, plan]
-    requires_toolsets: [terminal, files]
-
+    related_skills:
+    - arxiv
+    - subagent-driven-development
+    - plan
+    requires_toolsets:
+    - terminal
+    - files
 ---
-
 # Research Paper Writing Pipeline
 
 End-to-end pipeline for producing publication-ready ML/AI research papers targeting **NeurIPS, ICML, ICLR, ACL, AAAI, and COLM**. This skill covers the full research lifecycle: experiment design, execution, monitoring, analysis, paper writing, review, revision, and submission.
@@ -45,6 +73,13 @@ This is **not a linear pipeline** — it is an iterative loop. Results trigger n
 <!-- ascii-guard-ignore-end -->
 
 ---
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to write ml papers for neurips/icml/iclr: design→submit.
+- Executing automated research paper writing workflows and tasks.
 
 ## When To Use This Skill
 

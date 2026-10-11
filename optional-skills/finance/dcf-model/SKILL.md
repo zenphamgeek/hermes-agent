@@ -4,12 +4,32 @@ description: Build discounted cash flow valuation workbooks in Excel.
 version: 1.0.0
 author: Anthropic (adapted by Nous Research)
 license: Apache-2.0
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [finance, valuation, dcf, excel, openpyxl, modeling, investment-banking]
-    related_skills: [excel-author, pptx-author, comps-analysis, lbo-model, 3-statement-model]
+    tags:
+    - finance
+    - valuation
+    - dcf
+    - excel
+    - openpyxl
+    - modeling
+    - investment-banking
+    related_skills:
+    - excel-author
+    - pptx-author
+    - comps-analysis
+    - lbo-model
+    - 3-statement-model
 ---
+## When to Use
+
+Use this skill when:
+- The user asks to build discounted cash flow valuation workbooks in excel.
+- Executing automated dcf model workflows and tasks.
 
 ## Environment
 

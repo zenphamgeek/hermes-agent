@@ -4,14 +4,22 @@ description: Serverless GPU cloud for ML jobs and model APIs.
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [modal>=1.0]
-platforms: [linux, macos, windows]
+dependencies:
+- modal>=1.0
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Infrastructure, Serverless, GPU, Cloud, Deployment, Modal]
-
+    tags:
+    - Infrastructure
+    - Serverless
+    - GPU
+    - Cloud
+    - Deployment
+    - Modal
 ---
-
 # Modal Serverless GPU
 
 Guide to running ML workloads on Modal's serverless GPU cloud platform.

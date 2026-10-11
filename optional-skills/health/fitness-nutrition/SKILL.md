@@ -1,26 +1,39 @@
 ---
 name: fitness-nutrition
-description: "Workout planning, macros, and body metrics via wger/USDA."
-platforms: [linux, macos, windows]
+description: Workout planning, macros, and body metrics via wger/USDA.
+platforms:
+- linux
+- macos
+- windows
 version: 1.0.0
 author: Hailey Marshall (haileymarshall), Hermes Agent
 authors:
-  - haileymarshall
+- haileymarshall
 license: MIT
 metadata:
   hermes:
-    tags: [health, fitness, nutrition, gym, workout, diet, exercise]
+    tags:
+    - health
+    - fitness
+    - nutrition
+    - gym
+    - workout
+    - diet
+    - exercise
     category: health
     prerequisites:
-      commands: [curl, python]
+      commands:
+      - curl
+      - python
 required_environment_variables:
-  - name: USDA_API_KEY
-    prompt: "USDA FoodData Central API key (free)"
-    help: "Get one free at https://fdc.nal.usda.gov/api-key-signup/ — or skip to use DEMO_KEY with lower rate limits"
-    required_for: "higher rate limits on food/nutrition lookups (DEMO_KEY works without signup)"
-    optional: true
+- name: USDA_API_KEY
+  prompt: USDA FoodData Central API key (free)
+  help: Get one free at https://fdc.nal.usda.gov/api-key-signup/ — or skip to use
+    DEMO_KEY with lower rate limits
+  required_for: higher rate limits on food/nutrition lookups (DEMO_KEY works without
+    signup)
+  optional: true
 ---
-
 # Fitness & Nutrition
 
 Expert fitness coach and sports nutritionist skill. Two data sources

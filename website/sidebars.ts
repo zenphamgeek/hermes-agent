@@ -291,6 +291,7 @@ const sidebars: SidebarsConfig = {
                     'user-guide/skills/bundled/research/research-grounded-citations',
                     'user-guide/skills/bundled/research/research-llm-wiki',
                     'user-guide/skills/bundled/research/research-research-paper-writing',
+                    'user-guide/skills/bundled/research/research-website-mirror',
                   ],
                 },
                 {

@@ -1,16 +1,24 @@
 ---
 name: social-media-content-calendar
-description: "Plan multi-platform social campaigns: briefs to posting."
+description: 'Plan multi-platform social campaigns: briefs to posting.'
 version: 0.1.0
 author: Ben Barclay (benbarclay), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Social-Media, Content-Calendar, Campaigns, Publishing]
-    related_skills: [xurl, humanizer]
+    tags:
+    - Social-Media
+    - Content-Calendar
+    - Campaigns
+    - Publishing
+    related_skills:
+    - xurl
+    - humanizer
 ---
-
 # Social Media Content Calendar
 
 Plan a concrete calendar across selected social platforms. This skill owns campaign structure, post briefs, channel adaptation, approvals, and publishing verification; platform skills such as `xurl` own API commands. For platforms without a connector, the verified handoff ends at approved drafts for the user's scheduler — say so rather than claiming publication.

@@ -4,14 +4,24 @@ description: Stock quotes, history, search, compare, crypto via Yahoo.
 version: 0.1.0
 author: Mibay (Mibayy), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Stocks, Finance, Market, Crypto, Investing]
+    tags:
+    - Stocks
+    - Finance
+    - Market
+    - Crypto
+    - Investing
     category: finance
-    related_skills: [dcf-model, comps-analysis, lbo-model]
+    related_skills:
+    - dcf-model
+    - comps-analysis
+    - lbo-model
 ---
-
 # Stocks Skill
 
 Read-only market data via Yahoo Finance. Five commands: `quote`, `search`,

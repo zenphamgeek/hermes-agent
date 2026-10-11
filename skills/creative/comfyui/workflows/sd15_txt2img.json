@@ -1,5 +1,10 @@
 {
-  "_comment": "SD 1.5 text-to-image. Smallest model, fastest. Required model: v1-5-pruned-emaonly.safetensors (or any SD1.5 checkpoint)",
+  "_meta": {
+    "title": "Stable Diffusion 1.5 Text-to-Image",
+    "description": "SD 1.5 text-to-image. Smallest model, fastest. Required model: v1-5-pruned-emaonly.safetensors (or any SD1.5 checkpoint)",
+    "model": "SD 1.5",
+    "tier": "Standard GPU"
+  },
   "3": {
     "class_type": "KSampler",
     "_meta": {"title": "KSampler"},

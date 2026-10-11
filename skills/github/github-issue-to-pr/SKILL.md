@@ -1,16 +1,28 @@
 ---
 name: github-issue-to-pr
-description: "Carry a GitHub issue to a verified PR with honest CI state."
+description: Carry a GitHub issue to a verified PR with honest CI state.
 version: 0.1.0
 author: Ben Barclay (benbarclay), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [GitHub, Issues, Coding, Pull-Requests, CI]
-    related_skills: [github-issues, github-pr-workflow, systematic-debugging, test-driven-development, requesting-code-review]
+    tags:
+    - GitHub
+    - Issues
+    - Coding
+    - Pull-Requests
+    - CI
+    related_skills:
+    - github-issues
+    - github-pr-workflow
+    - systematic-debugging
+    - test-driven-development
+    - requesting-code-review
 ---
-
 # GitHub Issue to Pull Request
 
 Turn a GitHub issue into a tested, verified PR. This skill owns the end-to-end discipline — premise validation, duplicate sweeps, class-level fixes, and honest CI reporting; the sibling GitHub and development skills own their own mechanics.

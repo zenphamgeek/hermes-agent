@@ -1,17 +1,35 @@
 ---
 name: unsloth
-description: "Unsloth: 2-5x faster LoRA/QLoRA fine-tuning, less VRAM."
+description: 'Unsloth: 2-5x faster LoRA/QLoRA fine-tuning, less VRAM.'
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [unsloth, torch, transformers, trl, datasets, peft]
-platforms: [linux, macos]
+dependencies:
+- unsloth
+- torch
+- transformers
+- trl
+- datasets
+- peft
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Fine-Tuning, Unsloth, Fast Training, LoRA, QLoRA, Memory-Efficient, Optimization, Llama, Mistral, Gemma, Qwen]
-
+    tags:
+    - Fine-Tuning
+    - Unsloth
+    - Fast Training
+    - LoRA
+    - QLoRA
+    - Memory-Efficient
+    - Optimization
+    - Llama
+    - Mistral
+    - Gemma
+    - Qwen
 ---
-
 # Unsloth Skill
 
 Assistance with unsloth development, generated from official documentation.

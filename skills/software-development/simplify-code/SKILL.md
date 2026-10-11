@@ -1,16 +1,28 @@
 ---
 name: simplify-code
-description: "Parallel 4-agent cleanup of recent code changes."
+description: Parallel 4-agent cleanup of recent code changes.
 version: 1.1.0
 author: Hermes Agent (inspired by Claude Code /simplify)
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [code-review, cleanup, refactor, delegation, subagent, parallel, simplify]
-    related_skills: [requesting-code-review, test-driven-development, plan]
+    tags:
+    - code-review
+    - cleanup
+    - refactor
+    - delegation
+    - subagent
+    - parallel
+    - simplify
+    related_skills:
+    - requesting-code-review
+    - test-driven-development
+    - plan
 ---
-
 # Simplify Code — Parallel Review & Cleanup
 
 Review your recent code changes with four focused reviewers running in

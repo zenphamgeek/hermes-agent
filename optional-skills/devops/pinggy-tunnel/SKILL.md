@@ -4,13 +4,21 @@ description: Zero-install localhost tunnels over SSH via Pinggy.
 version: 0.1.0
 author: Teknium (teknium1), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Pinggy, Tunnel, Networking, SSH, Webhook, Localhost]
+    tags:
+    - Pinggy
+    - Tunnel
+    - Networking
+    - SSH
+    - Webhook
+    - Localhost
     related_skills: []
 ---
-
 # Pinggy Tunnel Skill
 
 Expose a local service (dev server, webhook receiver, MCP endpoint, demo) to the public internet using a Pinggy SSH reverse tunnel. No daemon to install — the user's stock SSH client connects to `a.pinggy.io:443` and Pinggy hands back a public HTTP/HTTPS URL.

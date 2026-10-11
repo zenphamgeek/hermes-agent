@@ -4,14 +4,23 @@ description: Train sparse autoencoders to interpret model features.
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [sae-lens>=6.0.0, transformer-lens>=2.0.0, torch>=2.0.0]
-platforms: [linux, macos, windows]
+dependencies:
+- sae-lens>=6.0.0
+- transformer-lens>=2.0.0
+- torch>=2.0.0
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Sparse Autoencoders, SAE, Mechanistic Interpretability, Feature Discovery, Superposition]
-
+    tags:
+    - Sparse Autoencoders
+    - SAE
+    - Mechanistic Interpretability
+    - Feature Discovery
+    - Superposition
 ---
-
 # SAELens: Sparse Autoencoders for Mechanistic Interpretability
 
 SAELens is the primary library for training and analyzing Sparse Autoencoders (SAEs) - a technique for decomposing polysemantic neural network activations into sparse, interpretable features. Based on Anthropic's groundbreaking research on monosemanticity.

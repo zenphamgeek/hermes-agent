@@ -1,17 +1,24 @@
 ---
 name: computer-use
-description: "Drive the desktop in the background without stealing focus."
+description: Drive the desktop in the background without stealing focus.
 version: 2.0.0
 author: Francesco Bonacci (f-trycua), Hermes Agent
 license: MIT
-platforms: [macos, windows, linux]
+platforms:
+- macos
+- windows
+- linux
 metadata:
   hermes:
-    tags: [computer-use, desktop, automation, gui, cross-platform]
+    tags:
+    - computer-use
+    - desktop
+    - automation
+    - gui
+    - cross-platform
     category: desktop
     related_skills: []
 ---
-
 # Computer Use (universal, any-model, cross-platform)
 
 You have a `computer_use` tool that drives the user's desktop in the
@@ -29,6 +36,13 @@ for the platform plumbing. The Hermes-side `computer_use` tool exposed
 in this skill is a higher-level Hermes vocabulary; the raw cua-driver
 MCP tools (which a different agent harness would see) are NOT what you
 call — call the `computer_use` actions documented below.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to drive the desktop in the background without stealing focus.
+- Executing automated computer use workflows and tasks.
 
 ## The canonical workflow
 

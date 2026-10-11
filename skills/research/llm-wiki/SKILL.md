@@ -1,17 +1,27 @@
 ---
 name: llm-wiki
-description: "Karpathy's LLM Wiki: build/query interlinked markdown KB."
+description: 'Karpathy''s LLM Wiki: build/query interlinked markdown KB.'
 version: 2.1.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [wiki, knowledge-base, research, notes, markdown, rag-alternative]
+    tags:
+    - wiki
+    - knowledge-base
+    - research
+    - notes
+    - markdown
+    - rag-alternative
     category: research
-    related_skills: [obsidian, arxiv]
+    related_skills:
+    - obsidian
+    - arxiv
 ---
-
 # Karpathy's LLM Wiki
 
 Build and maintain a persistent, compounding knowledge base as interlinked markdown files.
@@ -23,6 +33,13 @@ Contradictions have already been flagged. Synthesis reflects everything ingested
 
 **Division of labor:** The human curates sources and directs analysis. The agent
 summarizes, cross-references, files, and maintains consistency.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to karpathy's llm wiki: build/query interlinked markdown kb.
+- Executing automated llm wiki workflows and tasks.
 
 ## When This Skill Activates
 

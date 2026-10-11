@@ -4,14 +4,29 @@ description: Speed up long-sequence transformer training and inference.
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [flash-attn, torch, transformers]
-platforms: [linux, macos]
+dependencies:
+- flash-attn
+- torch
+- transformers
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Optimization, Flash Attention, Attention Optimization, Memory Efficiency, Speed Optimization, Long Context, PyTorch, SDPA, H100, FP8, Transformers]
-
+    tags:
+    - Optimization
+    - Flash Attention
+    - Attention Optimization
+    - Memory Efficiency
+    - Speed Optimization
+    - Long Context
+    - PyTorch
+    - SDPA
+    - H100
+    - FP8
+    - Transformers
 ---
-
 # Flash Attention - Fast Memory-Efficient Attention
 
 ## Quick start

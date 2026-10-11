@@ -4,14 +4,26 @@ description: Managed vector DB for production RAG and search.
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [pinecone]
-platforms: [linux, macos, windows]
+dependencies:
+- pinecone
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [RAG, Pinecone, Vector Database, Managed Service, Serverless, Hybrid Search, Production, Auto-Scaling, Low Latency, Recommendations]
-
+    tags:
+    - RAG
+    - Pinecone
+    - Vector Database
+    - Managed Service
+    - Serverless
+    - Hybrid Search
+    - Production
+    - Auto-Scaling
+    - Low Latency
+    - Recommendations
 ---
-
 # Pinecone - Managed Vector Database
 
 The vector database for production AI applications.

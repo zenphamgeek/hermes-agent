@@ -4,12 +4,31 @@ description: Build leveraged buyout workbooks with IRR/MOIC in Excel.
 version: 1.0.0
 author: Anthropic (adapted by Nous Research)
 license: Apache-2.0
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [finance, valuation, lbo, private-equity, excel, openpyxl, modeling]
-    related_skills: [excel-author, pptx-author, dcf-model, 3-statement-model]
+    tags:
+    - finance
+    - valuation
+    - lbo
+    - private-equity
+    - excel
+    - openpyxl
+    - modeling
+    related_skills:
+    - excel-author
+    - pptx-author
+    - dcf-model
+    - 3-statement-model
 ---
+## When to Use
+
+Use this skill when:
+- The user asks to build leveraged buyout workbooks with irr/moic in excel.
+- Executing automated lbo model workflows and tasks.
 
 ## Environment
 

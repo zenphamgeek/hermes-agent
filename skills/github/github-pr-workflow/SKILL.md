@@ -1,19 +1,36 @@
 ---
 name: github-pr-workflow
-description: "GitHub PR lifecycle: branch, commit, open, CI, merge."
+description: 'GitHub PR lifecycle: branch, commit, open, CI, merge.'
 version: 1.1.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [GitHub, Pull-Requests, CI/CD, Git, Automation, Merge]
-    related_skills: [github-auth, github-code-review]
+    tags:
+    - GitHub
+    - Pull-Requests
+    - CI/CD
+    - Git
+    - Automation
+    - Merge
+    related_skills:
+    - github-auth
+    - github-code-review
 ---
-
 # GitHub Pull Request Workflow
 
 Complete guide for managing the PR lifecycle. Each section shows the `gh` way first, then the `git` + `curl` fallback for machines without `gh`.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to github pr lifecycle: branch, commit, open, ci, merge.
+- Executing automated github pr workflow workflows and tasks.
 
 ## Prerequisites
 

@@ -4,14 +4,28 @@ description: Run PyTorch training across GPUs with minimal changes.
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [accelerate, torch, transformers]
-platforms: [linux, macos, windows]
+dependencies:
+- accelerate
+- torch
+- transformers
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Distributed Training, HuggingFace, Accelerate, DeepSpeed, FSDP, Mixed Precision, PyTorch, DDP, Unified API, Simple]
-
+    tags:
+    - Distributed Training
+    - HuggingFace
+    - Accelerate
+    - DeepSpeed
+    - FSDP
+    - Mixed Precision
+    - PyTorch
+    - DDP
+    - Unified API
+    - Simple
 ---
-
 # HuggingFace Accelerate - Unified Distributed Training
 
 ## Quick start

@@ -4,14 +4,25 @@ description: RL post-training for LLMs with Megatron and SGLang.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [sglang-router>=0.2.3, ray, torch>=2.0.0, transformers>=4.40.0]
-platforms: [linux, macos]
+dependencies:
+- sglang-router>=0.2.3
+- ray
+- torch>=2.0.0
+- transformers>=4.40.0
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Reinforcement Learning, Megatron-LM, SGLang, GRPO, Post-Training, GLM]
-
+    tags:
+    - Reinforcement Learning
+    - Megatron-LM
+    - SGLang
+    - GRPO
+    - Post-Training
+    - GLM
 ---
-
 # slime: LLM Post-Training Framework for RL Scaling
 
 slime is an LLM post-training framework from Tsinghua's THUDM team, powering GLM-4.5, GLM-4.6, and GLM-4.7. It connects Megatron-LM for training with SGLang for high-throughput rollout generation.

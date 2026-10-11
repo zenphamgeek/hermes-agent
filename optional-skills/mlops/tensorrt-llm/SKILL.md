@@ -4,14 +4,28 @@ description: High-throughput LLM inference on NVIDIA GPUs.
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [tensorrt-llm, torch]
-platforms: [linux, macos]
+dependencies:
+- tensorrt-llm
+- torch
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Inference Serving, TensorRT-LLM, NVIDIA, Inference Optimization, High Throughput, Low Latency, Production, FP8, INT4, In-Flight Batching, Multi-GPU]
-
+    tags:
+    - Inference Serving
+    - TensorRT-LLM
+    - NVIDIA
+    - Inference Optimization
+    - High Throughput
+    - Low Latency
+    - Production
+    - FP8
+    - INT4
+    - In-Flight Batching
+    - Multi-GPU
 ---
-
 # TensorRT-LLM
 
 NVIDIA's open-source library for optimizing LLM inference with high performance on NVIDIA GPUs.

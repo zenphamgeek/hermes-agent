@@ -1,17 +1,27 @@
 ---
 name: neuroskill-bci
-description: "Use live BCI cognitive and mood state from NeuroSkill."
-platforms: [linux, macos, windows]
+description: Use live BCI cognitive and mood state from NeuroSkill.
+platforms:
+- linux
+- macos
+- windows
 version: 1.0.0
 author: Hermes Agent + Nous Research
 license: MIT
 metadata:
   hermes:
-    tags: [BCI, neurofeedback, health, focus, EEG, cognitive-state, biometrics, neuroskill]
+    tags:
+    - BCI
+    - neurofeedback
+    - health
+    - focus
+    - EEG
+    - cognitive-state
+    - biometrics
+    - neuroskill
     category: health
     related_skills: []
 ---
-
 # NeuroSkill BCI Integration
 
 Connect Hermes to a running [NeuroSkill](https://neuroskill.com/) instance to read
@@ -27,6 +37,13 @@ See `references/metrics.md` for the full metric reference, `references/protocols
 for intervention protocols, and `references/api.md` for the WebSocket/HTTP API.
 
 ---
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to use live bci cognitive and mood state from neuroskill.
+- Executing automated neuroskill bci workflows and tasks.
 
 ## Prerequisites
 

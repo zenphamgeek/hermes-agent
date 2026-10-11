@@ -4,16 +4,28 @@ description: Scrape sites with stealth browsing and Cloudflare bypass.
 version: 1.0.0
 author: FEUAZUR
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Web Scraping, Browser, Cloudflare, Stealth, Crawling, Spider]
-    related_skills: [duckduckgo-search, domain-intel]
+    tags:
+    - Web Scraping
+    - Browser
+    - Cloudflare
+    - Stealth
+    - Crawling
+    - Spider
+    related_skills:
+    - duckduckgo-search
+    - domain-intel
     homepage: https://github.com/D4Vinci/Scrapling
 prerequisites:
-  commands: [scrapling, python]
+  commands:
+  - scrapling
+  - python
 ---
-
 # Scrapling
 
 [Scrapling](https://github.com/D4Vinci/Scrapling) is a web scraping framework with anti-bot bypass, stealth browser automation, and a spider framework. It provides three fetching strategies (HTTP, dynamic JS, stealth/Cloudflare) and a full CLI.

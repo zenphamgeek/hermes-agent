@@ -1,0 +1,89 @@
+{
+  "_meta": {
+    "title": "Qwen-Image-2.1 Single-Stream DiT Canonical API Workflow",
+    "description": "High-fidelity text-to-image generation and multi-reference editing using Alibaba Qwen-Image-2.1 DiT",
+    "model": "Qwen-Image-2.1 (7B)",
+    "hardware_recommendation": "NVIDIA T4 / A10G"
+  },
+  "1": {
+    "class_type": "UNETLoader",
+    "_meta": { "title": "Load Qwen-Image-2.1 Single-Stream DiT" },
+    "inputs": {
+      "unet_name": "qwen_image_2.1_bf16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "Load Qwen Text Encoder" },
+    "inputs": {
+      "clip_name": "qwen_image_clip.safetensors",
+      "type": "sd3"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "_meta": { "title": "Load Qwen VAE" },
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "EmptyQwenImageLayeredLatentImage",
+    "_meta": { "title": "Empty Qwen Image Latents (Native RGBA/Layers)" },
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "layers": 1,
+      "batch_size": 1
+    }
+  },
+  "5": {
+    "class_type": "TextEncodeQwenImageEdit",
+    "_meta": { "title": "Positive Multi-Modal Text Conditioning" },
+    "inputs": {
+      "clip": ["2", 0],
+      "prompt": "Masterpiece portrait of an intelligent thinker, deep neo-noir obsidian aesthetic, golden telemetry accents, 8k resolution, photorealistic studio lighting"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Negative Conditioning" },
+    "inputs": {
+      "clip": ["2", 0],
+      "text": "distorted anatomy, extra limbs, ugly, blurry, watermark, noisy, bad lighting"
+    }
+  },
+  "7": {
+    "class_type": "KSampler",
+    "_meta": { "title": "KSampler DiT Diffusion" },
+    "inputs": {
+      "model": ["1", 0],
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "latent_image": ["4", 0],
+      "seed": 42,
+      "steps": 28,
+      "cfg": 4.5,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1.0
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "_meta": { "title": "Decode Latents to High-Res Image" },
+    "inputs": {
+      "samples": ["7", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "_meta": { "title": "Save Pristine Image" },
+    "inputs": {
+      "images": ["8", 0],
+      "filename_prefix": "qwen21_image_output"
+    }
+  }
+}

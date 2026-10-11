@@ -1,0 +1,2 @@
+[console_scripts]
+hs-sync = service.cli:app

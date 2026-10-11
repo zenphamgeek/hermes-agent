@@ -4,13 +4,20 @@ description: Record a site's XHR into a HAR, derive an HTTP client.
 version: 0.1.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Browser, HAR, API, Reverse-Engineering, Playwright]
+    tags:
+    - Browser
+    - HAR
+    - API
+    - Reverse-Engineering
+    - Playwright
     category: web-development
 ---
-
 # HAR-Derived API Client
 
 Drive a website once with a real browser while recording its network traffic

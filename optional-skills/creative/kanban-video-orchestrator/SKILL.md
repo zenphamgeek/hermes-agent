@@ -2,21 +2,55 @@
 name: kanban-video-orchestrator
 description: Plan and run multi-agent video production pipelines.
 version: 1.0.0
-author: [SHL0MS, alt-glitch]
+author:
+- SHL0MS
+- alt-glitch
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [video, kanban, multi-agent, orchestration, production-pipeline]
-    related_skills: [ascii-video, manim-video, p5js, comfyui, touchdesigner-mcp, pixel-art, ascii-art, songwriting-and-ai-music, heartmula, songsee, youtube-content, claude-design, excalidraw, architecture-diagram, concept-diagrams, baoyu-comic, baoyu-infographic, humanizer, gif-search, meme-generation]
-    credits: |
-      The single-project workspace layout, profile-config patching pattern,
-      SOUL.md-per-profile model, TEAM.md task-graph convention, and
-      `--workspace dir:/abs/path` discipline are adapted from alt-glitch's
-      original multi-agent video pipeline at
-      https://github.com/NousResearch/kanban-video-pipeline.
----
+    tags:
+    - video
+    - kanban
+    - multi-agent
+    - orchestration
+    - production-pipeline
+    related_skills:
+    - ascii-video
+    - manim-video
+    - p5js
+    - comfyui
+    - touchdesigner-mcp
+    - pixel-art
+    - ascii-art
+    - songwriting-and-ai-music
+    - heartmula
+    - songsee
+    - youtube-content
+    - claude-design
+    - excalidraw
+    - architecture-diagram
+    - concept-diagrams
+    - baoyu-comic
+    - baoyu-infographic
+    - humanizer
+    - gif-search
+    - meme-generation
+    credits: 'The single-project workspace layout, profile-config patching pattern,
 
+      SOUL.md-per-profile model, TEAM.md task-graph convention, and
+
+      `--workspace dir:/abs/path` discipline are adapted from alt-glitch''s
+
+      original multi-agent video pipeline at
+
+      https://github.com/NousResearch/kanban-video-pipeline.
+
+      '
+---
 # Kanban Video Orchestrator
 
 Wrap any video request — from a 15-second product teaser to a 5-minute narrative
@@ -35,6 +69,13 @@ The actual rendering happens inside the kanban once it's running, via whichever
 existing skills + tools fit the scenes — `ascii-video`, `manim-video`, `p5js`,
 `comfyui`, `touchdesigner-mcp`, `songwriting-and-ai-music`,
 `heartmula`, external APIs, or plain Python with PIL + ffmpeg.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to plan and run multi-agent video production pipelines.
+- Executing automated kanban video orchestrator workflows and tasks.
 
 ## When NOT to use this skill
 

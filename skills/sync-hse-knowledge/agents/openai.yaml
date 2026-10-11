@@ -1,0 +1,4 @@
+interface:
+  name: sync-hse-knowledge
+  description: Synchronize, validate, version, query, and assess applicability of a local Health, Safety and Environment knowledge base.
+  default_scope: vietnam-core

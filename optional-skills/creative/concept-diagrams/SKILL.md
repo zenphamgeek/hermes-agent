@@ -5,16 +5,34 @@ version: 0.1.0
 author: v1k22 (original PR), ported into hermes-agent
 license: MIT
 dependencies: []
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [diagrams, svg, visualization, education, physics, chemistry, engineering]
-    related_skills: [architecture-diagram, excalidraw]
+    tags:
+    - diagrams
+    - svg
+    - visualization
+    - education
+    - physics
+    - chemistry
+    - engineering
+    related_skills:
+    - architecture-diagram
+    - excalidraw
 ---
-
 # Concept Diagrams
 
 Generate production-quality SVG diagrams with a unified flat, minimal design system. Output is a single self-contained HTML file that renders identically in any modern browser, with automatic light/dark mode.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to generate flat, minimal educational svg visuals as html.
+- Executing automated concept diagrams workflows and tasks.
 
 ## Scope
 

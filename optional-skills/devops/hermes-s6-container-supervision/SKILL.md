@@ -4,14 +4,22 @@ description: Modify or debug s6 services in the Hermes Docker image.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux]
-environments: [s6]
+platforms:
+- linux
+- windows
+environments:
+- s6
 metadata:
   hermes:
-    tags: [docker, s6, supervision, gateway, profiles]
-    related_skills: [hermes-agent]
+    tags:
+    - docker
+    - s6
+    - supervision
+    - gateway
+    - profiles
+    related_skills:
+    - hermes-agent
 ---
-
 # Hermes s6-overlay Container Supervision
 
 ## When to use this skill

@@ -1,20 +1,36 @@
 ---
 name: nano-pdf
-description: "Edit text in existing PDFs via natural-language prompts."
+description: Edit text in existing PDFs via natural-language prompts.
 version: 1.0.0
 author: community
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [PDF, Documents, Editing, NLP, Productivity]
+    tags:
+    - PDF
+    - Documents
+    - Editing
+    - NLP
+    - Productivity
     homepage: https://pypi.org/project/nano-pdf/
-    related_skills: [pdf, ocr-and-documents]
+    related_skills:
+    - pdf
+    - ocr-and-documents
 ---
-
 # nano-pdf
 
 Edit PDFs using natural-language instructions. Point it at a page and describe what to change. For structural PDF work (merge, split, forms, watermarks, creation), see the `pdf` skill; for text extraction from scans, see `ocr-and-documents`.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to edit text in existing pdfs via natural-language prompts.
+- Executing automated nano pdf workflows and tasks.
 
 ## Prerequisites
 

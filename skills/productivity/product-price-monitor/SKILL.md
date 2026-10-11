@@ -1,16 +1,24 @@
 ---
 name: product-price-monitor
-description: "Watch product, flight, or listing prices; alert on target."
+description: Watch product, flight, or listing prices; alert on target.
 version: 0.1.0
 author: Ben Barclay (benbarclay), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Prices, Availability, Shopping, Travel, Alerts]
-    related_skills: [maps]
+    tags:
+    - Prices
+    - Availability
+    - Shopping
+    - Travel
+    - Alerts
+    related_skills:
+    - maps
 ---
-
 # Product Price Monitor
 
 Monitor a concrete purchasable item and alert on a normalized all-in price or availability condition. Handle variants, taxes, fees, currencies, stock, cancellation terms, and duplicate alerts explicitly. Setup runs once in the foreground; the recurring check runs as a `cronjob` tick (the `price-watch` automation blueprint scaffolds this).

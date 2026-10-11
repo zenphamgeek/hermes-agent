@@ -16,10 +16,11 @@ Spawn a subagent with an isolated context + terminal session.
   re-enters the conversation as a new turn when it finishes.
 - **Roles:** `leaf` (default; cannot re-delegate) vs `orchestrator`
   (can spawn its own workers, bounded by `delegation.max_spawn_depth`).
-- **Not durable.** A backgrounded child is still process-local — if the
-  parent process exits, the child is lost. For work that must outlive
-  the process, use `cronjob` or
-  `terminal(background=True, notify_on_complete=True)`.
+- **Routing:** use `delegate_task` for process-local subtasks. A backgrounded
+  child is still lost if the parent process exits. Use `hermes kanban` for a
+  durable multi-worker queue when a gateway/dispatcher and assignee profiles
+  are configured; use `cronjob` for scheduled work, or
+  `terminal(background=True, notify_on_complete=True)` for a durable process.
 
 Config: `delegation.*` in `config.yaml`.
 

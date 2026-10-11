@@ -1,0 +1,107 @@
+{
+  "_meta": {
+    "title": "LTX-Video-2.5 Cinema Video Foundation API Workflow",
+    "description": "Text-to-Video generation using Lightricks LTX-Video-2.5 with 3D VAE Tiling & Flow Matching",
+    "model": "LTX-Video-2.5 (22B)",
+    "hardware_recommendation": "NVIDIA A100-80GB"
+  },
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": { "title": "Load LTX-Video Foundation Checkpoint" },
+    "inputs": {
+      "ckpt_name": "ltx-video-2b-v0.9.1.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Positive Cinematic Narrative Prompt" },
+    "inputs": {
+      "clip": ["1", 1],
+      "text": "Cinematic aerial camera gliding smoothly over a cybernetic laboratory, dramatic neon volumetric lighting, anamorphic lens flares, photorealistic 8k"
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Negative Prompt" },
+    "inputs": {
+      "clip": ["1", 1],
+      "text": "jitter, camera shaking, low framerate, artifacts, blur, watermark, grainy, distorted"
+    }
+  },
+  "4": {
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": { "title": "Empty LTX Spatio-Temporal Latent Video" },
+    "inputs": {
+      "width": 1280,
+      "height": 720,
+      "length": 241,
+      "batch_size": 1
+    }
+  },
+  "5": {
+    "class_type": "ModelSamplingLTXV",
+    "_meta": { "title": "LTX Model Sampling Config" },
+    "inputs": {
+      "model": ["1", 0],
+      "max_shift": 2.05,
+      "base_shift": 0.95
+    }
+  },
+  "6": {
+    "class_type": "LTXVScheduler",
+    "_meta": { "title": "LTX Sigmas Scheduler" },
+    "inputs": {
+      "steps": 30,
+      "max_shift": 2.05,
+      "base_shift": 0.95,
+      "stretch": true,
+      "terminal": 0.1
+    }
+  },
+  "7": {
+    "class_type": "KSampler",
+    "_meta": { "title": "KSampler Diffusion" },
+    "inputs": {
+      "model": ["5", 0],
+      "positive": ["2", 0],
+      "negative": ["3", 0],
+      "latent_image": ["4", 0],
+      "seed": 42,
+      "steps": 30,
+      "cfg": 3.5,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0
+    }
+  },
+  "8": {
+    "class_type": "VAEDecodeTiled",
+    "_meta": { "title": "VAE Decode Tiled (Anti-OOM Spatial/Temporal Latents)" },
+    "inputs": {
+      "samples": ["7", 0],
+      "vae": ["1", 2],
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 64,
+      "temporal_overlap": 8
+    }
+  },
+  "9": {
+    "class_type": "CreateVideo",
+    "_meta": { "title": "Create Video from Decoded Frames" },
+    "inputs": {
+      "images": ["8", 0],
+      "fps": 24.0
+    }
+  },
+  "10": {
+    "class_type": "SaveVideo",
+    "_meta": { "title": "Save High-Fidelity MP4 Video" },
+    "inputs": {
+      "video": ["9", 0],
+      "filename_prefix": "ltx25_video_output",
+      "format": "auto",
+      "codec": "auto"
+    }
+  }
+}

@@ -4,16 +4,29 @@ description: Read, search, create, and edit notes in the Obsidian vault.
 version: 1.0.0
 author: Teknium (teknium1), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Obsidian, Notes, Markdown, Vault]
+    tags:
+    - Obsidian
+    - Notes
+    - Markdown
+    - Vault
     related_skills: []
 ---
-
 # Obsidian Vault
 
 Use this skill for filesystem-first Obsidian vault work: reading notes, listing notes, searching note files, creating notes, appending content, and adding wikilinks.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to read, search, create, and edit notes in the obsidian vault.
+- Executing automated obsidian workflows and tasks.
 
 ## Vault path
 

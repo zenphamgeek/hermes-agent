@@ -1,33 +1,39 @@
 ---
 name: oss-forensics
-description: "GitHub supply-chain forensics: recovery, IOCs, reporting."
+description: 'GitHub supply-chain forensics: recovery, IOCs, reporting.'
 version: 1.0.0
 author: Teknium (teknium1), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 category: security
 triggers:
-  - "investigate this repository"
-  - "investigate [owner/repo]"
-  - "check for supply chain compromise"
-  - "recover deleted commits"
-  - "forensic analysis of [owner/repo]"
-  - "was this repo compromised"
-  - "supply chain attack"
-  - "suspicious commit"
-  - "force push detected"
-  - "IOC extraction"
+- investigate this repository
+- investigate [owner/repo]
+- check for supply chain compromise
+- recover deleted commits
+- forensic analysis of [owner/repo]
+- was this repo compromised
+- supply chain attack
+- suspicious commit
+- force push detected
+- IOC extraction
 toolsets:
-  - terminal
-  - web
-  - file
-  - delegation
+- terminal
+- web
+- file
+- delegation
 metadata:
   hermes:
-    tags: [Security, Forensics, GitHub, Supply-Chain]
+    tags:
+    - Security
+    - Forensics
+    - GitHub
+    - Supply-Chain
     related_skills: []
 ---
-
 # OSS Security Forensics Skill
 
 A 7-phase multi-agent investigation framework for researching open-source supply chain attacks.
@@ -36,6 +42,13 @@ local git analysis, IOC extraction, evidence-backed hypothesis formation and val
 and final forensic report generation.
 
 ---
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to github supply-chain forensics: recovery, iocs, reporting.
+- Executing automated oss forensics workflows and tasks.
 
 ## ⚠️ Anti-Hallucination Guardrails
 

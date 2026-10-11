@@ -1,0 +1,1 @@
+/home/zen/hermes-agent/.agents/skills/manim-director/SKILL.md

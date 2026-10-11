@@ -4,16 +4,23 @@ description: Review Kanban handoffs and route verified outcomes.
 version: 1.1.0
 author: Jakub Wolniewicz (@frizikk) + Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [kanban, review, quality, verification]
+    tags:
+    - kanban
+    - review
+    - quality
+    - verification
     category: devops
-    requires_toolsets: [kanban]
+    requires_toolsets:
+    - kanban
 environments:
-  - kanban
+- kanban
 ---
-
 # SDLC Review Skill
 
 Independently verify work handed from a Kanban implementation run to the review lane, then approve it, request changes, or escalate. This skill reviews the deliverable and its evidence; it does not take over the implementer's work.

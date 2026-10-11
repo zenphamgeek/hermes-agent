@@ -4,14 +4,29 @@ description: Fast vector similarity search at billion scale.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [faiss-cpu, faiss-gpu, numpy]
-platforms: [linux, macos]
+dependencies:
+- faiss-cpu
+- faiss-gpu
+- numpy
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [RAG, FAISS, Similarity Search, Vector Search, Facebook AI, GPU Acceleration, Billion-Scale, K-NN, HNSW, High Performance, Large Scale]
-
+    tags:
+    - RAG
+    - FAISS
+    - Similarity Search
+    - Vector Search
+    - Facebook AI
+    - GPU Acceleration
+    - Billion-Scale
+    - K-NN
+    - HNSW
+    - High Performance
+    - Large Scale
 ---
-
 # FAISS - Efficient Similarity Search
 
 Facebook AI's library for billion-scale vector similarity search.

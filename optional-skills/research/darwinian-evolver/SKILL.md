@@ -4,13 +4,21 @@ description: Evolve prompts/regex/SQL/code with Imbue's evolution loop.
 version: 0.1.0
 author: Bihruze (Asahi0x), Hermes Agent
 license: MIT
-platforms: [linux, macos]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [evolution, optimization, prompt-engineering, research]
-    related_skills: [arxiv, jupyter-notebook]
+    tags:
+    - evolution
+    - optimization
+    - prompt-engineering
+    - research
+    related_skills:
+    - arxiv
+    - jupyter-notebook
 ---
-
 # Darwinian Evolver
 
 Run Imbue's [darwinian_evolver](https://github.com/imbue-ai/darwinian_evolver) — an

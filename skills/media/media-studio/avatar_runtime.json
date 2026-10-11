@@ -1,0 +1,33 @@
+{
+  "omnivoice": {
+    "base_url": "http://10.123.214.178:80",
+    "health_path": "/health",
+    "required_engine": "omnivoice",
+    "container": "omnivoice-tts"
+  },
+  "profiles": {
+    "tvc": {
+      "tts_engine": "omnivoice",
+      "voice": "moon phan - audiobooks & podcast",
+      "ref_audio": "/home/zen/hermes-agent/assets/voices/moon phan - audiobooks & podcast.mp3",
+      "ref_text": "/home/zen/hermes-agent/assets/voices/moon phan - audiobooks & podcast.txt"
+    }
+  },
+  "facefusion": {
+    "base_url": "http://10.123.214.208:7860",
+    "container": "facefusion-ai",
+    "service": "facefusion.service",
+    "root": "/opt/facefusion"
+  },
+  "models": {
+    "liveportrait": {"root": "/home/zen/hermes-agent/.avatar-runtime/LivePortrait", "checkpoint": "/home/zen/hermes-agent/.avatar-runtime/LivePortrait/pretrained_weights"},
+    "musetalk": {"root": "/home/zen/hermes-agent/.avatar-runtime/MuseTalk", "checkpoint": "/home/zen/hermes-agent/.avatar-runtime/MuseTalk/models/musetalkV15"},
+    "birefnet": {"root": "/home/zen/hermes-agent/.avatar-runtime/BiRefNet", "checkpoint": "/home/zen/hermes-agent/.avatar-runtime/BiRefNet/weights"}
+  },
+  "gpu": {
+    "lock_path": "/tmp/hermes-avatar-gpu.lock",
+    "minimum_free_mib": 4096
+  },
+  "phonetics": {"fallback_dialect": "north"},
+  "output_root": "/home/zen/workspace/output/live-avatar"
+}

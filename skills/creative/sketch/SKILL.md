@@ -1,21 +1,44 @@
 ---
 name: sketch
-description: "Throwaway HTML mockups: 2-3 design variants to compare."
+description: 'Throwaway HTML mockups: 2-3 design variants to compare.'
 version: 1.0.1
 author: Hermes Agent (adapted from gsd-build/get-shit-done)
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [sketch, mockup, design, ui, prototype, html, variants, exploration, wireframe, comparison]
-    related_skills: [spike, claude-design, popular-web-designs, excalidraw]
+    tags:
+    - sketch
+    - mockup
+    - design
+    - ui
+    - prototype
+    - html
+    - variants
+    - exploration
+    - wireframe
+    - comparison
+    related_skills:
+    - spike
+    - claude-design
+    - popular-web-designs
+    - excalidraw
 ---
-
 # Sketch
 
 Use this skill when the user wants to **see a design direction before committing** to one — exploring a UI/UX idea as disposable HTML mockups. The point is to generate 2-3 interactive variants so the user can compare visual directions side-by-side, not to produce shippable code.
 
 Load this when the user says things like "sketch this screen", "show me what X could look like", "compare layout A vs B", "give me 2-3 takes on this UI", "let me see some variants", "mockup this before I build".
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to throwaway html mockups: 2-3 design variants to compare.
+- Executing automated sketch workflows and tasks.
 
 ## When NOT to use this
 

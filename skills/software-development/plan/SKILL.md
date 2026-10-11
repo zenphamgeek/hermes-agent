@@ -4,16 +4,34 @@ description: Write a markdown plan to .hermes/plans/; no execution.
 version: 2.0.0
 author: Hermes Agent (writing-craft adapted from obra/superpowers)
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [planning, plan-mode, implementation, workflow, design, documentation]
-    related_skills: [subagent-driven-development, test-driven-development, requesting-code-review]
+    tags:
+    - planning
+    - plan-mode
+    - implementation
+    - workflow
+    - design
+    - documentation
+    related_skills:
+    - subagent-driven-development
+    - test-driven-development
+    - requesting-code-review
 ---
-
 # Plan Mode
 
 Use this skill when the user wants a plan instead of execution.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to write a markdown plan to .hermes/plans/; no execution.
+- Executing automated plan workflows and tasks.
 
 ## Core behavior
 

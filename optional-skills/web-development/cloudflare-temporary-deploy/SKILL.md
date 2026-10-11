@@ -4,13 +4,23 @@ description: Deploy a Worker live, no account, via wrangler --temporary.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [cloudflare, workers, wrangler, deploy, temporary, agent, serverless, web-development]
+    tags:
+    - cloudflare
+    - workers
+    - wrangler
+    - deploy
+    - temporary
+    - agent
+    - serverless
+    - web-development
     category: web-development
 ---
-
 # Cloudflare Temporary Deploy Skill
 
 Deploy a Cloudflare Worker to a live `workers.dev` URL with zero account setup, using `wrangler deploy --temporary`. Cloudflare provisions a throwaway account, deploys, and prints a claim URL valid for 60 minutes; unclaimed accounts auto-delete. This gives an agent a tight write → deploy → verify loop without any OAuth, signup, or token copy-paste.

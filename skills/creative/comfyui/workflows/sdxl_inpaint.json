@@ -1,5 +1,10 @@
 {
-  "_comment": "SDXL inpainting: given an image + mask, regenerate the masked region. Upload both: --input-image image=./photo.png --input-image mask_image=./mask.png. White pixels in mask = regenerate; black = preserve.",
+  "_meta": {
+    "title": "SDXL 1.0 Inpainting",
+    "description": "SDXL inpainting: given an image + mask, regenerate the masked region. Upload both: --input-image image=./photo.png --input-image mask_image=./mask.png. White pixels in mask = regenerate; black = preserve.",
+    "model": "SDXL 1.0",
+    "tier": "NVIDIA T4 / RTX 5000"
+  },
   "1": {
     "class_type": "LoadImage",
     "_meta": {"title": "Load Source"},

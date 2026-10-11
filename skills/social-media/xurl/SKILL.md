@@ -1,19 +1,27 @@
 ---
 name: xurl
-description: "X/Twitter via xurl CLI: raw post search, posting, DM, media."
+description: 'X/Twitter via xurl CLI: raw post search, posting, DM, media.'
 version: 1.1.3
 author: xdevplatform + openclaw + Hermes Agent
 license: MIT
-platforms: [linux, macos]
+platforms:
+- linux
+- macos
+- windows
 prerequisites:
-  commands: [xurl]
+  commands:
+  - xurl
 metadata:
   hermes:
-    tags: [twitter, x, social-media, xurl, official-api]
+    tags:
+    - twitter
+    - x
+    - social-media
+    - xurl
+    - official-api
     homepage: https://github.com/xdevplatform/xurl
     upstream_skill: https://github.com/openclaw/openclaw/blob/main/skills/xurl/SKILL.md
 ---
-
 # xurl — X (Twitter) API via the Official CLI
 
 `xurl` is the X developer platform's official CLI for the X API. It supports shortcut commands for common actions AND raw curl-style access to any v2 endpoint. All commands return JSON to stdout.
@@ -31,6 +39,13 @@ Use this skill for:
 This skill replaces the older `xitter` skill (which wrapped a third-party Python CLI). `xurl` is maintained by the X developer platform team, supports OAuth 2.0 PKCE with auto-refresh, and covers a substantially larger API surface.
 
 ---
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to x/twitter via xurl cli: raw post search, posting, dm, media.
+- Executing automated xurl workflows and tasks.
 
 ## Secret Safety (MANDATORY)
 

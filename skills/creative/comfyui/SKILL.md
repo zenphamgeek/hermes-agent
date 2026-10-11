@@ -2,31 +2,40 @@
 name: comfyui
 description: Generate images, video, and audio via diffusion workflows.
 version: 5.1.0
-author: [kshitijk4poor, alt-glitch, purzbeats]
+author:
+- kshitijk4poor
+- alt-glitch
+- purzbeats
 license: MIT
-platforms: [macos, linux, windows]
-compatibility: "Requires ComfyUI (local, Comfy Desktop, or Comfy Cloud) and comfy-cli (auto-installed via pipx/uvx by the setup script)."
+platforms:
+- macos
+- linux
+- windows
+compatibility: Requires ComfyUI (local, Comfy Desktop, or Comfy Cloud) and comfy-cli
+  (auto-installed via pipx/uvx by the setup script).
 prerequisites:
-  commands: ["python"]
+  commands:
+  - python
 setup:
-  help: "Run scripts/hardware_check.py FIRST to decide local vs Comfy Cloud; then scripts/comfyui_setup.sh auto-installs locally (or use Cloud API key for platform.comfy.org)."
+  help: Run scripts/hardware_check.py FIRST to decide local vs Comfy Cloud; then scripts/comfyui_setup.sh
+    auto-installs locally (or use Cloud API key for platform.comfy.org).
 metadata:
   hermes:
     tags:
-      - comfyui
-      - image-generation
-      - stable-diffusion
-      - flux
-      - sd3
-      - wan-video
-      - hunyuan-video
-      - creative
-      - generative-ai
-      - video-generation
-    related_skills: [stable-diffusion]
+    - comfyui
+    - image-generation
+    - stable-diffusion
+    - flux
+    - sd3
+    - wan-video
+    - hunyuan-video
+    - creative
+    - generative-ai
+    - video-generation
+    related_skills:
+    - stable-diffusion
     category: creative
 ---
-
 # ComfyUI
 
 Generate images, video, audio, and 3D content through ComfyUI using the

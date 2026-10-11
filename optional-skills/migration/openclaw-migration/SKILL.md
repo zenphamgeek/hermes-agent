@@ -4,16 +4,32 @@ description: Import an OpenClaw setup (memories, skills) into Hermes.
 version: 1.0.0
 author: Hermes Agent (Nous Research)
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Migration, OpenClaw, Hermes, Memory, Persona, Import]
-    related_skills: [hermes-agent]
+    tags:
+    - Migration
+    - OpenClaw
+    - Hermes
+    - Memory
+    - Persona
+    - Import
+    related_skills:
+    - hermes-agent
 ---
-
 # OpenClaw -> Hermes Migration
 
 Use this skill when a user wants to move their OpenClaw setup into Hermes Agent with minimal manual cleanup.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to import an openclaw setup (memories, skills) into hermes.
+- Executing automated openclaw migration workflows and tasks.
 
 ## CLI Command
 

@@ -1,21 +1,42 @@
 ---
 name: shop
-description: "Shop catalog search, checkout, order tracking, returns."
+description: Shop catalog search, checkout, order tracking, returns.
 version: 1.0.1
 author: Joe Rinaldi Johnson (joerj123), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 prerequisites:
-  commands: [curl, node]
+  commands:
+  - curl
+  - node
 metadata:
   hermes:
-    tags: [Shopping, E-commerce, Shop, Products, Orders, Returns, Checkout, Reorder]
-    related_skills: [shopify, maps]
+    tags:
+    - Shopping
+    - E-commerce
+    - Shop
+    - Products
+    - Orders
+    - Returns
+    - Checkout
+    - Reorder
+    related_skills:
+    - shopify
+    - maps
     homepage: https://shop.app
     upstream: https://shop.app/SKILL.md
 ---
-
 # Shop CLI Skill
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to shop catalog search, checkout, order tracking, returns.
+- Executing automated shop workflows and tasks.
 
 ## Setup
 Prefer the installed `shop` CLI. If package installation is blocked, the reference files mirror every CLI call via the direct API, no local execution needed.

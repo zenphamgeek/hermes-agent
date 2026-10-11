@@ -1,17 +1,34 @@
 ---
 name: yuanbao
-description: "Yuanbao (元宝) groups: @mention users, query info/members."
+description: 'Yuanbao (元宝) groups: @mention users, query info/members.'
 version: 1.0.0
 author: Teknium (teknium1), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [yuanbao, mention, at, group, members, 元宝, 派, 艾特]
+    tags:
+    - yuanbao
+    - mention
+    - at
+    - group
+    - members
+    - 元宝
+    - 派
+    - 艾特
     related_skills: []
 ---
-
 # Yuanbao Group Interaction
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to yuanbao (元宝) groups: @mention users, query info/members.
+- Executing automated yuanbao workflows and tasks.
 
 ## CRITICAL: How Messaging Works
 

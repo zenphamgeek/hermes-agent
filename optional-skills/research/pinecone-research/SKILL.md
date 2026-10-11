@@ -4,14 +4,24 @@ description: Agent RAG and long-term memory with Pinecone.
 version: 1.0.0
 author: immuhammadfurqan
 license: MIT
-dependencies: [pinecone-client, langchain-pinecone]
-platforms: [linux, macos, windows]
+dependencies:
+- pinecone-client
+- langchain-pinecone
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [RAG, Pinecone, Memory, Research, Vector Database, Agent, Retrieval]
-
+    tags:
+    - RAG
+    - Pinecone
+    - Memory
+    - Research
+    - Vector Database
+    - Agent
+    - Retrieval
 ---
-
 # Pinecone Research — Agent RAG & Long-Term Memory
 
 Use Pinecone as a retrieval-augmented generation (RAG) backend for agent

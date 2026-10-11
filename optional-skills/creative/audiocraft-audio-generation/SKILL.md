@@ -1,18 +1,29 @@
 ---
 name: audiocraft-audio-generation
-description: "AudioCraft: MusicGen text-to-music, AudioGen text-to-sound."
+description: 'AudioCraft: MusicGen text-to-music, AudioGen text-to-sound.'
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [audiocraft, torch>=2.0.0, transformers>=4.30.0]
-platforms: [linux, macos]
+dependencies:
+- audiocraft
+- torch>=2.0.0
+- transformers>=4.30.0
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Multimodal, Audio Generation, Text-to-Music, Text-to-Audio, MusicGen]
-    related_skills: [heartmula, songwriting-and-ai-music]
-
+    tags:
+    - Multimodal
+    - Audio Generation
+    - Text-to-Music
+    - Text-to-Audio
+    - MusicGen
+    related_skills:
+    - heartmula
+    - songwriting-and-ai-music
 ---
-
 # AudioCraft: Audio Generation
 
 Guide to using Meta's AudioCraft for text-to-music and text-to-audio generation with MusicGen, AudioGen, and EnCodec.

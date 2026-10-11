@@ -4,17 +4,31 @@ description: Render MP4/WebM videos from HTML compositions.
 version: 1.0.0
 author: heygen-com
 license: Apache-2.0
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 prerequisites:
-  commands: [node, ffmpeg, npx]
+  commands:
+  - node
+  - ffmpeg
+  - npx
 metadata:
   hermes:
-    tags: [creative, video, animation, html, gsap, motion-graphics]
-    related_skills: [manim-video, meme-generation]
+    tags:
+    - creative
+    - video
+    - animation
+    - html
+    - gsap
+    - motion-graphics
+    related_skills:
+    - manim-video
+    - meme-generation
     category: creative
-    requires_toolsets: [terminal]
+    requires_toolsets:
+    - terminal
 ---
-
 # HyperFrames
 
 HTML is the source of truth for video. A composition is an HTML file with `data-*` attributes for timing, a GSAP timeline for animation, and CSS for appearance. The HyperFrames engine captures the page frame-by-frame and encodes to MP4/WebM with FFmpeg.

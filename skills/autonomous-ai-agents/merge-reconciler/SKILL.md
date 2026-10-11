@@ -1,16 +1,24 @@
 ---
 name: merge-reconciler
-description: "Neutral third-party resolution of agent merge conflicts."
+description: Neutral third-party resolution of agent merge conflicts.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Multi-Agent, Git, Merge-Conflict, Kanban, Arbitration]
-    related_skills: [hermes-agent]
+    tags:
+    - Multi-Agent
+    - Git
+    - Merge-Conflict
+    - Kanban
+    - Arbitration
+    related_skills:
+    - hermes-agent
 ---
-
 # Merge Reconciler
 
 Resolve a git merge conflict between two AGENTS' branches as an impartial third

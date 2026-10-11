@@ -1,0 +1,239 @@
+{
+  "version": "1.1.0",
+  "style": "cyber_zen_tech",
+  "brand": "ZENPHAM",
+  "total_prompts": 30,
+  "negative_prompt_default": "blurry, low quality, oversaturated, cartoon, anime, 2d illustration, ugly, deformed, distorted, generic logos, misspelled words, random gibberish text, watermark, bad anatomy, glitch, noisy, pixelated, amateur video, shaky cam",
+  "prompts": [
+    {
+      "id": "prompt_ai_001",
+      "category": "ai_brain",
+      "title": "Quantum AI Neural Brain in Dark Studio",
+      "prompt": "cinematic 3d glowing holographic neural network brain core floating in dark obsidian room, displaying subtle illuminated typography 'ZENPHAM AI CORE', volumetric electric cyan and amber rim lights, 8k resolution, smooth slow rotation, 35mm anamorphic lens, shallow depth of field",
+      "aspect_ratio": "16:9",
+      "media_type": "video",
+      "tags": ["ai", "neural_network", "quantum", "zenpham_ai", "b_roll", "youtube", "podcast"],
+      "platforms": ["youtube_long", "podcast_visualizer", "x_post"]
+    },
+    {
+      "id": "prompt_ai_002",
+      "category": "ai_brain",
+      "title": "Autonomous AI Agent Core Pulse",
+      "prompt": "futuristic spherical AI core pulsating with intricate glowing data pathways and etched metallic logo 'ZENPHAM AI', neon purple and cyan lasers reflecting on dark matte glass, slow forward push-in camera, photorealistic 8k octane render",
+      "aspect_ratio": "9:16",
+      "media_type": "video",
+      "tags": ["agent", "core", "shorts", "reels", "ai", "zenpham"],
+      "platforms": ["youtube_shorts", "facebook_reels", "tiktok"]
+    },
+    {
+      "id": "prompt_ai_003",
+      "category": "ai_brain",
+      "title": "Multi-Agent Swarm Network Visualization",
+      "prompt": "complex swarm of interconnected luminous data nodes communicating across an infinite digital matrix with header typography 'ZENPHAM NEURAL LAB', electric blue and warm gold sparkles, sweeping cinematic camera movement, 8k hyper-detailed",
+      "aspect_ratio": "16:9",
+      "media_type": "video",
+      "tags": ["swarm", "multi_agent", "network", "zenpham_ai", "youtube"],
+      "platforms": ["youtube_long", "x_post"]
+    },
+    {
+      "id": "prompt_ai_004",
+      "category": "ai_brain",
+      "title": "Local LLM Neural Processing Flow",
+      "prompt": "macro close-up of a glowing semiconductor chip engraved with 'ZENPHAM SILICON' processing neural network weights, gold micro-traces illuminated with cyan light pulses, atmospheric smoke, macro 85mm lens, extreme detail",
+      "aspect_ratio": "16:9",
+      "media_type": "image",
+      "tags": ["local_llm", "chip", "hardware", "hero", "thumbnail", "zenpham"],
+      "platforms": ["youtube_thumbnail", "facebook_post", "x_post"]
+    },
+    {
+      "id": "prompt_ai_005",
+      "category": "ai_brain",
+      "title": "Abstract Cybernetic Data Wave",
+      "prompt": "flowing dynamic particle wave of glowing binary and quantum points in dark void with subtle floating brand 'ZENPHAM', cyan and magenta gradient, smooth fluid motion, cinematic lighting, 4k 60fps aesthetic",
+      "aspect_ratio": "9:16",
+      "media_type": "video",
+      "tags": ["particles", "wave", "shorts", "background", "zenpham"],
+      "platforms": ["youtube_shorts", "podcast_visualizer"]
+    },
+    {
+      "id": "prompt_dev_001",
+      "category": "dev_workspace",
+      "title": "Midnight Cyber-Zen Developer Desk",
+      "prompt": "minimalist developer workspace at midnight, ThinkPad laptop on custom black leather desk mat debossed with 'ZENPHAM', vertical OLED monitor displaying clean Python code, warm amber desk lamp, steaming ceramic tea cup, cinematic 35mm photography",
+      "aspect_ratio": "16:9",
+      "media_type": "image",
+      "tags": ["workspace", "developer", "vibe_coding", "zenpham", "zen", "hero"],
+      "platforms": ["youtube_thumbnail", "facebook_post", "x_post"]
+    },
+    {
+      "id": "prompt_dev_002",
+      "category": "dev_workspace",
+      "title": "Vibe Coding Mechanical Keyboard Macro",
+      "prompt": "cinematic slow-motion close-up of hands typing on custom mechanical keyboard with brass plate engraved 'ZENPHAM LAB', subtle RGB underglow, dual vertical monitors blurring in background with code scrolling, 85mm f/1.4 lens, cozy cyber atmosphere",
+      "aspect_ratio": "16:9",
+      "media_type": "video",
+      "tags": ["typing", "keyboard", "coding", "b_roll", "zenpham", "youtube"],
+      "platforms": ["youtube_long", "podcast_visualizer"]
+    },
+    {
+      "id": "prompt_dev_003",
+      "category": "dev_workspace",
+      "title": "Vertical Code Stream on OLED Display",
+      "prompt": "vertical close-up shot of endless streams of Python and Rust code with IDE header 'ZENPHAM // VIBE CODING' compiling swiftly on a sleek frameless OLED screen, subtle screen glow reflecting on dark wooden table, 4k sharp",
+      "aspect_ratio": "9:16",
+      "media_type": "video",
+      "tags": ["code_stream", "shorts", "developer", "reels", "zenpham"],
+      "platforms": ["youtube_shorts", "facebook_reels"]
+    },
+    {
+      "id": "prompt_dev_004",
+      "category": "dev_workspace",
+      "title": "Zen Bonsai Beside Dual Screen Setup",
+      "prompt": "sleek minimalist workstation with a miniature illuminated Japanese bonsai tree sitting next to high-tech ultrawide screen with wallpaper 'ZENPHAM', dark room with warm spotlight, tranquil vibe coding mood, photorealistic 8k",
+      "aspect_ratio": "16:9",
+      "media_type": "image",
+      "tags": ["bonsai", "zen", "workspace", "thumbnail", "zenpham"],
+      "platforms": ["youtube_thumbnail", "facebook_post"]
+    },
+    {
+      "id": "prompt_dev_005",
+      "category": "dev_workspace",
+      "title": "Hacker Terminal Matrix Loop",
+      "prompt": "sleek terminal window running automated agent loops and compilation with prompt 'zenpham@cyber-zen:~$' in soft glowing cyan text on dark background, slow camera pan across glass desk, high-tech minimalism",
+      "aspect_ratio": "16:9",
+      "media_type": "video",
+      "tags": ["terminal", "agent_loop", "b_roll", "youtube", "zenpham"],
+      "platforms": ["youtube_long", "x_post"]
+    },
+    {
+      "id": "prompt_infra_001",
+      "category": "cloud_infra",
+      "title": "Dark Futuristic Server Room Corridor",
+      "prompt": "futuristic data center corridor lined with server racks with illuminated front panel 'ZENPHAM CLOUD INFRA', glowing blue and green LED status lights, optical fiber cables, reflective floor, atmospheric mist, slow forward camera track, cinematic 4k",
+      "aspect_ratio": "16:9",
+      "media_type": "video",
+      "tags": ["server", "datacenter", "cloud", "infra", "zenpham", "devops"],
+      "platforms": ["youtube_long", "podcast_visualizer", "x_post"]
+    },
+    {
+      "id": "prompt_infra_002",
+      "category": "cloud_infra",
+      "title": "High-Speed Fiber Optic Data Highway",
+      "prompt": "macro camera zooming through glowing optical fibers carrying pulses of light at high speed with subtle digital matrix 'ZENPHAM NODE', cyan and gold photon bursts, deep dark obsidian background, 8k render",
+      "aspect_ratio": "9:16",
+      "media_type": "video",
+      "tags": ["fiber", "network", "speed", "shorts", "zenpham"],
+      "platforms": ["youtube_shorts", "facebook_reels"]
+    },
+    {
+      "id": "prompt_infra_003",
+      "category": "cloud_infra",
+      "title": "Distributed Container Cluster Matrix",
+      "prompt": "3d isometric visualization of distributed cloud containers and microservices labeled 'ZENPHAM MICROSERVICES' glowing as interconnected floating cubes, smooth data packets traversing between nodes, dark tech aesthetic",
+      "aspect_ratio": "16:9",
+      "media_type": "image",
+      "tags": ["containers", "docker", "cloud", "architecture", "hero", "zenpham"],
+      "platforms": ["youtube_thumbnail", "facebook_post", "x_post"]
+    },
+    {
+      "id": "prompt_infra_004",
+      "category": "cloud_infra",
+      "title": "Self-Hosted Homelab Server Rack",
+      "prompt": "clean compact homelab server rack with brushed metal badge 'ZENPHAM HOMELAB' in a modern studio corner, quiet fans spinning with subtle RGB accents, patch panel with neatly bundled black cables, warm accent lighting, 35mm shot",
+      "aspect_ratio": "16:9",
+      "media_type": "image",
+      "tags": ["homelab", "self_host", "linux", "hardware", "zenpham"],
+      "platforms": ["youtube_thumbnail", "x_post"]
+    },
+    {
+      "id": "prompt_fin_001",
+      "category": "fintech_market",
+      "title": "3D Holographic Candlestick Stock Chart",
+      "prompt": "3d glowing holographic candlestick financial charts floating over dark reflective surface with header 'ZENPHAM CAPITAL // VN-INDEX INTELLIGENCE', green and cyan upward trend lines, financial numbers floating in background, slow orbital camera, cinematic 8k",
+      "aspect_ratio": "16:9",
+      "media_type": "video",
+      "tags": ["stock", "fintech", "market", "candlestick", "zenpham", "b_roll"],
+      "platforms": ["youtube_long", "x_post", "facebook_post"]
+    },
+    {
+      "id": "prompt_fin_002",
+      "category": "fintech_market",
+      "title": "Live Financial Intelligence Radar",
+      "prompt": "vertical holographic market scanner interface displaying real-time stock telemetry and radar labeled 'ZENPHAM MARKET RADAR' in bright cyan and amber over dark room background, vertical 9:16 layout, smooth pulsing UI",
+      "aspect_ratio": "9:16",
+      "media_type": "video",
+      "tags": ["radar", "fintech", "shorts", "reels", "zenpham"],
+      "platforms": ["youtube_shorts", "facebook_reels", "tiktok"]
+    },
+    {
+      "id": "prompt_fin_003",
+      "category": "fintech_market",
+      "title": "Algorithmic Risk Management Engine",
+      "prompt": "high-tech multi-screen trading command station at night, central screen showcasing algorithmic risk dashboard titled 'ZENPHAM RISK ENGINE', glass desk, soft ambient lighting, cinematic commercial view",
+      "aspect_ratio": "16:9",
+      "media_type": "image",
+      "tags": ["algo_trading", "fintech", "risk", "thumbnail", "zenpham"],
+      "platforms": ["youtube_thumbnail", "facebook_post", "x_post"]
+    },
+    {
+      "id": "prompt_pod_001",
+      "category": "podcast_studio",
+      "title": "Acoustic Podcast Studio with Shure SM7B",
+      "prompt": "intimate podcast studio lounge with premium Shure SM7B microphone in foreground, wooden slatted acoustic wall in background featuring warm neon sign spelling 'ZENPHAM STUDIO', warm amber and soft cyan backlight, cinematic 35mm shallow DOF",
+      "aspect_ratio": "16:9",
+      "media_type": "video",
+      "tags": ["podcast", "microphone", "studio", "audio", "zenpham", "hero"],
+      "platforms": ["youtube_long", "podcast_visualizer"]
+    },
+    {
+      "id": "prompt_pod_002",
+      "category": "podcast_studio",
+      "title": "Voice AI Waveform Visualizer",
+      "prompt": "vertical sound wave visualizer pulsating with multi-frequency audio waves and typography 'ZENPHAM VOICE AI', electric cyan and amber ripples over dark obsidian background, 9:16 audio visualizer aesthetic",
+      "aspect_ratio": "9:16",
+      "media_type": "video",
+      "tags": ["waveform", "audio", "shorts", "reels", "zenpham"],
+      "platforms": ["youtube_shorts", "facebook_reels", "podcast_visualizer"]
+    },
+    {
+      "id": "prompt_pod_003",
+      "category": "podcast_studio",
+      "title": "Zen-Tech Soundproof Broadcast Booth",
+      "prompt": "wide angle view of high-end cyber-zen broadcast studio booth, dual microphones on boom arms, professional mixing console with small brass plaque 'ZENPHAM MEDIA', dark soundproof foam panels with LED channel strips, 8k master photograph",
+      "aspect_ratio": "16:9",
+      "media_type": "image",
+      "tags": ["broadcast", "studio", "audio", "thumbnail", "zenpham"],
+      "platforms": ["youtube_thumbnail", "facebook_post"]
+    },
+    {
+      "id": "prompt_city_001",
+      "category": "smart_city",
+      "title": "Saigon Landmark 81 Cyber Night Drone",
+      "prompt": "cinematic 4k drone flyover of Ho Chi Minh City skyline at twilight, Landmark 81 tower glowing brightly, high-speed traffic light trails on Saigon River bridge, rooftop holographic billboard displaying 'ZENPHAM TECH', slow sweeping motion",
+      "aspect_ratio": "16:9",
+      "media_type": "video",
+      "tags": ["saigon", "landmark81", "vietnam", "city", "zenpham", "drone"],
+      "platforms": ["youtube_long", "x_post"]
+    },
+    {
+      "id": "prompt_city_002",
+      "category": "smart_city",
+      "title": "Da Nang Dragon Bridge Cyber Glow",
+      "prompt": "vertical cinematic shot of Da Nang Dragon Bridge breathing fiery amber and cyan light over Han River, futuristic reflections on water, high-contrast night aesthetics with subtle watermark 'ZENPHAM', 9:16 drone view",
+      "aspect_ratio": "9:16",
+      "media_type": "video",
+      "tags": ["danang", "dragon_bridge", "vietnam", "shorts", "zenpham"],
+      "platforms": ["youtube_shorts", "facebook_reels"]
+    },
+    {
+      "id": "prompt_city_003",
+      "category": "smart_city",
+      "title": "Hanoi West Lake Twilight High-Tech Skyline",
+      "prompt": "panoramic evening photograph of Hanoi West Lake skyline during blue hour, modern glass skyscrapers reflecting on calm water, subtle rooftop neon 'ZENPHAM HQ', peaceful cyber-zen atmosphere, 8k ultra-sharp",
+      "aspect_ratio": "16:9",
+      "media_type": "image",
+      "tags": ["hanoi", "west_lake", "vietnam", "skyline", "zenpham", "thumbnail"],
+      "platforms": ["youtube_thumbnail", "facebook_post"]
+    }
+  ]
+}

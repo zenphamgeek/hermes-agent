@@ -1,19 +1,35 @@
 ---
 name: arxiv
-description: "Search arXiv papers by keyword, author, category, or ID."
+description: Search arXiv papers by keyword, author, category, or ID.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Research, Arxiv, Papers, Academic, Science, API]
-    related_skills: [ocr-and-documents]
+    tags:
+    - Research
+    - Arxiv
+    - Papers
+    - Academic
+    - Science
+    - API
+    related_skills:
+    - ocr-and-documents
 ---
-
 # arXiv Research
 
 Search and retrieve academic papers from arXiv via their free REST API. No API key, no dependencies — just curl.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to search arxiv papers by keyword, author, category, or id.
+- Executing automated arxiv workflows and tasks.
 
 ## Quick Reference
 

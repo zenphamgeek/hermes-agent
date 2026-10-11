@@ -1,22 +1,38 @@
 ---
 name: blocked-page-recovery
-description: "Recover blocked/paywalled/WAF'd pages via fallbacks."
+description: Recover blocked/paywalled/WAF'd pages via fallbacks.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Research, Archives, Wayback, Paywall, WAF, Fallback]
-    related_skills: [grounded-citations]
+    tags:
+    - Research
+    - Archives
+    - Wayback
+    - Paywall
+    - WAF
+    - Fallback
+    related_skills:
+    - grounded-citations
 ---
-
 # Blocked-Page Recovery
 
 When a page won't fetch — 403/429, Cloudflare "Just a moment...", a paywall,
 or a bot-detection interstitial — don't give up and don't loop on the same
 URL. Third-party services often hold a **copy** of the page. Work down this
 ladder, cheapest first.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to recover blocked/paywalled/waf'd pages via fallbacks.
+- Executing automated blocked page recovery workflows and tasks.
 
 ## The ladder
 

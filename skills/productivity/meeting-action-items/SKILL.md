@@ -1,16 +1,25 @@
 ---
 name: meeting-action-items
-description: "Turn meeting notes into cited decisions, owners, tickets."
+description: Turn meeting notes into cited decisions, owners, tickets.
 version: 0.1.0
 author: Ben Barclay (benbarclay), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Meetings, Action-Items, Follow-Up, Productivity]
-    related_skills: [teams-meeting-pipeline, google-workspace, notion]
+    tags:
+    - Meetings
+    - Action-Items
+    - Follow-Up
+    - Productivity
+    related_skills:
+    - teams-meeting-pipeline
+    - google-workspace
+    - notion
 ---
-
 # Meeting Action Items
 
 Convert an existing transcript or notes set into accountable follow-through. `teams-meeting-pipeline` can retrieve Teams artifacts; this skill begins once notes/transcript content is available, from any source.

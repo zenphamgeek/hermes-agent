@@ -4,17 +4,33 @@ description: Fetch Canvas LMS courses and assignments via API token.
 version: 1.0.0
 author: community
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 prerequisites:
-  env_vars: [CANVAS_API_TOKEN, CANVAS_BASE_URL]
+  env_vars:
+  - CANVAS_API_TOKEN
+  - CANVAS_BASE_URL
 metadata:
   hermes:
-    tags: [Canvas, LMS, Education, Courses, Assignments]
+    tags:
+    - Canvas
+    - LMS
+    - Education
+    - Courses
+    - Assignments
 ---
-
 # Canvas LMS — Course & Assignment Access
 
 Read-only access to Canvas LMS for listing courses and assignments.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to fetch canvas lms courses and assignments via api token.
+- Executing automated canvas workflows and tasks.
 
 ## Scripts
 

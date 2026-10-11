@@ -1,0 +1,1938 @@
+{
+  "version": "1.0.0",
+  "series_title": "TÔI LÀM VIỆC — Kỹ Nghệ & Toán Học AI Thực Chiến",
+  "total_episodes": 25,
+  "curator": "ZENPHAM",
+  "official_playlist_id": "PLPJRpJBBHEOY",
+  "taxonomy_levels": {
+    "1": "Nền tảng Toán học & Giải tích (Core Mathematics & Calculus)",
+    "2": "Xác suất & Lý thuyết Thông tin (Probability, Statistics & Information)",
+    "3": "Kiến trúc Mạng & Động lực học Học máy (Architectures & Learning Dynamics)",
+    "4": "Kỹ nghệ Hệ thống & Siêu Mô hình (Systems Engineering & Advanced LLMs)"
+  },
+  "episodes": [
+    {
+      "ep": 1,
+      "title": "BẢN CHẤT XÁC SUẤT AI // Khi Đồng Xu Xác Suất Định Đoạt Trí Tuệ Nhân Tạo",
+      "yt_id": "HmFA2JUmjKg",
+      "level": 2,
+      "core_theorems": [
+        "Xác suất tiền nghiệm & hậu nghiệm",
+        "Đồng xu Bernouilli",
+        "Tính bất định trong suy luận máy"
+      ],
+      "keywords": [
+        "probability",
+        "bayes",
+        "coin flip",
+        "bernoulli",
+        "uncertainty",
+        "sampling"
+      ],
+      "manim_components": [
+        "CoinFlipDistribution",
+        "ProbabilityBarGraph",
+        "BinaryOutcomeTree"
+      ]
+    },
+    {
+      "ep": 2,
+      "title": "CỖ MÁY MÒ MẪM TRONG BÓNG TỐI // Đạo Hàm & Gradient Descent",
+      "yt_id": "TVOk2MrhQjI",
+      "level": 1,
+      "core_theorems": [
+        "Đạo hàm riêng",
+        "Vector Gradient",
+        "Thuật toán Gradient Descent",
+        "Learning Rate"
+      ],
+      "keywords": [
+        "gradient descent",
+        "derivative",
+        "learning rate",
+        "loss landscape",
+        "optimization"
+      ],
+      "manim_components": [
+        "GradientDescent3DSurface",
+        "TangentVectorPlot",
+        "ContourLossMap"
+      ]
+    },
+    {
+      "ep": 3,
+      "title": "CHỮ NGHĨA BIẾN THÀNH TỌA ĐỘ // Bản Chất Không Gian Vector & Embedding AI",
+      "yt_id": "7RH9D6N-AqQ",
+      "level": 1,
+      "core_theorems": [
+        "Không gian Vector nhiều chiều",
+        "Phép chiếu Vector",
+        "Độ tương đồng Cosine",
+        "Word2Vec Semantic Space"
+      ],
+      "keywords": [
+        "vector space",
+        "embedding",
+        "cosine similarity",
+        "dot product",
+        "high-dimensional geometry"
+      ],
+      "manim_components": [
+        "VectorSpace3DProjection",
+        "CosineAngleIndicator",
+        "SemanticClusterCloud"
+      ]
+    },
+    {
+      "ep": 4,
+      "title": "KHI SỰ THẬT CÓ NHIỀU PHIÊN BẢN // Nghịch Lý Simpson & Dữ Liệu Lừa Dối",
+      "yt_id": "ciYHLa5U38A",
+      "level": 2,
+      "core_theorems": [
+        "Nghịch lý Simpson",
+        "Biến gây nhiễu Confounding Variable",
+        "Phân tầng dữ liệu Stratification"
+      ],
+      "keywords": [
+        "simpson paradox",
+        "confounding variable",
+        "spurious correlation",
+        "causal bias",
+        "data stratification"
+      ],
+      "manim_components": [
+        "SimpsonAggregationScatterPlot",
+        "ConfounderCausalGraph",
+        "TrendInversionAnimation"
+      ]
+    },
+    {
+      "ep": 5,
+      "title": "CON XÚC XẮC TRONG HỘP ĐEN SILICON // Số Giả Ngẫu Nhiên PRNG & Entropy Máy Tính",
+      "yt_id": "ogCMy_n_EFg",
+      "level": 2,
+      "core_theorems": [
+        "Bộ sinh số giả ngẫu nhiên PRNG",
+        "Tuyến tính LCG",
+        "Hạt giống Seed & Tính tất định"
+      ],
+      "keywords": [
+        "pseudorandom",
+        "prng",
+        "entropy",
+        "seed",
+        "determinism",
+        "monte carlo seed"
+      ],
+      "manim_components": [
+        "LinearCongruentialGrid",
+        "EntropyBitstreamVisualizer",
+        "DeterministicOrbit"
+      ]
+    },
+    {
+      "ep": 6,
+      "title": "HỖN LOẠN HỘI TỤ VỀ TRẬT TỰ — Định Lý Giới Hạn Trung Tâm CLT & Phân Phối Chuẩn",
+      "yt_id": "P_ez3IBjjKs",
+      "level": 2,
+      "core_theorems": [
+        "Định lý Giới hạn Trung tâm CLT",
+        "Phân phối Gaussian Chuẩn",
+        "Tổng các biến ngẫu nhiên độc lập"
+      ],
+      "keywords": [
+        "central limit theorem",
+        "clt",
+        "gaussian distribution",
+        "bell curve",
+        "normal distribution"
+      ],
+      "manim_components": [
+        "CLTSummingHistogram",
+        "BellCurveMorph",
+        "GaltonBoardSimulation"
+      ]
+    },
+    {
+      "ep": 7,
+      "title": "THƯỚC ĐO SAI LẦM // Hàm Mất Mát Loss Function & Cực Tiểu Hóa Nỗi Đau",
+      "yt_id": "T0zWJU4LcaQ",
+      "level": 1,
+      "core_theorems": [
+        "Mean Squared Error (MSE)",
+        "Cross-Entropy Loss",
+        "Hàm lồi Convexity",
+        "Cực tiểu hóa hàm mục tiêu"
+      ],
+      "keywords": [
+        "loss function",
+        "mse",
+        "cross entropy",
+        "objective function",
+        "convex optimization"
+      ],
+      "manim_components": [
+        "LossFunctionCurve",
+        "PenaltyDistanceRays",
+        "ConvexBowlOptimizer"
+      ]
+    },
+    {
+      "ep": 8,
+      "title": "DÒNG CHẢY NGƯỢC CỦA TRI THỨC — Lan Truyền Ngược Backpropagation & Quy Tắc Dây Chuyền",
+      "yt_id": "w4ShYMSxvOs",
+      "level": 3,
+      "core_theorems": [
+        "Quy tắc dây chuyền Chain Rule",
+        "Đồ thị tính toán Computational Graph",
+        "Tích lũy gradient ngược"
+      ],
+      "keywords": [
+        "backpropagation",
+        "chain rule",
+        "computational graph",
+        "gradient flow",
+        "autograd"
+      ],
+      "manim_components": [
+        "ComputationGraphFlow",
+        "ReverseGradientPulses",
+        "ChainRuleNodeTree"
+      ]
+    },
+    {
+      "ep": 9,
+      "title": "CÁI BẪY CỦA SỰ HOÀN HẢO // Overfitting & Kỹ Thuật Điều Chuẩn Regularization",
+      "yt_id": "CkD4jscrGbM",
+      "level": 3,
+      "core_theorems": [
+        "Overfitting vs Underfitting",
+        "Điều chuẩn L1 Lasso & L2 Ridge",
+        "Đánh đổi Bias-Variance"
+      ],
+      "keywords": [
+        "overfitting",
+        "regularization",
+        "l1 l2",
+        "bias variance tradeoff",
+        "weight decay"
+      ],
+      "manim_components": [
+        "BiasVarianceCurve",
+        "L1DiamondL2CircleConstraint",
+        "OverfittedPolynomialWave"
+      ]
+    },
+    {
+      "ep": 10,
+      "title": "BÓC TÁCH KHÔNG GIAN ĐA CHIỀU // Ma Trận Hiệp Phương Sai & PCA",
+      "yt_id": "6cEqt9z_oeA",
+      "level": 1,
+      "core_theorems": [
+        "Ma trận Hiệp phương sai Covariance Matrix",
+        "Vector riêng & Trị riêng Eigenvalues",
+        "Giảm chiều PCA"
+      ],
+      "keywords": [
+        "pca",
+        "covariance matrix",
+        "eigenvalues",
+        "eigenvectors",
+        "dimensionality reduction"
+      ],
+      "manim_components": [
+        "CovarianceEllipse",
+        "EigenvectorRotation",
+        "DimensionProjection2Dto1D"
+      ]
+    },
+    {
+      "ep": 11,
+      "title": "ĐIỂM NHÌN TRỌNG TÂM // Cơ Chế Tự Chú Ý Attention Q, K, V",
+      "yt_id": "SmyPevLAuqw",
+      "level": 3,
+      "core_theorems": [
+        "Cơ chế Scaled Dot-Product Attention",
+        "Bộ ba ma trận Query-Key-Value",
+        "Ma trận Attention Weights"
+      ],
+      "keywords": [
+        "attention",
+        "qkv",
+        "query key value",
+        "softmax attention",
+        "self attention"
+      ],
+      "manim_components": [
+        "QKVMatrixInteraction",
+        "AttentionHeatmapGrid",
+        "TokenRelationLinks"
+      ]
+    },
+    {
+      "ep": 12,
+      "title": "TRÁI TIM CỦA THỜI ĐẠI AI — Kiến Trúc Transformer & Attention Nhiều Nhánh",
+      "yt_id": "-8gxH9mN8PY",
+      "level": 3,
+      "core_theorems": [
+        "Multi-Head Attention",
+        "Kết nối tắt Residual Connections",
+        "LayerNorm & Feed-Forward Block"
+      ],
+      "keywords": [
+        "transformer architecture",
+        "multihead attention",
+        "residual connections",
+        "encoder decoder",
+        "llm backbone"
+      ],
+      "manim_components": [
+        "TransformerBlockExplosion",
+        "MultiHeadParallelSplit",
+        "ResidualAdditionPath"
+      ]
+    },
+    {
+      "ep": 13,
+      "title": "THƯỚC ĐO SỰ BẤT ĐỊNH // Entropy Thông Tin Shannon & Lượng Tin Bất Ngờ",
+      "yt_id": "_HeGcq9uBfQ",
+      "level": 2,
+      "core_theorems": [
+        "Entropy Shannon",
+        "Bất ngờ thông tin Surprisal (log 1/p)",
+        "Độ phân kỳ Kullback-Leibler (KL Divergence)"
+      ],
+      "keywords": [
+        "shannon entropy",
+        "surprisal",
+        "kl divergence",
+        "information theory",
+        "bits of information"
+      ],
+      "manim_components": [
+        "EntropyCurveLogP",
+        "KLDivergenceDistributionOverlap",
+        "SurprisalPulseMeter"
+      ]
+    },
+    {
+      "ep": 14,
+      "title": "ĐỘ ĐO CỦA NIỀM TIN // Hàm Kích Hoạt Softmax & Nhiệt Độ Temperature",
+      "yt_id": "esGCbDMUXXQ",
+      "level": 2,
+      "core_theorems": [
+        "Hàm phân phối Softmax",
+        "Tham số nhiệt độ Temperature T",
+        "Entropy cực đại & Độ sắc nét phân phối"
+      ],
+      "keywords": [
+        "softmax",
+        "temperature",
+        "logits",
+        "probability distribution",
+        "sampling temperature"
+      ],
+      "manim_components": [
+        "SoftmaxBarMorphWithTemp",
+        "LogitsToProbabilityPie",
+        "TemperatureSliderDynamic"
+      ]
+    },
+    {
+      "ep": 15,
+      "title": "TƯ DUY NHƯ MỘT NHÀ TOÁN HỌC // Suy Luận Bayes & Cập Nhật Xác Suất Theo Bằng Chứng",
+      "yt_id": "mtXwFsaWqVU",
+      "level": 2,
+      "core_theorems": [
+        "Định lý Bayes tổng quát",
+        "Prior, Likelihood, Posterior",
+        "Cập nhật niềm tin đệ quy"
+      ],
+      "keywords": [
+        "bayesian inference",
+        "prior",
+        "likelihood",
+        "posterior",
+        "belief updating"
+      ],
+      "manim_components": [
+        "BayesFormulaDeconstruction",
+        "PriorToPosteriorVennShift",
+        "SequentialEvidenceUpdate"
+      ]
+    },
+    {
+      "ep": 16,
+      "title": "PHẪU THUẬT MA TRẬN DỮ LIỆU // Phân Tích Giá Trị Kỳ Dị SVD",
+      "yt_id": "B7hffKswSpk",
+      "level": 1,
+      "core_theorems": [
+        "Phân rã SVD (A = U * Sigma * V^T)",
+        "Trục trực giao & Giá trị kỳ dị",
+        "Xấp xỉ hạng thấp Low-Rank Matrix"
+      ],
+      "keywords": [
+        "svd",
+        "singular value decomposition",
+        "low rank approximation",
+        "matrix factorization",
+        "orthogonal basis"
+      ],
+      "manim_components": [
+        "SVDThreeStageDeformation",
+        "LowRankImageReconstruction",
+        "SingularValueSpectrum"
+      ]
+    },
+    {
+      "ep": 17,
+      "title": "BẢN ĐỒ TỌA ĐỘ TIỀM ẨN // Không Gian Ẩn Latent Space & Autoencoders",
+      "yt_id": "Y6ZVbvBgfk4",
+      "level": 3,
+      "core_theorems": [
+        "Cổ chai thông tin Bottleneck",
+        "Mạng Autoencoder (Encoder - Decoder)",
+        "Nội suy không gian ẩn Latent Interpolation"
+      ],
+      "keywords": [
+        "latent space",
+        "autoencoder",
+        "bottleneck",
+        "manifold learning",
+        "latent interpolation"
+      ],
+      "manim_components": [
+        "AutoencoderHourglassNetwork",
+        "LatentManifoldInterpolationPath",
+        "ReconstructionErrorField"
+      ]
+    },
+    {
+      "ep": 18,
+      "title": "ĐO ĐẠC VŨ TRỤ BẰNG XÚC XẮC // Mô Phỏng Monte Carlo & Chuỗi Markov MCMC",
+      "yt_id": "hAvlifTwk1g",
+      "level": 2,
+      "core_theorems": [
+        "Xấp xỉ tích phân Monte Carlo",
+        "Bước đi ngẫu nhiên Random Walk",
+        "Thuật toán Metropolis-Hastings MCMC"
+      ],
+      "keywords": [
+        "monte carlo",
+        "mcmc",
+        "markov chain",
+        "metropolis hastings",
+        "sampling complex integrals"
+      ],
+      "manim_components": [
+        "MonteCarloPiCircleScatter",
+        "MarkovChainNodeTransition",
+        "MCMCSamplingTrajectory"
+      ]
+    },
+    {
+      "ep": 19,
+      "title": "TRÒ CHƠI CÂN BẰNG TRÍ TUỆ — Lý Thuyết Trò Chơi Game Theory & Cân Bằng Nash",
+      "yt_id": "oVia-gK_RBE",
+      "level": 3,
+      "core_theorems": [
+        "Ma trận phần thưởng Payoff Matrix",
+        "Cân bằng Nash Nash Equilibrium",
+        "Học tăng cường đa tác nhân MARL"
+      ],
+      "keywords": [
+        "game theory",
+        "nash equilibrium",
+        "prisoners dilemma",
+        "minimax",
+        "marl"
+      ],
+      "manim_components": [
+        "NashPayoffMatrixGrid",
+        "EquilibriumConvergenceField",
+        "MinimaxDecisionTree"
+      ]
+    },
+    {
+      "ep": 20,
+      "title": "ĐIỂM YÊN NGỰA & ĐẠO HÀM CẤP HAI // Ma Trận Hessian & Tối Ưu Hóa Bề Mặt",
+      "yt_id": "ytohA1h9AIs",
+      "level": 1,
+      "core_theorems": [
+        "Đạo hàm bậc hai",
+        "Ma trận Hessian",
+        "Điểm yên ngựa Saddle Point & Độ cong bề mặt"
+      ],
+      "keywords": [
+        "hessian matrix",
+        "saddle point",
+        "second derivative",
+        "curvature",
+        "newton method"
+      ],
+      "manim_components": [
+        "SaddleSurface3DRender",
+        "HessianEigenCurvatureArrows",
+        "EscapeSaddleTrajectory"
+      ]
+    },
+    {
+      "ep": 21,
+      "title": "ỔN ĐỊNH DÒNG CHẢY BÊN TRONG // Chuẩn Hóa Batch Normalization & LayerNorm",
+      "yt_id": "c-9wEZT3gbA",
+      "level": 3,
+      "core_theorems": [
+        "Internal Covariate Shift",
+        "Phép chuẩn hóa Batch Normalization",
+        "Layer Normalization trong LLMs"
+      ],
+      "keywords": [
+        "batchnorm",
+        "layernorm",
+        "normalization",
+        "gradient stability",
+        "internal covariate shift"
+      ],
+      "manim_components": [
+        "DistributionShiftBeforeAfter",
+        "LayerNormVsBatchNormAxisGrid",
+        "AffineTransformScaleShift"
+      ]
+    },
+    {
+      "ep": 22,
+      "title": "BƯỚC NHẢY PHI TUYẾN TÍNH // Hàm Kích Hoạt ReLU, GELU & SiLU",
+      "yt_id": "D2dxzkO30P0",
+      "level": 1,
+      "core_theorems": [
+        "Sự cần thiết của Phi tuyến tính",
+        "Triệt tiêu đạo hàm Vanishing Gradient",
+        "Hàm kích hoạt hiện đại: GELU, SiLU/Swish"
+      ],
+      "keywords": [
+        "activation function",
+        "relu",
+        "gelu",
+        "silu",
+        "non-linearity",
+        "dying relu"
+      ],
+      "manim_components": [
+        "ActivationFunctionCurves",
+        "SpaceFoldingNonlinearDemo",
+        "SmoothProbabilisticGELU"
+      ]
+    },
+    {
+      "ep": 23,
+      "title": "QUÉT QUA KHÔNG GIAN & TẦN SỐ — Phép Tích Chập Convolution & Biến Đổi Fourier",
+      "yt_id": "H3rZLErSfC4",
+      "level": 1,
+      "core_theorems": [
+        "Tích chập không gian Spatial Convolution",
+        "Miền tần số Frequency Domain",
+        "Định lý Tích chập Fourier"
+      ],
+      "keywords": [
+        "convolution",
+        "fourier transform",
+        "kernel filter",
+        "frequency domain",
+        "signal processing"
+      ],
+      "manim_components": [
+        "SlidingKernelMatrixDemo",
+        "FourierWaveDecomposition",
+        "SpatialToFrequencyDomainFlip"
+      ]
+    },
+    {
+      "ep": 24,
+      "title": "KHI TƯƠNG QUAN KHÔNG PHẢI NHÂN QUẢ — Causal Inference & Can Thiệp Do-Calculus",
+      "yt_id": "tE3EZcfK4xY",
+      "level": 2,
+      "core_theorems": [
+        "Tương quan Correlation vs Nhân quả Causation",
+        "Đồ thị nhân quả Causal DAG",
+        "Toán tử can thiệp Do-Calculus của Judea Pearl"
+      ],
+      "keywords": [
+        "causal inference",
+        "causation",
+        "do calculus",
+        "causal dag",
+        "judea pearl",
+        "counterfactuals"
+      ],
+      "manim_components": [
+        "CausalDAGInterventionGraph",
+        "CorrelationVsCausationScatter",
+        "DoOperatorGraphCut"
+      ]
+    },
+    {
+      "ep": 25,
+      "title": "ĐẠO LÀM NGHỀ AI // Đại Hợp Âm 300 Năm Toán Học & Tinh Thần Nghệ Nhân",
+      "yt_id": "0jlSzRceHyo",
+      "level": 4,
+      "core_theorems": [
+        "Hợp nhất 24 trụ cột toán học",
+        "Tinh thần Kỹ sư Nghệ nhân AI Craftsman",
+        "Triết lý công nghệ & Trách nhiệm xã hội"
+      ],
+      "keywords": [
+        "ai craftsman",
+        "grand synthesis",
+        "philosophy of engineering",
+        "300 years of math",
+        "zenpham manifesto"
+      ],
+      "manim_components": [
+        "GrandConstellation24Theorems",
+        "CraftsmanManifestoTypography",
+        "MathToSiliconHarmony"
+      ]
+    },
+    {
+      "series": 2,
+      "ep": 1,
+      "title": "BPE & SentencePiece // Nghệ Thuật Cắt Lát Ngôn Ngữ Thành Số Liệu",
+      "level": 3,
+      "core_theorems": [
+        "Byte-Pair Encoding",
+        "Byte-level Fallback",
+        "Vocab Extension",
+        "Out-of-Vocabulary Resilience"
+      ],
+      "keywords": [
+        "tokenization",
+        "bpe",
+        "sentencepiece",
+        "byte-level",
+        "vocabulary",
+        "compression",
+        "utf-8",
+        "strawberry paradox"
+      ],
+      "manim_components": [
+        "TokenRibbonStream"
+      ],
+      "benchmark_source": "Andrej Karpathy (Let's build the GPT Tokenizer) — 2h 15m",
+      "source_duration": "2h 15m",
+      "zenpham_duration": "10m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 2,
+      "title": "RoPE (Rotary Position Embedding) // Phép Xoay Vector Phức Trong LLaMA & Mistral",
+      "level": 3,
+      "core_theorems": [
+        "Ma trận xoay 2D",
+        "Không gian số phức Euler",
+        "Bảo toàn tích vô hướng tương đối",
+        "Tần số suy giảm hàm mũ"
+      ],
+      "keywords": [
+        "rope",
+        "rotary embedding",
+        "complex numbers",
+        "relative position",
+        "llama",
+        "attention rotation"
+      ],
+      "manim_components": [
+        "RiemannHypersphere3D"
+      ],
+      "benchmark_source": "Su et al. (RoFormer Paper) + Umar Jamil (RoPE Explained) — 42m",
+      "source_duration": "42m",
+      "zenpham_duration": "11m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 3,
+      "title": "Mở Rộng Ngữ Cảnh Dài // Kỹ Thuật Nội Suy Tần Số YaRN & StreamingLLM",
+      "level": 3,
+      "core_theorems": [
+        "Attention Sink Phenomenon",
+        "Linear Interpolation vs YaRN",
+        "Dải tần số cao và thấp",
+        "Streaming Infinite Context"
+      ],
+      "keywords": [
+        "yarn",
+        "streamingllm",
+        "attention sink",
+        "long context",
+        "frequency interpolation",
+        "kv cache eviction"
+      ],
+      "manim_components": [
+        "ContinuousManifold2D"
+      ],
+      "benchmark_source": "Peng et al. (YaRN) + Xiao et al. (MIT StreamingLLM) — 55m",
+      "source_duration": "55m",
+      "zenpham_duration": "10m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 4,
+      "title": "SwiGLU & Cổng Kiểm Soát Dòng Chảy Nơ-ron (Gated Linear Units)",
+      "level": 3,
+      "core_theorems": [
+        "Hadamard Element-wise Product",
+        "Hàm kích hoạt SiLU/Swish",
+        "Van kiểm soát gradient",
+        "Biểu diễn phi tuyến tính hai nhánh"
+      ],
+      "keywords": [
+        "swiglu",
+        "glu",
+        "silu",
+        "feed forward",
+        "neural gates",
+        "hadamard product",
+        "mistral architecture"
+      ],
+      "manim_components": [
+        "GoldenSplitLayout"
+      ],
+      "benchmark_source": "Noam Shazeer (GLU Variants Improve Transformer, Google) — 35m",
+      "source_duration": "35m",
+      "zenpham_duration": "9m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 5,
+      "title": "RMSNorm // Khi Bỏ Qua Kỳ Vọng Giúp LLM Tăng Tốc Gấp Đôi",
+      "level": 3,
+      "core_theorems": [
+        "Bất biến tỷ lệ Scale Invariance",
+        "Loại bỏ Mean Shift",
+        "Tối ưu hóa số lượt truy cập bộ nhớ Memory Pass",
+        "Root Mean Square"
+      ],
+      "keywords": [
+        "rmsnorm",
+        "layernorm",
+        "scale invariance",
+        "gpu memory bandwidth",
+        "cuda optimization",
+        "normalization"
+      ],
+      "manim_components": [
+        "MatrixTensorGrid"
+      ],
+      "benchmark_source": "Zhang & Sennrich (NeurIPS 2019) + Karpathy (NanoGPT) — 45m",
+      "source_duration": "45m",
+      "zenpham_duration": "8m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 6,
+      "title": "MHA vs MQA vs GQA // Bài Toán Đánh Đổi Băng Thông Bộ Nhớ Đồ Họa",
+      "level": 3,
+      "core_theorems": [
+        "Grouped-Query Projection",
+        "Memory Bandwidth Bound vs Compute Bound",
+        "Tỷ lệ nén KV Cache",
+        "Phép ánh xạ Query đa đầu"
+      ],
+      "keywords": [
+        "mha",
+        "mqa",
+        "gqa",
+        "grouped query",
+        "bandwidth",
+        "memory bound",
+        "vram serving"
+      ],
+      "manim_components": [
+        "MatrixTensorGrid"
+      ],
+      "benchmark_source": "Ainslie et al. (GQA Paper, Google) + Umar Jamil — 38m",
+      "source_duration": "38m",
+      "zenpham_duration": "10m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 7,
+      "title": "KV Cache // Trái Tim Vận Hành Từng Token Của Bộ Sinh LLM",
+      "level": 3,
+      "core_theorems": [
+        "Prefill vs Autoregressive Decode",
+        "Công thức dung lượng KV Cache",
+        "Triệt tiêu tính toán thừa O(N^2)",
+        "Thắt cổ chai dung lượng VRAM"
+      ],
+      "keywords": [
+        "kv cache",
+        "prefill",
+        "decode",
+        "autoregressive",
+        "token generation",
+        "vram sizing"
+      ],
+      "manim_components": [
+        "HUDTelemetryCard"
+      ],
+      "benchmark_source": "Andrej Karpathy (Neural Networks: Zero to Hero GPT) — 1h 56m",
+      "source_duration": "1h 56m",
+      "zenpham_duration": "11m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 8,
+      "title": "PagedAttention & Cơ Chế Cấp Phát Bộ Nhớ Ảo Của vLLM",
+      "level": 4,
+      "core_theorems": [
+        "Phân mảnh nội vi & ngoại vi",
+        "Virtual Memory Paging in GPU",
+        "Bảng trang Block Table",
+        "Copy-on-Write for Parallel Sampling"
+      ],
+      "keywords": [
+        "pagedattention",
+        "vllm",
+        "memory paging",
+        "fragmentation",
+        "block table",
+        "high throughput"
+      ],
+      "manim_components": [
+        "FocusSpotlightZone"
+      ],
+      "benchmark_source": "Kwon et al. (vLLM Paper & Talk, SOSP 2023) — 45m",
+      "source_duration": "45m",
+      "zenpham_duration": "10m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 9,
+      "title": "FlashAttention // Nghệ Thuật Tối Ưu I/O Giữa SRAM & HBM Của GPU",
+      "level": 4,
+      "core_theorems": [
+        "Phân cấp bộ nhớ SRAM vs HBM",
+        "Kỹ thuật Tiling chia khối",
+        "Online Softmax đệ quy",
+        "Triệt tiêu ma trận trung gian NxN"
+      ],
+      "keywords": [
+        "flashattention",
+        "tri dao",
+        "online softmax",
+        "sram",
+        "hbm",
+        "io complexity",
+        "cuda kernel"
+      ],
+      "manim_components": [
+        "GoldenSplitLayout"
+      ],
+      "benchmark_source": "Tri Dao (FlashAttention Paper & Stanford Seminar) — 1h 10m",
+      "source_duration": "1h 10m",
+      "zenpham_duration": "12m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 10,
+      "title": "Linear Attention & Mamba (State Space Models - SSM)",
+      "level": 3,
+      "core_theorems": [
+        "Continuous State Space Equations",
+        "Selective Scan Mechanism",
+        "Hardware-aware Parallel Associative Scan",
+        "Độ phức tạp tuyến tính O(N)"
+      ],
+      "keywords": [
+        "mamba",
+        "ssm",
+        "state space",
+        "selective scan",
+        "linear complexity",
+        "associative scan"
+      ],
+      "manim_components": [
+        "ContinuousManifold2D"
+      ],
+      "benchmark_source": "Gu & Dao (Mamba Paper) + Umar Jamil (Mamba Explained) — 1h 02m",
+      "source_duration": "1h 02m",
+      "zenpham_duration": "11m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 11,
+      "title": "Mixture of Experts (MoE) // Bí Mật Định Tuyến Nơ-ron Trong Mixtral & DeepSeek",
+      "level": 3,
+      "core_theorems": [
+        "Noisy Top-k Gating Router",
+        "Auxiliary Load Balancing Loss",
+        "Kích hoạt thưa (Sparse Activation)",
+        "Chuyên gia chuyên biệt hóa"
+      ],
+      "keywords": [
+        "moe",
+        "mixture of experts",
+        "routing",
+        "sparse activation",
+        "mixtral",
+        "deepseek-v3",
+        "load balancing"
+      ],
+      "manim_components": [
+        "AutogradDAGGraph"
+      ],
+      "benchmark_source": "Mistral AI (Mixtral 8x7B) + Noam Shazeer (Google) — 28m",
+      "source_duration": "28m",
+      "zenpham_duration": "11m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 12,
+      "title": "Lượng Tử Hóa INT8 & FP8 // Nén Trọng Số Mà Không Làm Mất Trí Tuệ",
+      "level": 4,
+      "core_theorems": [
+        "Hiện tượng Emergent Outlier Features",
+        "Phân rã ma trận hỗn hợp Mixed-Precision",
+        "Ánh xạ tỷ lệ tuyến tính Scale Factor",
+        "Định dạng FP8 (E4M3 vs E5M2)"
+      ],
+      "keywords": [
+        "quantization",
+        "int8",
+        "fp8",
+        "dettmers",
+        "outliers",
+        "mixed precision",
+        "model compression"
+      ],
+      "manim_components": [
+        "MatrixTensorGrid"
+      ],
+      "benchmark_source": "Tim Dettmers (LLM.int8() NeurIPS 2022) — 35m",
+      "source_duration": "35m",
+      "zenpham_duration": "10m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 13,
+      "title": "GPTQ & AWQ // Kỹ Thuật Lượng Tử Hóa Nâng Cao Bảo Vệ Trọng Số Cốt Lõi",
+      "level": 4,
+      "core_theorems": [
+        "Bù trừ sai số ma trận Hessian bậc hai",
+        "Activation-aware Weight Scaling",
+        "Phân phối kênh kích hoạt lớn nhất",
+        "Zero-point calibration"
+      ],
+      "keywords": [
+        "gptq",
+        "awq",
+        "hessian",
+        "second order",
+        "activation aware",
+        "song han",
+        "post training quantization"
+      ],
+      "manim_components": [
+        "LossLandscapeSurface3D"
+      ],
+      "benchmark_source": "Frantar (GPTQ) + MIT Song Han (AWQ) — 1h 05m",
+      "source_duration": "1h 05m",
+      "zenpham_duration": "10m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 14,
+      "title": "LoRA & QLoRA // Tinh Chỉnh Mô Hình Hàng Tỷ Tham Số Trên GPU Cá Nhân",
+      "level": 4,
+      "core_theorems": [
+        "Giả thuyết Hạng Nội Tại (Intrinsic Rank Hypothesis)",
+        "Phân rã ma trận hạng thấp Delta W = B x A",
+        "Định dạng NormalFloat4 (NF4)",
+        "Double Dequantization & Paged Optimizers"
+      ],
+      "keywords": [
+        "lora",
+        "qlora",
+        "low rank",
+        "fine-tuning",
+        "nf4",
+        "peft",
+        "svd connection"
+      ],
+      "manim_components": [
+        "FocusSpotlightZone"
+      ],
+      "benchmark_source": "Edward Hu (Microsoft LoRA) + Tim Dettmers (QLoRA) — 50m",
+      "source_duration": "50m",
+      "zenpham_duration": "11m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 15,
+      "title": "Speculative Decoding // Cơ Chế Đoán Trước Tương Lai Để Tăng Tốc Sinh Token",
+      "level": 4,
+      "core_theorems": [
+        "Draft Model vs Target Model",
+        "Xác thực song song Parallel Verification",
+        "Speculative Rejection Sampling",
+        "Bảo toàn phân phối xác suất tuyệt đối"
+      ],
+      "keywords": [
+        "speculative decoding",
+        "draft model",
+        "target model",
+        "rejection sampling",
+        "inference acceleration",
+        "speedup"
+      ],
+      "manim_components": [
+        "HUDTelemetryCard"
+      ],
+      "benchmark_source": "Leviathan et al. (Google Research) + DeepMind — 40m",
+      "source_duration": "40m",
+      "zenpham_duration": "9m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 16,
+      "title": "DPO (Direct Preference Optimization) // Khai Tử Mô Hình Thưởng Phức Tạp Của RLHF",
+      "level": 3,
+      "core_theorems": [
+        "Đột phá giải tích ngầm định (Implicit Reward)",
+        "Biến bài toán RL thành Binary Cross-Entropy",
+        "Cân bằng phân kỳ KL Divergence",
+        "Loại bỏ Actor-Critic-Reward PPO"
+      ],
+      "keywords": [
+        "dpo",
+        "rlhf",
+        "alignment",
+        "implicit reward",
+        "preference optimization",
+        "kl divergence",
+        "loss function"
+      ],
+      "manim_components": [
+        "GoldenSplitLayout"
+      ],
+      "benchmark_source": "Rafael Rafailov (Stanford AI Seminar) — 58m",
+      "source_duration": "58m",
+      "zenpham_duration": "11m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 17,
+      "title": "PPO vs DPO vs KTO vs ORPO // So Sánh Hình Học Các Hàm Mục Tiêu Căn Chỉnh",
+      "level": 3,
+      "core_theorems": [
+        "Lý thuyết triển vọng Prospect Theory trong KTO",
+        "Căn chỉnh nguyên khối Monolithic SFT trong ORPO",
+        "Độ cong hình học của Gradient mục tiêu",
+        "Dữ liệu không ghép cặp Unpaired Alignment"
+      ],
+      "keywords": [
+        "ppo",
+        "dpo",
+        "kto",
+        "orpo",
+        "alignment",
+        "loss geometry",
+        "prospect theory"
+      ],
+      "manim_components": [
+        "QuadrantComparisonLayout"
+      ],
+      "benchmark_source": "NeurIPS Oral Sessions (KTO & ORPO 2024) — 45m",
+      "source_duration": "45m",
+      "zenpham_duration": "10m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 18,
+      "title": "Kỹ Nghệ Suy Luận Chuỗi (Chain-of-Thought) & Tìm Kiếm Cây MCTS",
+      "level": 3,
+      "core_theorems": [
+        "Tư duy Hệ thống 1 và Hệ thống 2 của Daniel Kahneman",
+        "Scratchpad bộ nhớ trung gian qua các tầng Attention",
+        "Tree of Thoughts và cắt tỉa nhánh",
+        "Monte Carlo Tree Search for Reasoning"
+      ],
+      "keywords": [
+        "chain of thought",
+        "cot",
+        "tree of thoughts",
+        "mcts",
+        "system 2",
+        "reasoning",
+        "search"
+      ],
+      "manim_components": [
+        "AutogradDAGGraph"
+      ],
+      "benchmark_source": "Wei et al. (Google CoT) + Yao et al. (Princeton ToT) — 48m",
+      "source_duration": "48m",
+      "zenpham_duration": "10m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 19,
+      "title": "GRPO & Cơ Chế Tự Huấn Luyện Suy Luận Của DeepSeek-R1",
+      "level": 4,
+      "core_theorems": [
+        "Group Relative Advantage Estimation",
+        "Pure Reinforcement Learning Emergence",
+        "Loại bỏ hoàn toàn Critic Network",
+        "Hiện tượng Aha Moment & Self-Correction"
+      ],
+      "keywords": [
+        "grpo",
+        "deepseek",
+        "deepseek-r1",
+        "reinforcement learning",
+        "reasoning emergence",
+        "relative advantage",
+        "aha moment"
+      ],
+      "manim_components": [
+        "FocusSpotlightZone"
+      ],
+      "benchmark_source": "DeepSeek AI (DeepSeek-R1 Technical Report) + Karpathy Analysis",
+      "source_duration": "Báo cáo 50 trang",
+      "zenpham_duration": "12m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 20,
+      "title": "Ảo Giác (Hallucination) & Cơ Chế Tự Hiệu Chỉnh Của Mạng Nơ-ron",
+      "level": 3,
+      "core_theorems": [
+        "Bản chất xác suất chuỗi vs Chân lý khách quan",
+        "Đo lường Semantic Entropy",
+        "Trích xuất vector kích hoạt nội tại (Probing Classifiers)",
+        "Cơ chế tự hiệu chỉnh niềm tin Self-Calibrated Decoding"
+      ],
+      "keywords": [
+        "hallucination",
+        "probing",
+        "semantic entropy",
+        "mechanistic interpretability",
+        "internal truth",
+        "anthropic"
+      ],
+      "manim_components": [
+        "ContinuousManifold2D"
+      ],
+      "benchmark_source": "Anthropic Interpretability Talk + EMNLP 2023 Probing Classifiers — 50m",
+      "source_duration": "50m",
+      "zenpham_duration": "10m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 21,
+      "title": "RAG Đa Tầng // Đưa Tri Thức Bên Ngoài Vào Não Bộ LLM",
+      "level": 4,
+      "core_theorems": [
+        "Khắc phục hiện tượng Lost in the Middle",
+        "Hypothetical Document Embeddings (HyDE)",
+        "Cross-Encoder Re-ranking Scoring",
+        "Hierarchical Tree Chunking & Contextual Compression"
+      ],
+      "keywords": [
+        "rag",
+        "advanced rag",
+        "hyde",
+        "reranking",
+        "vector search",
+        "chunking",
+        "lost in the middle"
+      ],
+      "manim_components": [
+        "MatrixTensorGrid"
+      ],
+      "benchmark_source": "DeepLearning.AI Advanced RAG Specialization — 1h 15m",
+      "source_duration": "1h 15m",
+      "zenpham_duration": "11m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 22,
+      "title": "Function Calling & Tool Use // Cầu Nối Giữa Văn Bản Và Thế Giới Thực",
+      "level": 4,
+      "core_theorems": [
+        "Grammar-Constrained Logit Masking",
+        "Máy trạng thái hữu hạn Finite State Machine (FSM)",
+        "Cú pháp JSON Schema Validation tại Softmax",
+        "Cơ chế Tool Dispatcher & Trả kết quả"
+      ],
+      "keywords": [
+        "function calling",
+        "tool use",
+        "grammar sampling",
+        "fsm",
+        "json schema",
+        "toolformer",
+        "agent execution"
+      ],
+      "manim_components": [
+        "FocusSpotlightZone"
+      ],
+      "benchmark_source": "Meta AI (Toolformer Paper) + OpenAI API Specs — 40m tài liệu",
+      "source_duration": "40m tài liệu",
+      "zenpham_duration": "10m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 23,
+      "title": "Kiến Trúc Multi-Agent // Khi Các LLM Phản Biện & Cộng Tác Cùng Nhau",
+      "level": 4,
+      "core_theorems": [
+        "Động lực học phản biện đa tác nhân (Debate & Cross-examination)",
+        "Cơ chế bộ nhớ tập thể Shared Memory Graph",
+        "Giao thức phân quyền vai trò Role-Playing",
+        "Cơ chế đồng thuận phi tập trung Consensus"
+      ],
+      "keywords": [
+        "multi-agent",
+        "autogen",
+        "agentic workflow",
+        "debate",
+        "consensus",
+        "hermes agent",
+        "antigravity"
+      ],
+      "manim_components": [
+        "AutogradDAGGraph"
+      ],
+      "benchmark_source": "Microsoft AutoGen + Stanford Generative Agents — 55m",
+      "source_duration": "55m",
+      "zenpham_duration": "11m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 24,
+      "title": "Distributed Training // Huấn Luyện Mô Hình Ngàn Tỷ Tham Số Trên Siêu Máy Tính",
+      "level": 4,
+      "core_theorems": [
+        "3D Parallelism (Data, Tensor, Pipeline)",
+        "Phân rã bộ nhớ ZeRO Stage 1-2-3 (FSDP)",
+        "Giao tiếp mạng All-Reduce, Reduce-Scatter trên NVLink",
+        "Chống nghẽn Pipeline Bubbles"
+      ],
+      "keywords": [
+        "distributed training",
+        "megatron-lm",
+        "zero",
+        "deepspeed",
+        "fsdp",
+        "tensor parallelism",
+        "nvlink",
+        "gpu cluster"
+      ],
+      "manim_components": [
+        "TransformerTower3D"
+      ],
+      "benchmark_source": "NVIDIA Megatron-LM + Microsoft DeepSpeed ZeRO — 1h 20m",
+      "source_duration": "1h 20m",
+      "zenpham_duration": "12m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 25,
+      "title": "Tương Lai Của Trí Tuệ Nhân Tạo // Khi AI Tự Viết Lại Kiến Trúc Của Chính Mình",
+      "level": 4,
+      "core_theorems": [
+        "Vòng lặp tự hoàn thiện (Recursive Self-Improvement)",
+        "Neural Architecture Search tự động",
+        "Bảo toàn giá trị con người (Value Alignment)",
+        "Đạo làm nghề kỹ sư thủ công (Digital Craftsmanship)"
+      ],
+      "keywords": [
+        "future of ai",
+        "agi",
+        "recursive self-improvement",
+        "craftsmanship",
+        "human alignment",
+        "zenpham manifesto"
+      ],
+      "manim_components": [
+        "TransformerTower3D"
+      ],
+      "benchmark_source": "Tuyên ngôn AGI hàng đầu thế giới (DeepMind, OpenAI, Anthropic) + Triết lý ZENPHAM",
+      "source_duration": "Tổng hòa tư tưởng",
+      "zenpham_duration": "14m 00s"
+    }
+  ],
+  "total_episodes_series_1": 25,
+  "total_episodes_series_2": 25,
+  "series_2_episodes": [
+    {
+      "series": 2,
+      "ep": 1,
+      "title": "BPE & SentencePiece // Nghệ Thuật Cắt Lát Ngôn Ngữ Thành Số Liệu",
+      "level": 3,
+      "core_theorems": [
+        "Byte-Pair Encoding",
+        "Byte-level Fallback",
+        "Vocab Extension",
+        "Out-of-Vocabulary Resilience"
+      ],
+      "keywords": [
+        "tokenization",
+        "bpe",
+        "sentencepiece",
+        "byte-level",
+        "vocabulary",
+        "compression",
+        "utf-8",
+        "strawberry paradox"
+      ],
+      "manim_components": [
+        "TokenRibbonStream"
+      ],
+      "benchmark_source": "Andrej Karpathy (Let's build the GPT Tokenizer) — 2h 15m",
+      "source_duration": "2h 15m",
+      "zenpham_duration": "10m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 2,
+      "title": "RoPE (Rotary Position Embedding) // Phép Xoay Vector Phức Trong LLaMA & Mistral",
+      "level": 3,
+      "core_theorems": [
+        "Ma trận xoay 2D",
+        "Không gian số phức Euler",
+        "Bảo toàn tích vô hướng tương đối",
+        "Tần số suy giảm hàm mũ"
+      ],
+      "keywords": [
+        "rope",
+        "rotary embedding",
+        "complex numbers",
+        "relative position",
+        "llama",
+        "attention rotation"
+      ],
+      "manim_components": [
+        "RiemannHypersphere3D"
+      ],
+      "benchmark_source": "Su et al. (RoFormer Paper) + Umar Jamil (RoPE Explained) — 42m",
+      "source_duration": "42m",
+      "zenpham_duration": "11m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 3,
+      "title": "Mở Rộng Ngữ Cảnh Dài // Kỹ Thuật Nội Suy Tần Số YaRN & StreamingLLM",
+      "level": 3,
+      "core_theorems": [
+        "Attention Sink Phenomenon",
+        "Linear Interpolation vs YaRN",
+        "Dải tần số cao và thấp",
+        "Streaming Infinite Context"
+      ],
+      "keywords": [
+        "yarn",
+        "streamingllm",
+        "attention sink",
+        "long context",
+        "frequency interpolation",
+        "kv cache eviction"
+      ],
+      "manim_components": [
+        "ContinuousManifold2D"
+      ],
+      "benchmark_source": "Peng et al. (YaRN) + Xiao et al. (MIT StreamingLLM) — 55m",
+      "source_duration": "55m",
+      "zenpham_duration": "10m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 4,
+      "title": "SwiGLU & Cổng Kiểm Soát Dòng Chảy Nơ-ron (Gated Linear Units)",
+      "level": 3,
+      "core_theorems": [
+        "Hadamard Element-wise Product",
+        "Hàm kích hoạt SiLU/Swish",
+        "Van kiểm soát gradient",
+        "Biểu diễn phi tuyến tính hai nhánh"
+      ],
+      "keywords": [
+        "swiglu",
+        "glu",
+        "silu",
+        "feed forward",
+        "neural gates",
+        "hadamard product",
+        "mistral architecture"
+      ],
+      "manim_components": [
+        "GoldenSplitLayout"
+      ],
+      "benchmark_source": "Noam Shazeer (GLU Variants Improve Transformer, Google) — 35m",
+      "source_duration": "35m",
+      "zenpham_duration": "9m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 5,
+      "title": "RMSNorm // Khi Bỏ Qua Kỳ Vọng Giúp LLM Tăng Tốc Gấp Đôi",
+      "level": 3,
+      "core_theorems": [
+        "Bất biến tỷ lệ Scale Invariance",
+        "Loại bỏ Mean Shift",
+        "Tối ưu hóa số lượt truy cập bộ nhớ Memory Pass",
+        "Root Mean Square"
+      ],
+      "keywords": [
+        "rmsnorm",
+        "layernorm",
+        "scale invariance",
+        "gpu memory bandwidth",
+        "cuda optimization",
+        "normalization"
+      ],
+      "manim_components": [
+        "MatrixTensorGrid"
+      ],
+      "benchmark_source": "Zhang & Sennrich (NeurIPS 2019) + Karpathy (NanoGPT) — 45m",
+      "source_duration": "45m",
+      "zenpham_duration": "8m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 6,
+      "title": "MHA vs MQA vs GQA // Bài Toán Đánh Đổi Băng Thông Bộ Nhớ Đồ Họa",
+      "level": 3,
+      "core_theorems": [
+        "Grouped-Query Projection",
+        "Memory Bandwidth Bound vs Compute Bound",
+        "Tỷ lệ nén KV Cache",
+        "Phép ánh xạ Query đa đầu"
+      ],
+      "keywords": [
+        "mha",
+        "mqa",
+        "gqa",
+        "grouped query",
+        "bandwidth",
+        "memory bound",
+        "vram serving"
+      ],
+      "manim_components": [
+        "MatrixTensorGrid"
+      ],
+      "benchmark_source": "Ainslie et al. (GQA Paper, Google) + Umar Jamil — 38m",
+      "source_duration": "38m",
+      "zenpham_duration": "10m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 7,
+      "title": "KV Cache // Trái Tim Vận Hành Từng Token Của Bộ Sinh LLM",
+      "level": 3,
+      "core_theorems": [
+        "Prefill vs Autoregressive Decode",
+        "Công thức dung lượng KV Cache",
+        "Triệt tiêu tính toán thừa O(N^2)",
+        "Thắt cổ chai dung lượng VRAM"
+      ],
+      "keywords": [
+        "kv cache",
+        "prefill",
+        "decode",
+        "autoregressive",
+        "token generation",
+        "vram sizing"
+      ],
+      "manim_components": [
+        "HUDTelemetryCard"
+      ],
+      "benchmark_source": "Andrej Karpathy (Neural Networks: Zero to Hero GPT) — 1h 56m",
+      "source_duration": "1h 56m",
+      "zenpham_duration": "11m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 8,
+      "title": "PagedAttention & Cơ Chế Cấp Phát Bộ Nhớ Ảo Của vLLM",
+      "level": 4,
+      "core_theorems": [
+        "Phân mảnh nội vi & ngoại vi",
+        "Virtual Memory Paging in GPU",
+        "Bảng trang Block Table",
+        "Copy-on-Write for Parallel Sampling"
+      ],
+      "keywords": [
+        "pagedattention",
+        "vllm",
+        "memory paging",
+        "fragmentation",
+        "block table",
+        "high throughput"
+      ],
+      "manim_components": [
+        "FocusSpotlightZone"
+      ],
+      "benchmark_source": "Kwon et al. (vLLM Paper & Talk, SOSP 2023) — 45m",
+      "source_duration": "45m",
+      "zenpham_duration": "10m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 9,
+      "title": "FlashAttention // Nghệ Thuật Tối Ưu I/O Giữa SRAM & HBM Của GPU",
+      "level": 4,
+      "core_theorems": [
+        "Phân cấp bộ nhớ SRAM vs HBM",
+        "Kỹ thuật Tiling chia khối",
+        "Online Softmax đệ quy",
+        "Triệt tiêu ma trận trung gian NxN"
+      ],
+      "keywords": [
+        "flashattention",
+        "tri dao",
+        "online softmax",
+        "sram",
+        "hbm",
+        "io complexity",
+        "cuda kernel"
+      ],
+      "manim_components": [
+        "GoldenSplitLayout"
+      ],
+      "benchmark_source": "Tri Dao (FlashAttention Paper & Stanford Seminar) — 1h 10m",
+      "source_duration": "1h 10m",
+      "zenpham_duration": "12m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 10,
+      "title": "Linear Attention & Mamba (State Space Models - SSM)",
+      "level": 3,
+      "core_theorems": [
+        "Continuous State Space Equations",
+        "Selective Scan Mechanism",
+        "Hardware-aware Parallel Associative Scan",
+        "Độ phức tạp tuyến tính O(N)"
+      ],
+      "keywords": [
+        "mamba",
+        "ssm",
+        "state space",
+        "selective scan",
+        "linear complexity",
+        "associative scan"
+      ],
+      "manim_components": [
+        "ContinuousManifold2D"
+      ],
+      "benchmark_source": "Gu & Dao (Mamba Paper) + Umar Jamil (Mamba Explained) — 1h 02m",
+      "source_duration": "1h 02m",
+      "zenpham_duration": "11m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 11,
+      "title": "Mixture of Experts (MoE) // Bí Mật Định Tuyến Nơ-ron Trong Mixtral & DeepSeek",
+      "level": 3,
+      "core_theorems": [
+        "Noisy Top-k Gating Router",
+        "Auxiliary Load Balancing Loss",
+        "Kích hoạt thưa (Sparse Activation)",
+        "Chuyên gia chuyên biệt hóa"
+      ],
+      "keywords": [
+        "moe",
+        "mixture of experts",
+        "routing",
+        "sparse activation",
+        "mixtral",
+        "deepseek-v3",
+        "load balancing"
+      ],
+      "manim_components": [
+        "AutogradDAGGraph"
+      ],
+      "benchmark_source": "Mistral AI (Mixtral 8x7B) + Noam Shazeer (Google) — 28m",
+      "source_duration": "28m",
+      "zenpham_duration": "11m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 12,
+      "title": "Lượng Tử Hóa INT8 & FP8 // Nén Trọng Số Mà Không Làm Mất Trí Tuệ",
+      "level": 4,
+      "core_theorems": [
+        "Hiện tượng Emergent Outlier Features",
+        "Phân rã ma trận hỗn hợp Mixed-Precision",
+        "Ánh xạ tỷ lệ tuyến tính Scale Factor",
+        "Định dạng FP8 (E4M3 vs E5M2)"
+      ],
+      "keywords": [
+        "quantization",
+        "int8",
+        "fp8",
+        "dettmers",
+        "outliers",
+        "mixed precision",
+        "model compression"
+      ],
+      "manim_components": [
+        "MatrixTensorGrid"
+      ],
+      "benchmark_source": "Tim Dettmers (LLM.int8() NeurIPS 2022) — 35m",
+      "source_duration": "35m",
+      "zenpham_duration": "10m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 13,
+      "title": "GPTQ & AWQ // Kỹ Thuật Lượng Tử Hóa Nâng Cao Bảo Vệ Trọng Số Cốt Lõi",
+      "level": 4,
+      "core_theorems": [
+        "Bù trừ sai số ma trận Hessian bậc hai",
+        "Activation-aware Weight Scaling",
+        "Phân phối kênh kích hoạt lớn nhất",
+        "Zero-point calibration"
+      ],
+      "keywords": [
+        "gptq",
+        "awq",
+        "hessian",
+        "second order",
+        "activation aware",
+        "song han",
+        "post training quantization"
+      ],
+      "manim_components": [
+        "LossLandscapeSurface3D"
+      ],
+      "benchmark_source": "Frantar (GPTQ) + MIT Song Han (AWQ) — 1h 05m",
+      "source_duration": "1h 05m",
+      "zenpham_duration": "10m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 14,
+      "title": "LoRA & QLoRA // Tinh Chỉnh Mô Hình Hàng Tỷ Tham Số Trên GPU Cá Nhân",
+      "level": 4,
+      "core_theorems": [
+        "Giả thuyết Hạng Nội Tại (Intrinsic Rank Hypothesis)",
+        "Phân rã ma trận hạng thấp Delta W = B x A",
+        "Định dạng NormalFloat4 (NF4)",
+        "Double Dequantization & Paged Optimizers"
+      ],
+      "keywords": [
+        "lora",
+        "qlora",
+        "low rank",
+        "fine-tuning",
+        "nf4",
+        "peft",
+        "svd connection"
+      ],
+      "manim_components": [
+        "FocusSpotlightZone"
+      ],
+      "benchmark_source": "Edward Hu (Microsoft LoRA) + Tim Dettmers (QLoRA) — 50m",
+      "source_duration": "50m",
+      "zenpham_duration": "11m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 15,
+      "title": "Speculative Decoding // Cơ Chế Đoán Trước Tương Lai Để Tăng Tốc Sinh Token",
+      "level": 4,
+      "core_theorems": [
+        "Draft Model vs Target Model",
+        "Xác thực song song Parallel Verification",
+        "Speculative Rejection Sampling",
+        "Bảo toàn phân phối xác suất tuyệt đối"
+      ],
+      "keywords": [
+        "speculative decoding",
+        "draft model",
+        "target model",
+        "rejection sampling",
+        "inference acceleration",
+        "speedup"
+      ],
+      "manim_components": [
+        "HUDTelemetryCard"
+      ],
+      "benchmark_source": "Leviathan et al. (Google Research) + DeepMind — 40m",
+      "source_duration": "40m",
+      "zenpham_duration": "9m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 16,
+      "title": "DPO (Direct Preference Optimization) // Khai Tử Mô Hình Thưởng Phức Tạp Của RLHF",
+      "level": 3,
+      "core_theorems": [
+        "Đột phá giải tích ngầm định (Implicit Reward)",
+        "Biến bài toán RL thành Binary Cross-Entropy",
+        "Cân bằng phân kỳ KL Divergence",
+        "Loại bỏ Actor-Critic-Reward PPO"
+      ],
+      "keywords": [
+        "dpo",
+        "rlhf",
+        "alignment",
+        "implicit reward",
+        "preference optimization",
+        "kl divergence",
+        "loss function"
+      ],
+      "manim_components": [
+        "GoldenSplitLayout"
+      ],
+      "benchmark_source": "Rafael Rafailov (Stanford AI Seminar) — 58m",
+      "source_duration": "58m",
+      "zenpham_duration": "11m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 17,
+      "title": "PPO vs DPO vs KTO vs ORPO // So Sánh Hình Học Các Hàm Mục Tiêu Căn Chỉnh",
+      "level": 3,
+      "core_theorems": [
+        "Lý thuyết triển vọng Prospect Theory trong KTO",
+        "Căn chỉnh nguyên khối Monolithic SFT trong ORPO",
+        "Độ cong hình học của Gradient mục tiêu",
+        "Dữ liệu không ghép cặp Unpaired Alignment"
+      ],
+      "keywords": [
+        "ppo",
+        "dpo",
+        "kto",
+        "orpo",
+        "alignment",
+        "loss geometry",
+        "prospect theory"
+      ],
+      "manim_components": [
+        "QuadrantComparisonLayout"
+      ],
+      "benchmark_source": "NeurIPS Oral Sessions (KTO & ORPO 2024) — 45m",
+      "source_duration": "45m",
+      "zenpham_duration": "10m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 18,
+      "title": "Kỹ Nghệ Suy Luận Chuỗi (Chain-of-Thought) & Tìm Kiếm Cây MCTS",
+      "level": 3,
+      "core_theorems": [
+        "Tư duy Hệ thống 1 và Hệ thống 2 của Daniel Kahneman",
+        "Scratchpad bộ nhớ trung gian qua các tầng Attention",
+        "Tree of Thoughts và cắt tỉa nhánh",
+        "Monte Carlo Tree Search for Reasoning"
+      ],
+      "keywords": [
+        "chain of thought",
+        "cot",
+        "tree of thoughts",
+        "mcts",
+        "system 2",
+        "reasoning",
+        "search"
+      ],
+      "manim_components": [
+        "AutogradDAGGraph"
+      ],
+      "benchmark_source": "Wei et al. (Google CoT) + Yao et al. (Princeton ToT) — 48m",
+      "source_duration": "48m",
+      "zenpham_duration": "10m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 19,
+      "title": "GRPO & Cơ Chế Tự Huấn Luyện Suy Luận Của DeepSeek-R1",
+      "level": 4,
+      "core_theorems": [
+        "Group Relative Advantage Estimation",
+        "Pure Reinforcement Learning Emergence",
+        "Loại bỏ hoàn toàn Critic Network",
+        "Hiện tượng Aha Moment & Self-Correction"
+      ],
+      "keywords": [
+        "grpo",
+        "deepseek",
+        "deepseek-r1",
+        "reinforcement learning",
+        "reasoning emergence",
+        "relative advantage",
+        "aha moment"
+      ],
+      "manim_components": [
+        "FocusSpotlightZone"
+      ],
+      "benchmark_source": "DeepSeek AI (DeepSeek-R1 Technical Report) + Karpathy Analysis",
+      "source_duration": "Báo cáo 50 trang",
+      "zenpham_duration": "12m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 20,
+      "title": "Ảo Giác (Hallucination) & Cơ Chế Tự Hiệu Chỉnh Của Mạng Nơ-ron",
+      "level": 3,
+      "core_theorems": [
+        "Bản chất xác suất chuỗi vs Chân lý khách quan",
+        "Đo lường Semantic Entropy",
+        "Trích xuất vector kích hoạt nội tại (Probing Classifiers)",
+        "Cơ chế tự hiệu chỉnh niềm tin Self-Calibrated Decoding"
+      ],
+      "keywords": [
+        "hallucination",
+        "probing",
+        "semantic entropy",
+        "mechanistic interpretability",
+        "internal truth",
+        "anthropic"
+      ],
+      "manim_components": [
+        "ContinuousManifold2D"
+      ],
+      "benchmark_source": "Anthropic Interpretability Talk + EMNLP 2023 Probing Classifiers — 50m",
+      "source_duration": "50m",
+      "zenpham_duration": "10m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 21,
+      "title": "RAG Đa Tầng // Đưa Tri Thức Bên Ngoài Vào Não Bộ LLM",
+      "level": 4,
+      "core_theorems": [
+        "Khắc phục hiện tượng Lost in the Middle",
+        "Hypothetical Document Embeddings (HyDE)",
+        "Cross-Encoder Re-ranking Scoring",
+        "Hierarchical Tree Chunking & Contextual Compression"
+      ],
+      "keywords": [
+        "rag",
+        "advanced rag",
+        "hyde",
+        "reranking",
+        "vector search",
+        "chunking",
+        "lost in the middle"
+      ],
+      "manim_components": [
+        "MatrixTensorGrid"
+      ],
+      "benchmark_source": "DeepLearning.AI Advanced RAG Specialization — 1h 15m",
+      "source_duration": "1h 15m",
+      "zenpham_duration": "11m 00s"
+    },
+    {
+      "series": 2,
+      "ep": 22,
+      "title": "Function Calling & Tool Use // Cầu Nối Giữa Văn Bản Và Thế Giới Thực",
+      "level": 4,
+      "core_theorems": [
+        "Grammar-Constrained Logit Masking",
+        "Máy trạng thái hữu hạn Finite State Machine (FSM)",
+        "Cú pháp JSON Schema Validation tại Softmax",
+        "Cơ chế Tool Dispatcher & Trả kết quả"
+      ],
+      "keywords": [
+        "function calling",
+        "tool use",
+        "grammar sampling",
+        "fsm",
+        "json schema",
+        "toolformer",
+        "agent execution"
+      ],
+      "manim_components": [
+        "FocusSpotlightZone"
+      ],
+      "benchmark_source": "Meta AI (Toolformer Paper) + OpenAI API Specs — 40m tài liệu",
+      "source_duration": "40m tài liệu",
+      "zenpham_duration": "10m 15s"
+    },
+    {
+      "series": 2,
+      "ep": 23,
+      "title": "Kiến Trúc Multi-Agent // Khi Các LLM Phản Biện & Cộng Tác Cùng Nhau",
+      "level": 4,
+      "core_theorems": [
+        "Động lực học phản biện đa tác nhân (Debate & Cross-examination)",
+        "Cơ chế bộ nhớ tập thể Shared Memory Graph",
+        "Giao thức phân quyền vai trò Role-Playing",
+        "Cơ chế đồng thuận phi tập trung Consensus"
+      ],
+      "keywords": [
+        "multi-agent",
+        "autogen",
+        "agentic workflow",
+        "debate",
+        "consensus",
+        "hermes agent",
+        "antigravity"
+      ],
+      "manim_components": [
+        "AutogradDAGGraph"
+      ],
+      "benchmark_source": "Microsoft AutoGen + Stanford Generative Agents — 55m",
+      "source_duration": "55m",
+      "zenpham_duration": "11m 45s"
+    },
+    {
+      "series": 2,
+      "ep": 24,
+      "title": "Distributed Training // Huấn Luyện Mô Hình Ngàn Tỷ Tham Số Trên Siêu Máy Tính",
+      "level": 4,
+      "core_theorems": [
+        "3D Parallelism (Data, Tensor, Pipeline)",
+        "Phân rã bộ nhớ ZeRO Stage 1-2-3 (FSDP)",
+        "Giao tiếp mạng All-Reduce, Reduce-Scatter trên NVLink",
+        "Chống nghẽn Pipeline Bubbles"
+      ],
+      "keywords": [
+        "distributed training",
+        "megatron-lm",
+        "zero",
+        "deepspeed",
+        "fsdp",
+        "tensor parallelism",
+        "nvlink",
+        "gpu cluster"
+      ],
+      "manim_components": [
+        "TransformerTower3D"
+      ],
+      "benchmark_source": "NVIDIA Megatron-LM + Microsoft DeepSpeed ZeRO — 1h 20m",
+      "source_duration": "1h 20m",
+      "zenpham_duration": "12m 30s"
+    },
+    {
+      "series": 2,
+      "ep": 25,
+      "title": "Tương Lai Của Trí Tuệ Nhân Tạo // Khi AI Tự Viết Lại Kiến Trúc Của Chính Mình",
+      "level": 4,
+      "core_theorems": [
+        "Vòng lặp tự hoàn thiện (Recursive Self-Improvement)",
+        "Neural Architecture Search tự động",
+        "Bảo toàn giá trị con người (Value Alignment)",
+        "Đạo làm nghề kỹ sư thủ công (Digital Craftsmanship)"
+      ],
+      "keywords": [
+        "future of ai",
+        "agi",
+        "recursive self-improvement",
+        "craftsmanship",
+        "human alignment",
+        "zenpham manifesto"
+      ],
+      "manim_components": [
+        "TransformerTower3D"
+      ],
+      "benchmark_source": "Tuyên ngôn AGI hàng đầu thế giới (DeepMind, OpenAI, Anthropic) + Triết lý ZENPHAM",
+      "source_duration": "Tổng hòa tư tưởng",
+      "zenpham_duration": "14m 00s"
+    }
+  ],
+  "official_playlist_id_series_2": "PLMLS8Xxihymk"
+}

@@ -1,16 +1,27 @@
 ---
 name: ocr-and-documents
-description: "Extract text from PDFs/scans (pymupdf, marker-pdf)."
+description: Extract text from PDFs/scans (pymupdf, marker-pdf).
 version: 2.3.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [PDF, Documents, Research, Arxiv, Text-Extraction, OCR]
-    related_skills: [pdf, docx, powerpoint]
+    tags:
+    - PDF
+    - Documents
+    - Research
+    - Arxiv
+    - Text-Extraction
+    - OCR
+    related_skills:
+    - pdf
+    - docx
+    - powerpoint
 ---
-
 # PDF & Document Extraction
 
 For DOCX: see the `docx` skill (create/edit) or use `python-docx` for structured reads.
@@ -19,6 +30,13 @@ For PDF manipulation (merge, split, forms, watermarks, creation): see the `pdf` 
 This skill covers **text extraction from PDFs and scanned documents**.
 
 > **Coming from a `read_file` EXTRACTION COVERAGE WARNING?** `read_file` auto-converts local PDFs but reads the text layer only; the warning footer lists the pages that yielded no text (scanned images). For a handful of pages, render + vision is fastest: `pdftoppm -jpeg -r 150 -f N -l N file.pdf /tmp/page` then `vision_analyze` each image. For bulk OCR of many pages, use marker-pdf below (Step 2).
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to extract text from pdfs/scans (pymupdf, marker-pdf).
+- Executing automated ocr and documents workflows and tasks.
 
 ## Step 1: Remote URL Available?
 

@@ -4,14 +4,21 @@ description: Create meme PNGs from templates with Pillow text overlay.
 version: 2.0.0
 author: adanaleycio
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [creative, memes, humor, images]
-    related_skills: [ascii-art]
+    tags:
+    - creative
+    - memes
+    - humor
+    - images
+    related_skills:
+    - ascii-art
     category: creative
 ---
-
 # Meme Generation
 
 Generate actual meme images from a topic. Picks a template, writes captions, and renders a real .png file with text overlay.

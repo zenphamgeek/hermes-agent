@@ -4,14 +4,28 @@ description: Reference-free preference alignment, simpler than DPO.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [torch, transformers, datasets, trl, accelerate]
-platforms: [linux, macos, windows]
+dependencies:
+- torch
+- transformers
+- datasets
+- trl
+- accelerate
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Post-Training, SimPO, Preference Optimization, Alignment, DPO Alternative, Reference-Free, LLM Alignment, Efficient Training]
-
+    tags:
+    - Post-Training
+    - SimPO
+    - Preference Optimization
+    - Alignment
+    - DPO Alternative
+    - Reference-Free
+    - LLM Alignment
+    - Efficient Training
 ---
-
 # SimPO - Simple Preference Optimization
 
 ## Quick start

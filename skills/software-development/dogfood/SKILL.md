@@ -1,17 +1,31 @@
 ---
 name: dogfood
-description: "Exploratory QA of web apps: find bugs, evidence, reports."
+description: 'Exploratory QA of web apps: find bugs, evidence, reports.'
 version: 1.0.0
 author: Teknium (teknium1), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [qa, testing, browser, web, dogfood]
+    tags:
+    - qa
+    - testing
+    - browser
+    - web
+    - dogfood
     related_skills: []
 ---
-
 # Dogfood: Systematic Web Application QA Testing
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to exploratory qa of web apps: find bugs, evidence, reports.
+- Executing automated dogfood workflows and tasks.
 
 ## Overview
 

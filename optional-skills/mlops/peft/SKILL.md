@@ -4,14 +4,28 @@ description: Fine-tune large LLMs with LoRA on limited GPU memory.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [peft>=0.13.0, transformers>=4.45.0, torch>=2.0.0, bitsandbytes>=0.43.0]
-platforms: [linux, macos, windows]
+dependencies:
+- peft>=0.13.0
+- transformers>=4.45.0
+- torch>=2.0.0
+- bitsandbytes>=0.43.0
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Fine-Tuning, PEFT, LoRA, QLoRA, Parameter-Efficient, Adapters, Low-Rank, Memory Optimization, Multi-Adapter]
-
+    tags:
+    - Fine-Tuning
+    - PEFT
+    - LoRA
+    - QLoRA
+    - Parameter-Efficient
+    - Adapters
+    - Low-Rank
+    - Memory Optimization
+    - Multi-Adapter
 ---
-
 # PEFT (Parameter-Efficient Fine-Tuning)
 
 Fine-tune LLMs by training <1% of parameters using LoRA, QLoRA, and 25+ adapter methods.

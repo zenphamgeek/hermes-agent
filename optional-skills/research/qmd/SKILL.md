@@ -4,13 +4,24 @@ description: Hybrid local search over notes, docs, and transcripts.
 version: 1.0.0
 author: Hermes Agent + Teknium
 license: MIT
-platforms: [macos, linux]
+platforms:
+- macos
+- linux
+- windows
 metadata:
   hermes:
-    tags: [Search, Knowledge-Base, RAG, Notes, MCP, Local-AI]
-    related_skills: [obsidian, hermes-agent, arxiv]
+    tags:
+    - Search
+    - Knowledge-Base
+    - RAG
+    - Notes
+    - MCP
+    - Local-AI
+    related_skills:
+    - obsidian
+    - hermes-agent
+    - arxiv
 ---
-
 # QMD — Query Markup Documents
 
 Local, on-device search engine for personal knowledge bases. Indexes markdown

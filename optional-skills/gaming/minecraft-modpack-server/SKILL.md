@@ -1,13 +1,26 @@
 ---
 name: minecraft-modpack-server
-description: "Host modded Minecraft servers (CurseForge, Modrinth)."
+description: Host modded Minecraft servers (CurseForge, Modrinth).
 version: 1.0.0
 author: Teknium (teknium1), Hermes Agent
 license: MIT
-tags: [minecraft, gaming, server, neoforge, forge, modpack]
-platforms: [linux, macos]
+tags:
+- minecraft
+- gaming
+- server
+- neoforge
+- forge
+- modpack
+platforms:
+- linux
+- macos
+- windows
+metadata:
+  hermes:
+    tags:
+    - minecraft modpack server
+    related_skills: []
 ---
-
 # Minecraft Modpack Server Setup
 
 ## When to use

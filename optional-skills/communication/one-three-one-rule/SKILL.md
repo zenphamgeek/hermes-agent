@@ -1,16 +1,22 @@
 ---
 name: one-three-one-rule
-description: "1-3-1 decision briefs: problem, three options, one pick."
-platforms: [linux, macos, windows]
+description: '1-3-1 decision briefs: problem, three options, one pick.'
+platforms:
+- linux
+- macos
+- windows
 version: 1.0.0
 author: Willard Moore
 license: MIT
 category: communication
 metadata:
   hermes:
-    tags: [communication, decision-making, proposals, trade-offs]
+    tags:
+    - communication
+    - decision-making
+    - proposals
+    - trade-offs
 ---
-
 # 1-3-1 Communication Rule
 
 Structured decision-making format for when a task has multiple viable approaches and the user needs a clear recommendation. Produces a concise problem framing, three options with trade-offs, and an actionable plan for the recommended path.

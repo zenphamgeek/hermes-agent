@@ -4,18 +4,33 @@ description: Gateway to 400+ genomics and computational biology skills.
 version: 1.0.0
 author: Teknium (teknium1), Hermes Agent
 license: MIT
-platforms: [linux, macos]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [bioinformatics, genomics, sequencing, biology, research, science]
+    tags:
+    - bioinformatics
+    - genomics
+    - sequencing
+    - biology
+    - research
+    - science
     category: research
 ---
-
 # Bioinformatics Skills Gateway
 
 Use when asked about bioinformatics, genomics, sequencing, variant calling, gene expression, single-cell analysis, protein structure, pharmacogenomics, metagenomics, phylogenetics, or any computational biology task.
 
 This skill is a gateway to two open-source bioinformatics skill libraries. Instead of bundling hundreds of domain-specific skills, it indexes them and fetches what you need on demand.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to gateway to 400+ genomics and computational biology skills.
+- Executing automated bioinformatics workflows and tasks.
 
 ## Sources
 

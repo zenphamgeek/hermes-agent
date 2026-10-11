@@ -4,14 +4,27 @@ description: Zero-shot image classification and image-text search.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [transformers, torch, pillow]
-platforms: [linux, macos, windows]
+dependencies:
+- transformers
+- torch
+- pillow
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Multimodal, CLIP, Vision-Language, Zero-Shot, Image Classification, OpenAI, Image Search, Cross-Modal Retrieval, Content Moderation]
-
+    tags:
+    - Multimodal
+    - CLIP
+    - Vision-Language
+    - Zero-Shot
+    - Image Classification
+    - OpenAI
+    - Image Search
+    - Cross-Modal Retrieval
+    - Content Moderation
 ---
-
 # CLIP - Contrastive Language-Image Pre-Training
 
 OpenAI's model that understands images from natural language.

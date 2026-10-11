@@ -4,13 +4,22 @@ description: Manual OAuth for remote MCP servers on headless gateways.
 version: 1.0.0
 author: Ben Barclay (benbarclay), Hermes Agent
 license: MIT
-platforms: [linux, macos]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [MCP, OAuth, PKCE, Remote-Deployment]
-    related_skills: [hermes-agent, mcporter, fastmcp]
+    tags:
+    - MCP
+    - OAuth
+    - PKCE
+    - Remote-Deployment
+    related_skills:
+    - hermes-agent
+    - mcporter
+    - fastmcp
 ---
-
 # MCP OAuth on a Remote Hermes Gateway
 
 ## Overview

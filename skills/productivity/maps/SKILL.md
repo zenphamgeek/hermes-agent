@@ -1,18 +1,34 @@
 ---
 name: maps
-description: "Geocode, POIs, routes, timezones via OpenStreetMap/OSRM."
+description: Geocode, POIs, routes, timezones via OpenStreetMap/OSRM.
 version: 1.2.0
 author: Mibayy
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [maps, geocoding, places, routing, distance, directions, nearby, location, openstreetmap, nominatim, overpass, osrm]
+    tags:
+    - maps
+    - geocoding
+    - places
+    - routing
+    - distance
+    - directions
+    - nearby
+    - location
+    - openstreetmap
+    - nominatim
+    - overpass
+    - osrm
     category: productivity
-    requires_toolsets: [terminal]
-    supersedes: [find-nearby]
+    requires_toolsets:
+    - terminal
+    supersedes:
+    - find-nearby
 ---
-
 # Maps Skill
 
 Location intelligence using free, open data sources. 8 commands, 44 POI

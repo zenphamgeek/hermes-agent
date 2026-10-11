@@ -1,0 +1,162 @@
+{
+  "_meta": {
+    "title": "Wan2.2-S2V-14B Production: Refined Live Avatar (Optimized Lips & Teeth)",
+    "description": "Gold Standard 9:16 Vertical Live Avatar Speech-to-Video pipeline with CFG 3.6 mouth dampening, anti-gaping negative prompt guards, volumetric Tyndall lighting, and CodeFormer face restoration.",
+    "model": "Wan2.2-S2V-14B",
+    "aspect_ratio": "9:16 (704x1024 base / 1080x1920 upscale)",
+    "tier": "Modal Cloud A100-80GB",
+    "verified_date": "2026-10-02",
+    "optimal_cfg": 3.6,
+    "audio_headroom_db": -1.5
+  },
+  "1": {
+    "class_type": "UNETLoader",
+    "_meta": { "title": "Load Wan2.2 S2V 14B UNET Foundation" },
+    "inputs": {
+      "unet_name": "wan2.2_s2v_14B_bf16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "Load UMT5-XXL Text Encoder" },
+    "inputs": {
+      "clip_name": "umt5_xxl_fp16.safetensors",
+      "type": "wan"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "_meta": { "title": "Load Wan 2.1 VAE" },
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "AudioEncoderLoader",
+    "_meta": { "title": "Load Speech Audio Encoder" },
+    "inputs": {
+      "audio_encoder_name": "audio_encoder.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "LoadAudio",
+    "_meta": { "title": "Input Calibrated Voiceover (-1.5dB Headroom, 48kHz Mono/Stereo)" },
+    "inputs": {
+      "audio": "calibrated_voiceover.wav"
+    }
+  },
+  "6": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "Input Vertical Portrait Master Frame (9:16)" },
+    "inputs": {
+      "image": "master_portrait.png"
+    }
+  },
+  "7": {
+    "class_type": "AudioEncoderEncode",
+    "_meta": { "title": "Extract Phoneme & Prosody Embeddings" },
+    "inputs": {
+      "audio_encoder": ["4", 0],
+      "audio": ["5", 0]
+    }
+  },
+  "8": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Positive Prompt (Subtle Articulation & Cinematic Light Tricks)" },
+    "inputs": {
+      "clip": ["2", 0],
+      "text": "Cinematic masterpiece, an exquisite Vietnamese young woman wearing a royal blue silk Ao Dai with intricate gold phoenix embroidery, speaking with gentle dignity and warmth about Vietnamese heritage. Subtle refined mouth movements, delicate elegant lip articulation, gentle micro-smiles, closed-lip pauses between phrases, soft natural teeth glimpses only during dental phonemes, restrained poise. Spectacular volumetric Tyndall effect god rays streaming down through ancient wooden temple eaves, glorious golden hour rim lighting framing her dark hair and glowing silhouette, warm golden dust motes dancing in the sunbeams, dreamy anamorphic lens flare, shallow depth of field with rich creamy lantern bokeh, sharp photorealistic skin texture, 8k ultra cinematic"
+    }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "Negative Prompt Guard (Anti-Gaping, Anti-Teeth-Glare)" },
+    "inputs": {
+      "clip": ["2", 0],
+      "text": "wide open mouth, gaping mouth, overexposed teeth, prominent teeth, excessive grinning, mouth distortion, exaggerated jaw movement, horse teeth, rabbit teeth, uncanny smile, wide grinning, excessive lip movement, worst quality, blurry, distorted mouth, jittery lips, morphing teeth, eye drift, bad anatomy, frame flicker, low resolution, artifact, noisy, grainy, pixelated, plastic skin, cartoon, flat lighting"
+    }
+  },
+  "10": {
+    "class_type": "WanSoundImageToVideo",
+    "_meta": { "title": "Wan Sound & Image Latent Conditioning (9:16)" },
+    "inputs": {
+      "positive": ["8", 0],
+      "negative": ["9", 0],
+      "vae": ["3", 0],
+      "width": 704,
+      "height": 1024,
+      "length": 81,
+      "batch_size": 1,
+      "audio_encoder_output": ["7", 0],
+      "ref_image": ["6", 0]
+    }
+  },
+  "11": {
+    "class_type": "ModelSamplingSD3",
+    "_meta": { "title": "Flow Match Sampling Shift" },
+    "inputs": {
+      "model": ["1", 0],
+      "shift": 3.0
+    }
+  },
+  "12": {
+    "class_type": "KSampler",
+    "_meta": { "title": "KSampler Diffusion (35 Steps, CFG 3.6 Gold Standard)" },
+    "inputs": {
+      "model": ["11", 0],
+      "positive": ["10", 0],
+      "negative": ["10", 1],
+      "latent_image": ["10", 2],
+      "seed": 42,
+      "steps": 35,
+      "cfg": 3.6,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1.0
+    }
+  },
+  "13": {
+    "class_type": "VAEDecode",
+    "_meta": { "title": "Decode Latents to Video Frames" },
+    "inputs": {
+      "samples": ["12", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "14": {
+    "class_type": "FaceRestoreModelLoader",
+    "_meta": { "title": "Load CodeFormer Face Restorer" },
+    "inputs": {
+      "model_name": "codeformer.pth"
+    }
+  },
+  "15": {
+    "class_type": "FaceRestoreCFWithModel",
+    "_meta": { "title": "Face Enhancer (Natural Lip Contours & Eye Highlights)" },
+    "inputs": {
+      "facerestore_model": ["14", 0],
+      "image": ["13", 0],
+      "fidelity": 0.85
+    }
+  },
+  "16": {
+    "class_type": "CreateVideo",
+    "_meta": { "title": "Create Video from Enhanced Frames & Audio" },
+    "inputs": {
+      "images": ["15", 0],
+      "audio": ["5", 0],
+      "fps": 16.0
+    }
+  },
+  "17": {
+    "class_type": "SaveVideo",
+    "_meta": { "title": "Mux Pristine 1080x1920 MP4" },
+    "inputs": {
+      "video": ["16", 0],
+      "filename_prefix": "wan22_s2v_refined_avatar_master",
+      "format": "auto",
+      "codec": "h264"
+    }
+  }
+}

@@ -4,12 +4,31 @@ description: Build comparable-company valuation workbooks in Excel.
 version: 1.0.0
 author: Anthropic (adapted by Nous Research)
 license: Apache-2.0
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [finance, valuation, comps, excel, openpyxl, modeling, investment-banking]
-    related_skills: [excel-author, pptx-author, dcf-model, lbo-model]
+    tags:
+    - finance
+    - valuation
+    - comps
+    - excel
+    - openpyxl
+    - modeling
+    - investment-banking
+    related_skills:
+    - excel-author
+    - pptx-author
+    - dcf-model
+    - lbo-model
 ---
+## When to Use
+
+Use this skill when:
+- The user asks to build comparable-company valuation workbooks in excel.
+- Executing automated comps analysis workflows and tasks.
 
 ## Environment
 

@@ -4,19 +4,35 @@ description: Free keyless web, news, and image search via ddgs.
 version: 1.3.0
 author: gamedevCloudy
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [search, duckduckgo, web-search, free, fallback]
-    related_skills: [arxiv]
-    fallback_for_toolsets: [web]
+    tags:
+    - search
+    - duckduckgo
+    - web-search
+    - free
+    - fallback
+    related_skills:
+    - arxiv
+    fallback_for_toolsets:
+    - web
 ---
-
 # DuckDuckGo Search
 
 Free web search using DuckDuckGo. **No API key required.**
 
 Preferred when `web_search` is unavailable or unsuitable (for example when `FIRECRAWL_API_KEY` is not set). Can also be used as a standalone search path when DuckDuckGo results are specifically desired.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to free keyless web, news, and image search via ddgs.
+- Executing automated duckduckgo search workflows and tasks.
 
 ## Detection Flow
 

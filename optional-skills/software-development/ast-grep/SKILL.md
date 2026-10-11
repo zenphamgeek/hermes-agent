@@ -1,17 +1,28 @@
 ---
 name: ast-grep
-description: "AST-aware structural code search and rewrite via ast-grep."
+description: AST-aware structural code search and rewrite via ast-grep.
 version: 1.0.0
 author: Yeongyu Kim (code-yeongyu), adapted by Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [ast, codemod, refactoring, structural-search, code-search, rewrite, tree-sitter]
+    tags:
+    - ast
+    - codemod
+    - refactoring
+    - structural-search
+    - code-search
+    - rewrite
+    - tree-sitter
     category: software-development
-    related_skills: [simplify-code, systematic-debugging]
+    related_skills:
+    - simplify-code
+    - systematic-debugging
 ---
-
 # ast-grep
 
 `ast-grep` (binary also named `sg`) is an **AST-aware search and rewrite tool** across 25 languages. It treats your pattern as code, parses it the same way it parses your project, and matches structurally. It is the right tool whenever your question depends on **code shape** rather than text bytes.

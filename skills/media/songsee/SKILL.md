@@ -1,21 +1,36 @@
 ---
 name: songsee
-description: "Audio spectrograms/features (mel, chroma, MFCC) via CLI."
+description: Audio spectrograms/features (mel, chroma, MFCC) via CLI.
 version: 1.0.0
 author: community
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Audio, Visualization, Spectrogram, Music, Analysis]
+    tags:
+    - Audio
+    - Visualization
+    - Spectrogram
+    - Music
+    - Analysis
     homepage: https://github.com/steipete/songsee
 prerequisites:
-  commands: [songsee]
+  commands:
+  - songsee
 ---
-
 # songsee
 
 Generate spectrograms and multi-panel audio feature visualizations from audio files.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to audio spectrograms/features (mel, chroma, mfcc) via cli.
+- Executing automated songsee workflows and tasks.
 
 ## Prerequisites
 

@@ -1,0 +1,589 @@
+version: "1.0"
+sources:
+  - id: VN_GOV_LEGAL
+    name: "Vietnam Government & National Gazette Legal Portal"
+    jurisdiction: "VN"
+    authority_level: "A1_MANDATORY_LAW"
+    allowed_hosts:
+      - "vanban.chinhphu.vn"
+      - "congbao.chinhphu.vn"
+    content_classes:
+      - "legal_document"
+      - "national_decree"
+      - "circular"
+    discovery:
+      start_urls:
+        - "https://vanban.chinhphu.vn/?pageid=27160"
+        - "https://congbao.chinhphu.vn"
+      strategies: ["search_index", "date_archive", "attachment_links"]
+    fetch:
+      rate_limit_rps: 1.0
+      concurrency: 2
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["official_api", "bulk_export", "http", "browser_render"]
+      sanctioned_fallback_sources: ["VN_VBPL"]
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf", "docx", "xlsx"]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 4 1 * *"
+
+  - id: VN_VBPL
+    name: "Vietnam National Legal Database"
+    jurisdiction: "VN"
+    authority_level: "A1_MANDATORY_LAW"
+    allowed_hosts:
+      - "vbpl.vn"
+    content_classes:
+      - "national_legal_database"
+      - "consolidated_document"
+    discovery:
+      start_urls:
+        - "https://vbpl.vn/pages/portal.aspx"
+      strategies: ["search_index", "document_hierarchy"]
+    fetch:
+      rate_limit_rps: 1.0
+      concurrency: 2
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "official_api"]
+      sanctioned_fallback_sources: ["VN_GOV_LEGAL"]
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf", "docx"]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 4 1 * *"
+
+  - id: VN_OSH_LEGAL
+    name: "Vietnam Occupational Safety & Health Portal"
+    jurisdiction: "VN"
+    authority_level: "A1_MANDATORY_LAW"
+    allowed_hosts:
+      - "antoanlaodong.gov.vn"
+      - "molisa.gov.vn"
+    content_classes:
+      - "osh_technical_regulation"
+      - "inspection_standard"
+      - "strict_safety_equipment"
+      - "training_regime"
+    discovery:
+      start_urls:
+        - "http://antoanlaodong.gov.vn"
+      strategies: ["catalog_traversal", "search_index"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "bulk_export"]
+      sanctioned_fallback_sources: ["VN_GOV_LEGAL"]
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf", "docx"]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 4 1 * *"
+
+  - id: VN_HEALTH_OCC
+    name: "Vietnam Ministry of Health Occupational Hygiene Portal"
+    jurisdiction: "VN"
+    authority_level: "A1_MANDATORY_LAW"
+    allowed_hosts:
+      - "moh.gov.vn"
+      - "vihema.gov.vn"
+    content_classes:
+      - "occupational_hygiene"
+      - "workplace_environment_limit"
+      - "health_surveillance_standard"
+    discovery:
+      start_urls:
+        - "https://moh.gov.vn"
+      strategies: ["search_index", "standard_catalog"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "bulk_export"]
+      sanctioned_fallback_sources: ["VN_VBPL"]
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf", "docx", "xlsx"]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 4 1 * *"
+
+  - id: VN_ENV_LEGAL
+    name: "Vietnam Environmental Protection & Natural Resources Portal"
+    jurisdiction: "VN"
+    authority_level: "A1_MANDATORY_LAW"
+    allowed_hosts:
+      - "monre.gov.vn"
+      - "vea.gov.vn"
+    content_classes:
+      - "environmental_law"
+      - "eia_guideline"
+      - "waste_management"
+      - "environmental_permit"
+    discovery:
+      start_urls:
+        - "https://monre.gov.vn"
+      strategies: ["search_index", "permit_register"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "bulk_export"]
+      sanctioned_fallback_sources: ["VN_GOV_LEGAL"]
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf", "docx"]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 4 1 * *"
+
+  - id: VN_CHEMICALS
+    name: "Vietnam Chemicals Agency & Safety Portal"
+    jurisdiction: "VN"
+    authority_level: "A1_MANDATORY_LAW"
+    allowed_hosts:
+      - "cuchoachat.gov.vn"
+      - "moit.gov.vn"
+    content_classes:
+      - "chemical_law"
+      - "controlled_chemicals_list"
+      - "sds_technical_guideline"
+      - "chemical_emergency_plan"
+    discovery:
+      start_urls:
+        - "http://cuchoachat.gov.vn"
+      strategies: ["search_index", "chemical_registry"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "bulk_export"]
+      sanctioned_fallback_sources: ["VN_GOV_LEGAL"]
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf", "docx", "xlsx"]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 4 1 * *"
+
+  - id: VN_FIRE_RESCUE
+    name: "Vietnam Fire Safety & Rescue Police Department Portal"
+    jurisdiction: "VN"
+    authority_level: "A1_MANDATORY_LAW"
+    allowed_hosts:
+      - "canhsatpccc.gov.vn"
+      - "bocongan.gov.vn"
+    content_classes:
+      - "fire_safety_law"
+      - "fire_prevention_standard"
+      - "emergency_drill_guideline"
+    discovery:
+      start_urls:
+        - "http://canhsatpccc.gov.vn"
+      strategies: ["search_index", "regulation_catalog"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "bulk_export"]
+      sanctioned_fallback_sources: ["VN_GOV_LEGAL"]
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf", "docx"]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 4 1 * *"
+
+  - id: VN_QCVN
+    name: "Vietnam National Technical Regulations (QCVN) Portal"
+    jurisdiction: "VN"
+    authority_level: "A2_MANDATORY_TECH_REG"
+    allowed_hosts:
+      - "tcvn.gov.vn"
+      - "vanban.chinhphu.vn"
+    content_classes:
+      - "mandatory_qcvn"
+      - "emission_discharge_limits"
+      - "occupational_exposure_limits"
+    discovery:
+      start_urls:
+        - "https://tcvn.gov.vn"
+      strategies: ["search_index", "standard_catalog"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 2
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "bulk_export"]
+      sanctioned_fallback_sources: ["VN_GOV_LEGAL"]
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf", "docx", "xlsx"]
+    schedule:
+      incremental: "0 2 * * *"
+      full_reconcile: "0 4 1 * *"
+
+  - id: UN_GHS
+    name: "UNECE Globally Harmonized System of Classification and Labelling (GHS Rev. 11)"
+    jurisdiction: "GLOBAL"
+    authority_level: "B2_GIIP_GUIDANCE"
+    allowed_hosts:
+      - "unece.org"
+    content_classes:
+      - "ghs_classification"
+      - "hazard_statements"
+      - "precautionary_statements"
+      - "label_elements"
+    discovery:
+      start_urls:
+        - "https://unece.org/transport/dangerous-goods/ghs-rev11-2025"
+      strategies: ["search_index", "pdf_attachment"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 1
+      timeout_seconds: 45
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "bulk_export"]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf"]
+    schedule:
+      incremental: "0 3 * * 0"
+      full_reconcile: "0 5 1 * *"
+
+  - id: ILO_WHO_ICSC
+    name: "ILO-WHO International Chemical Safety Cards (ICSC)"
+    jurisdiction: "GLOBAL"
+    authority_level: "B2_GIIP_GUIDANCE"
+    allowed_hosts:
+      - "ilo.org"
+    content_classes:
+      - "chemical_safety_card"
+      - "first_aid_guideline"
+      - "spill_handling"
+    discovery:
+      start_urls:
+        - "https://www.ilo.org/resource/other/ilo-who-international-chemical-safety-cards-icscs"
+      strategies: ["chemical_index", "cas_lookup"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 1
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "official_api"]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf"]
+    schedule:
+      incremental: "0 3 * * 0"
+      full_reconcile: "0 5 1 * *"
+
+  - id: IFC_EHS
+    name: "IFC World Bank Group Environmental, Health and Safety Guidelines"
+    jurisdiction: "GLOBAL"
+    authority_level: "B2_GIIP_GUIDANCE"
+    allowed_hosts:
+      - "ifc.org"
+    content_classes:
+      - "giip_environmental_limits"
+      - "industry_ehs_guidelines"
+      - "occupational_safety_benchmarks"
+    discovery:
+      start_urls:
+        - "https://www.ifc.org/en/insights-reports/general-environmental-health-and-safety-guidelines"
+      strategies: ["search_index", "pdf_attachment"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 1
+      timeout_seconds: 45
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "bulk_export"]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "pdf"]
+    schedule:
+      incremental: "0 3 * * 0"
+      full_reconcile: "0 5 1 * *"
+
+  - id: US_NIOSH_NPG
+    name: "CDC / NIOSH Pocket Guide to Chemical Hazards"
+    jurisdiction: "US"
+    authority_level: "B2_GIIP_GUIDANCE"
+    allowed_hosts:
+      - "cdc.gov"
+    content_classes:
+      - "chemical_hazard_pocket_guide"
+      - "niosh_rel_limits"
+      - "ppe_respirator_recommendation"
+    discovery:
+      start_urls:
+        - "https://www.cdc.gov/niosh/npg/default.html"
+      strategies: ["cas_index", "chemical_name_index"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 1
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "official_api"]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html", "json"]
+    schedule:
+      incremental: "0 3 * * 0"
+      full_reconcile: "0 5 1 * *"
+
+  - id: US_OSHA
+    name: "US Occupational Safety & Health Administration (29 CFR)"
+    jurisdiction: "US"
+    authority_level: "B2_GIIP_GUIDANCE"
+    allowed_hosts:
+      - "osha.gov"
+    content_classes:
+      - "osha_standard"
+      - "osha_pel_limits"
+      - "process_safety_management"
+    discovery:
+      start_urls:
+        - "https://www.osha.gov/laws-regs/regulations/standardnumber/1910"
+      strategies: ["search_index", "section_traversal"]
+    fetch:
+      rate_limit_rps: 0.5
+      concurrency: 1
+      timeout_seconds: 30
+      retries: 3
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http", "official_api"]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "PUBLIC_DOWNLOAD"
+      entitlement_required: false
+    privacy:
+      data_class: "public_knowledge"
+    parsers: ["html"]
+    schedule:
+      incremental: "0 3 * * 0"
+      full_reconcile: "0 5 1 * *"
+
+  - id: ISO_14001
+    name: "ISO 14001:2026 Environmental Management Systems"
+    jurisdiction: "INTERNATIONAL"
+    authority_level: "B1_VOLUNTARY_STANDARD"
+    allowed_hosts:
+      - "iso.org"
+    content_classes:
+      - "standards_metadata"
+      - "clause_structure"
+    discovery:
+      start_urls:
+        - "https://www.iso.org/standard/14001"
+      strategies: ["standards_catalog"]
+    fetch:
+      rate_limit_rps: 0.2
+      concurrency: 1
+      timeout_seconds: 30
+      retries: 2
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http"]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "LICENSE_REQUIRED"
+      entitlement_required: true
+    privacy:
+      data_class: "licensed_knowledge"
+    parsers: ["html"]
+    schedule:
+      incremental: "0 3 * * 0"
+      full_reconcile: "0 5 1 * *"
+
+  - id: ISO_45001
+    name: "ISO 45001:2018 Occupational Health & Safety Management Systems"
+    jurisdiction: "INTERNATIONAL"
+    authority_level: "B1_VOLUNTARY_STANDARD"
+    allowed_hosts:
+      - "iso.org"
+    content_classes:
+      - "standards_metadata"
+      - "clause_structure"
+    discovery:
+      start_urls:
+        - "https://www.iso.org/standard/63787.html"
+      strategies: ["standards_catalog"]
+    fetch:
+      rate_limit_rps: 0.2
+      concurrency: 1
+      timeout_seconds: 30
+      retries: 2
+      honor_robots_txt: true
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["http"]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "LICENSE_REQUIRED"
+      entitlement_required: true
+    privacy:
+      data_class: "licensed_knowledge"
+    parsers: ["html"]
+    schedule:
+      incremental: "0 3 * * 0"
+      full_reconcile: "0 5 1 * *"
+
+  - id: INTERNAL_HSE
+    name: "Internal Facility HSE Management & SDS Repository"
+    jurisdiction: "INTERNAL"
+    authority_level: "C1_INTERNAL_CONTROL"
+    allowed_hosts:
+      - "internal.local"
+      - "dms.internal"
+      - "erp.internal"
+    content_classes:
+      - "facility_sds"
+      - "environmental_permit"
+      - "internal_sop"
+      - "inspection_log"
+    discovery:
+      start_urls:
+        - "http://internal.local/dms/hse"
+      strategies: ["api_feed", "local_directory"]
+    fetch:
+      rate_limit_rps: 5.0
+      concurrency: 4
+      timeout_seconds: 30
+      retries: 2
+      honor_robots_txt: false
+      conditional_requests: true
+    acquisition:
+      unattended_required: true
+      preferred_channels: ["official_api", "bulk_export"]
+      sanctioned_fallback_sources: []
+      interactive_challenge_action: "quarantine_and_fallback"
+    license:
+      policy: "INTERNAL_AUTHORIZED"
+      entitlement_required: false
+    privacy:
+      data_class: "internal_hse"
+    parsers: ["html", "pdf", "docx", "xlsx"]
+    schedule:
+      incremental: "0 1 * * *"
+      full_reconcile: "0 3 1 * *"

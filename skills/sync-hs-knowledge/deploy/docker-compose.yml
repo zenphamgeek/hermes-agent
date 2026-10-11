@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: hs-knowledge-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://hsuser:hspassword@postgres:5432/hs_knowledge
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_ACCESS_KEY_ID=minioadmin
+      - S3_SECRET_ACCESS_KEY=minioadmin
+      - S3_BUCKET_NAME=hs-knowledge-raw
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: hs-knowledge-worker
+    command: ["celery", "-A", "service.pipeline.tasks.celery_app", "worker", "--loglevel=info"]
+    environment:
+      - DATABASE_URL=postgresql://hsuser:hspassword@postgres:5432/hs_knowledge
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: hs-knowledge-beat
+    command: ["celery", "-A", "service.pipeline.tasks.celery_app", "beat", "--loglevel=info"]
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: hs-knowledge-db
+    environment:
+      - POSTGRES_DB=hs_knowledge
+      - POSTGRES_USER=hsuser
+      - POSTGRES_PASSWORD=hspassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: hs-knowledge-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: hs-knowledge-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - miniodata:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  miniodata:

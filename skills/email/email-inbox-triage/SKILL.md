@@ -1,16 +1,25 @@
 ---
 name: email-inbox-triage
-description: "Triage an inbox: prioritize threads, draft replies safely."
+description: 'Triage an inbox: prioritize threads, draft replies safely.'
 version: 0.1.0
 author: Ben Barclay (benbarclay), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Email, Inbox, Triage, Replies, Productivity]
-    related_skills: [himalaya, google-workspace]
+    tags:
+    - Email
+    - Inbox
+    - Triage
+    - Replies
+    - Productivity
+    related_skills:
+    - himalaya
+    - google-workspace
 ---
-
 # Email Inbox Triage
 
 Turn a mailbox into a bounded queue of decisions. This skill owns thread-aware prioritization and reply policy; connector skills (`himalaya`, `google-workspace`) own provider commands.

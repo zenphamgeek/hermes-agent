@@ -1,16 +1,25 @@
 ---
 name: codex
-description: "Delegate coding to OpenAI Codex CLI (features, PRs)."
+description: Delegate coding to OpenAI Codex CLI (features, PRs).
 version: 1.0.1
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Coding-Agent, Codex, OpenAI, Code-Review, Refactoring]
-    related_skills: [claude-code, hermes-agent]
+    tags:
+    - Coding-Agent
+    - Codex
+    - OpenAI
+    - Code-Review
+    - Refactoring
+    related_skills:
+    - claude-code
+    - hermes-agent
 ---
-
 # Codex CLI
 
 Delegate coding tasks to [Codex](https://github.com/openai/codex) via the Hermes terminal. Codex is OpenAI's autonomous coding agent CLI.

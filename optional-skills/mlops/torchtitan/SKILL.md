@@ -4,14 +4,28 @@ description: Pretrain LLMs at scale with PyTorch 4D parallelism.
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [torch>=2.6.0, torchtitan>=0.2.0, torchao>=0.5.0]
-platforms: [linux, macos]
+dependencies:
+- torch>=2.6.0
+- torchtitan>=0.2.0
+- torchao>=0.5.0
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Model Architecture, Distributed Training, TorchTitan, FSDP2, Tensor Parallel, Pipeline Parallel, Context Parallel, Float8, Llama, Pretraining]
-
+    tags:
+    - Model Architecture
+    - Distributed Training
+    - TorchTitan
+    - FSDP2
+    - Tensor Parallel
+    - Pipeline Parallel
+    - Context Parallel
+    - Float8
+    - Llama
+    - Pretraining
 ---
-
 # TorchTitan - PyTorch Native Distributed LLM Pretraining
 
 ## Quick start

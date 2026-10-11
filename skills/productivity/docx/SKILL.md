@@ -4,14 +4,26 @@ description: Create, read, edit, template, and review Word .docx files.
 version: 1.1.0
 author: Nous Research
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [word, docx, documents, office, templates, revisions, comments]
+    tags:
+    - word
+    - docx
+    - documents
+    - office
+    - templates
+    - revisions
+    - comments
     category: productivity
-    related_skills: [pdf, xlsx, powerpoint]
+    related_skills:
+    - pdf
+    - xlsx
+    - powerpoint
 ---
-
 # Docx Skill
 
 Create, read, edit, and template Microsoft Word `.docx` files with

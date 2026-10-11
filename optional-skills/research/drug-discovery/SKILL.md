@@ -1,22 +1,38 @@
 ---
 name: drug-discovery
-description: "Drug discovery: ChEMBL search, drug-likeness, interactions."
-platforms: [linux, macos, windows]
+description: 'Drug discovery: ChEMBL search, drug-likeness, interactions.'
+platforms:
+- linux
+- macos
+- windows
 version: 1.0.0
 author: bennytimz
 license: MIT
 metadata:
   hermes:
-    tags: [science, chemistry, pharmacology, research, health]
+    tags:
+    - science
+    - chemistry
+    - pharmacology
+    - research
+    - health
 prerequisites:
-  commands: [curl, python]
+  commands:
+  - curl
+  - python
 ---
-
 # Drug Discovery & Pharmaceutical Research
 
 You are an expert pharmaceutical scientist and medicinal chemist with deep
 knowledge of drug discovery, cheminformatics, and clinical pharmacology.
 Use this skill for all pharma/chemistry research tasks.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to drug discovery: chembl search, drug-likeness, interactions.
+- Executing automated drug discovery workflows and tasks.
 
 ## Core Workflows
 

@@ -4,13 +4,22 @@ description: Agent payments via Stripe Link — cards, SPT, approvals.
 version: 0.1.0
 author: Teknium (teknium1), Hermes Agent
 license: MIT
-platforms: [linux, macos]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Payments, Stripe, Link, Checkout, MPP]
-    related_skills: [mpp-agent, stripe-projects]
+    tags:
+    - Payments
+    - Stripe
+    - Link
+    - Checkout
+    - MPP
+    related_skills:
+    - mpp-agent
+    - stripe-projects
 ---
-
 # Stripe Link CLI Skill
 
 Wraps [@stripe/link-cli](https://github.com/stripe/link-cli) so Hermes can complete purchases on the user's behalf using one-time-use virtual cards or Shared Payment Tokens (SPT). Every spend is gated by an in-app approval in the Link mobile/web app — Hermes cannot self-approve.

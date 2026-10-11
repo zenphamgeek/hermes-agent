@@ -25,7 +25,7 @@ For the full feature reference, see [Subagent Delegation](/user-guide/features/d
 - Mechanical multi-step work with logic between steps → `execute_code`
 - Tasks needing user interaction → subagents can't use `clarify`
 - Quick file edits → do them directly
-- Durable long-running work that must survive session closure or process restart → `cronjob` or `terminal(background=True, notify_on_complete=True)`. Top-level delegation is asynchronous but still process-local.
+- Durable multi-worker tasks → use `hermes kanban` when a gateway/dispatcher and assignee profiles are configured. Use `cronjob` for scheduled work or `terminal(background=True, notify_on_complete=True)` for a durable process. Top-level `delegate_task` remains process-local.
 
 ---
 

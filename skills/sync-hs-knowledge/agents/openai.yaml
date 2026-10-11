@@ -1,0 +1,14 @@
+linterface:
+  input:
+    type: object
+    properties:
+      command:
+        type: string
+        description: "The hs-sync command or query to execute"
+      scope:
+        type: string
+        description: "Sync scope: vietnam-core, asean, wco, or all"
+        default: "vietnam-core"
+      as_of:
+        type: string
+        description: "Effective date query in YYYY-MM-DD format"

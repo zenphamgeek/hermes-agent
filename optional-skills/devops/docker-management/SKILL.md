@@ -4,14 +4,26 @@ description: Manage Docker containers, images, volumes, and Compose.
 version: 1.0.0
 author: sprmn24
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [docker, containers, devops, infrastructure, compose, images, volumes, networks, debugging]
+    tags:
+    - docker
+    - containers
+    - devops
+    - infrastructure
+    - compose
+    - images
+    - volumes
+    - networks
+    - debugging
     category: devops
-    requires_toolsets: [terminal]
+    requires_toolsets:
+    - terminal
 ---
-
 # Docker Management
 
 Manage Docker containers, images, volumes, networks, and Compose stacks using standard Docker CLI commands. No additional dependencies beyond Docker itself.

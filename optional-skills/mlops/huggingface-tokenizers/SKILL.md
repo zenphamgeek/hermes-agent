@@ -4,14 +4,28 @@ description: Fast BPE/WordPiece tokenization and custom vocab training.
 version: 1.0.0
 author: Orchestra Research
 license: MIT
-dependencies: [tokenizers, transformers, datasets]
-platforms: [linux, macos, windows]
+dependencies:
+- tokenizers
+- transformers
+- datasets
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Tokenization, HuggingFace, BPE, WordPiece, Unigram, Fast Tokenization, Rust, Custom Tokenizer, Alignment Tracking, Production]
-
+    tags:
+    - Tokenization
+    - HuggingFace
+    - BPE
+    - WordPiece
+    - Unigram
+    - Fast Tokenization
+    - Rust
+    - Custom Tokenizer
+    - Alignment Tracking
+    - Production
 ---
-
 # HuggingFace Tokenizers - Fast Tokenization for NLP
 
 Fast, production-ready tokenizers with Rust performance and Python ease-of-use.

@@ -4,15 +4,35 @@ description: Control TouchDesigner via twozero MCP.
 version: 1.1.0
 author: kshitijk4poor
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [TouchDesigner, MCP, twozero, creative-coding, real-time-visuals, generative-art, audio-reactive, VJ, installation, GLSL]
-    related_skills: [ascii-video, manim-video]
-
+    tags:
+    - TouchDesigner
+    - MCP
+    - twozero
+    - creative-coding
+    - real-time-visuals
+    - generative-art
+    - audio-reactive
+    - VJ
+    - installation
+    - GLSL
+    related_skills:
+    - ascii-video
+    - manim-video
 ---
-
 # TouchDesigner Integration (twozero MCP)
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to control touchdesigner via twozero mcp.
+- Executing automated touchdesigner mcp workflows and tasks.
 
 ## CRITICAL RULES
 

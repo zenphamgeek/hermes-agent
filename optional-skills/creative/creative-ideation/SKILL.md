@@ -1,18 +1,25 @@
 ---
 name: creative-ideation
 title: Creative Ideation — Routed Library of Creative Methods
-description: "Generate ideas via named methods from creative practice."
+description: Generate ideas via named methods from creative practice.
 version: 2.1.0
 author: SHL0MS
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Creative, Ideation, Brainstorming, Methods, Inspiration]
+    tags:
+    - Creative
+    - Ideation
+    - Brainstorming
+    - Methods
+    - Inspiration
     category: creative
     requires_toolsets: []
 ---
-
 # Creative Ideation
 
 A library of ideation methods for any domain. Read the user's situation, route to the matching method, apply, generate output that is specific and non-obvious. Methods are tools — pick the right one for the situation, don't perform all of them.

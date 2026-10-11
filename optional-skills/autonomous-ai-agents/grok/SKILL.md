@@ -1,16 +1,27 @@
 ---
 name: grok
-description: "Delegate coding to xAI Grok Build CLI (features, PRs)."
+description: Delegate coding to xAI Grok Build CLI (features, PRs).
 version: 0.1.1
 author: Matt Maximo (MattMaximo), Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Coding-Agent, Grok, xAI, Code-Review, Refactoring, Automation]
-    related_skills: [codex, claude-code, hermes-agent]
+    tags:
+    - Coding-Agent
+    - Grok
+    - xAI
+    - Code-Review
+    - Refactoring
+    - Automation
+    related_skills:
+    - codex
+    - claude-code
+    - hermes-agent
 ---
-
 # Grok Build CLI — Hermes Orchestration Guide
 
 Delegate coding tasks to [Grok Build](https://docs.x.ai/build/overview) (xAI's

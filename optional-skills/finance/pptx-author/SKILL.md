@@ -4,13 +4,22 @@ description: Build PowerPoint decks headless with python-pptx.
 version: 1.0.0
 author: Anthropic (adapted by Nous Research)
 license: Apache-2.0
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [powerpoint, pptx, python-pptx, presentation, finance]
-    related_skills: [excel-author, powerpoint]
+    tags:
+    - powerpoint
+    - pptx
+    - python-pptx
+    - presentation
+    - finance
+    related_skills:
+    - excel-author
+    - powerpoint
 ---
-
 # pptx-author
 
 Produce a .pptx file on disk using `python-pptx`. Use when you need to deliver a deck as a file artifact, not drive a live PowerPoint session.
@@ -18,6 +27,13 @@ Produce a .pptx file on disk using `python-pptx`. Use when you need to deliver a
 Adapted from Anthropic's `pptx-author` and `pitch-deck` skills in [anthropics/financial-services](https://github.com/anthropics/financial-services). The MCP / Office-JS branches of the originals are dropped — this assumes headless Python.
 
 For the broader, already-shipped PowerPoint authoring skill (slides, speaker notes, embeds, media), see the built-in `powerpoint` skill. This skill is a lighter-weight pattern tuned for model-backed decks (pitch decks, IC memos, earnings notes) where every number must trace to a source workbook.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to build powerpoint decks headless with python-pptx.
+- Executing automated pptx author workflows and tasks.
 
 ## Output contract
 

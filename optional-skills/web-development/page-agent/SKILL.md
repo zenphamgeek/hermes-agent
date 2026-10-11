@@ -4,13 +4,24 @@ description: Embed an in-page natural-language GUI copilot in web apps.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [web, javascript, agent, browser, gui, alibaba, embed, copilot, saas]
+    tags:
+    - web
+    - javascript
+    - agent
+    - browser
+    - gui
+    - alibaba
+    - embed
+    - copilot
+    - saas
     category: web-development
 ---
-
 # page-agent
 
 alibaba/page-agent (https://github.com/alibaba/page-agent, 17k+ stars, MIT) is an in-page GUI agent written in TypeScript. It lives inside a webpage, reads the DOM as text (no screenshots, no multi-modal LLM), and executes natural-language instructions like "click the login button, then fill username as John" against the current page. Pure client-side — the host site just includes a script and passes an OpenAI-compatible LLM endpoint.

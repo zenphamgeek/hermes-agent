@@ -4,13 +4,27 @@ description: Build creative browser demos with DOM-free text layout.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [creative-coding, typography, pretext, ascii-art, canvas, generative, text-layout, kinetic-typography]
-    related_skills: [p5js, claude-design, excalidraw, architecture-diagram]
+    tags:
+    - creative-coding
+    - typography
+    - pretext
+    - ascii-art
+    - canvas
+    - generative
+    - text-layout
+    - kinetic-typography
+    related_skills:
+    - p5js
+    - claude-design
+    - excalidraw
+    - architecture-diagram
 ---
-
 # Pretext Creative Demos
 
 ## Overview

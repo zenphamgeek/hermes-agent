@@ -1,16 +1,22 @@
 ---
 name: agentmail
-description: "Give the agent its own inbox: send and receive email."
+description: 'Give the agent its own inbox: send and receive email.'
 version: 1.0.0
 author: teyrebaz33, Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [email, communication, agentmail, mcp]
+    tags:
+    - email
+    - communication
+    - agentmail
+    - mcp
     category: email
 ---
-
 # AgentMail — Agent-Owned Email Inboxes
 
 ## Requirements

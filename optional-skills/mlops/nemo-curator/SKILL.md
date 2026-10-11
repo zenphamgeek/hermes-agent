@@ -1,17 +1,33 @@
 ---
 name: nemo-curator
-description: "Curate LLM training data: dedupe, filter, PII redaction."
+description: 'Curate LLM training data: dedupe, filter, PII redaction.'
 version: 1.0.1
 author: Orchestra Research
 license: MIT
-dependencies: [nemo-curator, cudf, dask, rapids]
-platforms: [linux, macos]
+dependencies:
+- nemo-curator
+- cudf
+- dask
+- rapids
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Data Processing, NeMo Curator, Data Curation, GPU Acceleration, Deduplication, Quality Filtering, NVIDIA, RAPIDS, PII Redaction, Multimodal, LLM Training Data]
-
+    tags:
+    - Data Processing
+    - NeMo Curator
+    - Data Curation
+    - GPU Acceleration
+    - Deduplication
+    - Quality Filtering
+    - NVIDIA
+    - RAPIDS
+    - PII Redaction
+    - Multimodal
+    - LLM Training Data
 ---
-
 # NeMo Curator - GPU-Accelerated Data Curation
 
 NVIDIA's toolkit for preparing high-quality training data for LLMs.

@@ -4,13 +4,28 @@ description: Author/validate/export Google's DESIGN.md token spec files.
 version: 1.1.0
 author: Hermes Agent
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [design, design-system, tokens, ui, accessibility, wcag, tailwind, dtcg, google]
-    related_skills: [popular-web-designs, claude-design, excalidraw, architecture-diagram]
+    tags:
+    - design
+    - design-system
+    - tokens
+    - ui
+    - accessibility
+    - wcag
+    - tailwind
+    - dtcg
+    - google
+    related_skills:
+    - popular-web-designs
+    - claude-design
+    - excalidraw
+    - architecture-diagram
 ---
-
 # DESIGN.md Skill
 
 DESIGN.md is Google's open spec (Apache-2.0, `google-labs-code/design.md`) for

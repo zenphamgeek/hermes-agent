@@ -4,13 +4,21 @@ description: Serve an interactive codebase knowledge graph web UI.
 version: 1.0.0
 author: Hermes Agent + Teknium
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [gitnexus, code-intelligence, knowledge-graph, visualization]
-    related_skills: [hermes-agent, codebase-inspection]
+    tags:
+    - gitnexus
+    - code-intelligence
+    - knowledge-graph
+    - visualization
+    related_skills:
+    - hermes-agent
+    - codebase-inspection
 ---
-
 # GitNexus Explorer
 
 Index any codebase into a knowledge graph and serve an interactive web UI for exploring

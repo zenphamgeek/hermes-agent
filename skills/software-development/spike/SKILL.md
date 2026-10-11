@@ -1,21 +1,43 @@
 ---
 name: spike
-description: "Throwaway experiments to validate an idea before build."
+description: Throwaway experiments to validate an idea before build.
 version: 1.0.0
 author: Hermes Agent (adapted from gsd-build/get-shit-done)
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [spike, prototype, experiment, feasibility, throwaway, exploration, research, planning, mvp, proof-of-concept]
-    related_skills: [sketch, subagent-driven-development, plan]
+    tags:
+    - spike
+    - prototype
+    - experiment
+    - feasibility
+    - throwaway
+    - exploration
+    - research
+    - planning
+    - mvp
+    - proof-of-concept
+    related_skills:
+    - sketch
+    - subagent-driven-development
+    - plan
 ---
-
 # Spike
 
 Use this skill when the user wants to **feel out an idea** before committing to a real build — validating feasibility, comparing approaches, or surfacing unknowns that no amount of research will answer. Spikes are disposable by design. Throw them away once they've paid their debt.
 
 Load this when the user says things like "let me try this", "I want to see if X works", "spike this out", "before I commit to Y", "quick prototype of Z", "is this even possible?", or "compare A vs B".
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to throwaway experiments to validate an idea before build.
+- Executing automated spike workflows and tasks.
 
 ## When NOT to use this
 

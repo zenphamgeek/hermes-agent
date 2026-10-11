@@ -4,14 +4,21 @@ description: Send and receive iMessages/SMS via the imsg CLI on macOS.
 version: 1.0.0
 author: Hermes Agent
 license: MIT
-platforms: [macos]
+platforms:
+- macos
+- windows
 metadata:
   hermes:
-    tags: [iMessage, SMS, messaging, macOS, Apple]
+    tags:
+    - iMessage
+    - SMS
+    - messaging
+    - macOS
+    - Apple
 prerequisites:
-  commands: [imsg]
+  commands:
+  - imsg
 ---
-
 # iMessage
 
 Use `imsg` to read and send iMessage/SMS via macOS Messages.app.

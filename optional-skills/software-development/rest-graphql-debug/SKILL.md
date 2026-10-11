@@ -1,17 +1,29 @@
 ---
 name: rest-graphql-debug
-description: "Debug REST/GraphQL APIs: status codes, auth, schemas, repro."
+description: 'Debug REST/GraphQL APIs: status codes, auth, schemas, repro.'
 version: 1.2.0
 author: eren-karakus0
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [api, rest, graphql, http, debugging, testing, curl, integration]
+    tags:
+    - api
+    - rest
+    - graphql
+    - http
+    - debugging
+    - testing
+    - curl
+    - integration
     category: software-development
-    related_skills: [systematic-debugging, test-driven-development]
+    related_skills:
+    - systematic-debugging
+    - test-driven-development
 ---
-
 # API Testing & Debugging
 
 Drive REST and GraphQL diagnosis through Hermes tools — `terminal` for `curl`, `execute_code` for Python `requests`, `web_extract` for vendor docs. Isolate the failing layer before guessing at the fix.

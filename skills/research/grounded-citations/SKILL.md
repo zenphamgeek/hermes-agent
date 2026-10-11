@@ -1,17 +1,28 @@
 ---
 name: grounded-citations
-description: "Ground answers and documents in cited, verifiable sources."
+description: Ground answers and documents in cited, verifiable sources.
 version: 1.1.0
 author: Hermes Agent + Teknium
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [Research, Citations, Grounding, Sources, Web, Reports]
+    tags:
+    - Research
+    - Citations
+    - Grounding
+    - Sources
+    - Web
+    - Reports
     category: research
-    related_skills: [research-paper-writing, arxiv, ocr-and-documents]
+    related_skills:
+    - research-paper-writing
+    - arxiv
+    - ocr-and-documents
 ---
-
 # Grounded Citations
 
 Every claim taken from an outside source gets an inline numbered citation and a

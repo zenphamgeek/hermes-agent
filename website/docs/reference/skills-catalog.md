@@ -128,6 +128,7 @@ If a skill is missing from this list but present in the repo, the catalog is reg
 | [`grounded-citations`](/docs/user-guide/skills/bundled/research/research-grounded-citations) | Ground answers and documents in cited, verifiable sources. | `research/grounded-citations` |
 | [`llm-wiki`](/docs/user-guide/skills/bundled/research/research-llm-wiki) | Karpathy's LLM Wiki: build/query interlinked markdown KB. | `research/llm-wiki` |
 | [`research-paper-writing`](/docs/user-guide/skills/bundled/research/research-research-paper-writing) | Write ML papers for NeurIPS/ICML/ICLR: design→submit. | `research/research-paper-writing` |
+| [`website-mirror`](/docs/user-guide/skills/bundled/research/research-website-mirror) | Mirror a full website to assets/website/<name> on schedule. | `research/website-mirror` |
 
 ## smart-home
 

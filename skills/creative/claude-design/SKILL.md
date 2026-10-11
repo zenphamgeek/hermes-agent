@@ -4,13 +4,29 @@ description: Design one-off HTML artifacts (landing, deck, prototype).
 version: 1.1.0
 author: BadTechBandit
 license: MIT
-platforms: [linux, macos, windows]
+platforms:
+- linux
+- macos
+- windows
 metadata:
   hermes:
-    tags: [design, html, prototype, ux, ui, creative, artifact, deck, motion, design-system]
-    related_skills: [design-md, popular-web-designs, excalidraw, architecture-diagram]
+    tags:
+    - design
+    - html
+    - prototype
+    - ux
+    - ui
+    - creative
+    - artifact
+    - deck
+    - motion
+    - design-system
+    related_skills:
+    - design-md
+    - popular-web-designs
+    - excalidraw
+    - architecture-diagram
 ---
-
 # Claude Design for CLI/API Agents
 
 Use this skill when the user asks for design work that would normally fit Claude Design, but the agent is running in a CLI/API environment instead of the hosted Claude Design web UI.
@@ -18,6 +34,13 @@ Use this skill when the user asks for design work that would normally fit Claude
 The goal is to preserve Claude Design's useful design behavior and taste while removing hosted-tool plumbing that does not exist in normal agent environments.
 
 **Before starting, check for other web-design skills like `popular-web-designs` (ready-to-paste design systems for Stripe, Linear, Vercel, Notion, etc.) and `design-md` (Google's DESIGN.md token spec format).** If the user wants a known brand's look, load `popular-web-designs` alongside this one and let it supply the visual vocabulary. If the deliverable is a token spec file rather than a rendered artifact, use `design-md` instead. Full decision table below.
+
+
+## When to Use
+
+Use this skill when:
+- The user asks to design one-off html artifacts (landing, deck, prototype).
+- Executing automated claude design workflows and tasks.
 
 ## When To Use This Skill vs `popular-web-designs` vs `design-md`
 
