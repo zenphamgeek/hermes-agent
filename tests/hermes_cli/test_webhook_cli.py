@@ -37,6 +37,7 @@ def _make_args(**kwargs):
         "secret": "",
         "payload": "",
         "script": "",
+        "trigger_job": "",
     }
     defaults.update(kwargs)
     return Namespace(**defaults)
@@ -53,18 +54,33 @@ def test_webhook_base_url_maps_wildcard_hosts_to_localhost(monkeypatch, host):
 
 class TestSubscribe:
 
-
     def test_custom_secret(self):
         webhook_command(_make_args(
             webhook_action="subscribe", name="s", secret="my-secret"
         ))
         assert _load_subscriptions()["s"]["secret"] == "my-secret"
 
-
     def test_auto_secret(self):
         webhook_command(_make_args(webhook_action="subscribe", name="s"))
         secret = _load_subscriptions()["s"]["secret"]
         assert len(secret) > 20
+
+    def test_trigger_job_valid(self):
+        from cron.jobs import create_job
+
+        job = create_job(prompt="p", schedule="every 1h", name="nightly")
+        webhook_command(_make_args(
+            webhook_action="subscribe", name="h", trigger_job="nightly"
+        ))
+        assert _load_subscriptions()["h"]["trigger_job"] == "nightly"
+
+    def test_trigger_job_unknown_rejected(self, capsys):
+        webhook_command(_make_args(
+            webhook_action="subscribe", name="h", trigger_job="ghost"
+        ))
+        out = capsys.readouterr().out
+        assert "Unknown job" in out
+        assert "ghost" not in _load_subscriptions()
 
 
 class TestList:

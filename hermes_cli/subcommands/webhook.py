@@ -62,6 +62,14 @@ def build_webhook_parser(subparsers, *, cmd_webhook: Callable) -> None:
         "payload is passed as JSON on stdin; empty stdout, [SILENT], or a "
         "nonzero exit code ignores the webhook.",
     )
+    wh_sub.add_argument(
+        "--trigger-job",
+        default="",
+        metavar="JOB",
+        help="Cron job or workflow to fire instead of spawning an agent run. "
+        "Accepts a job ID or name. The webhook reuses the job's scheduling, "
+        "retry, ledger, and toolset gating.",
+    )
 
     webhook_subparsers.add_parser(
         "list", aliases=["ls"], help="List all dynamic subscriptions"

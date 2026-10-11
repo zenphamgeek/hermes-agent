@@ -194,6 +194,20 @@ def _cmd_subscribe(args):
     if script.strip():
         route["script"] = script.strip()
 
+    trigger_job = getattr(args, "trigger_job", "") or ""
+    if trigger_job.strip():
+        # Validate eagerly so a typo'd job name surfaces at subscribe time,
+        # not silently on the first webhook POST.
+        try:
+            from cron.jobs import resolve_job_ref
+            if resolve_job_ref(trigger_job.strip()) is None:
+                print(f"  Error: Unknown job '{trigger_job.strip()}'. "
+                      "Use 'hermes cron list' to see job IDs/names.")
+                return
+        except ImportError:
+            pass
+        route["trigger_job"] = trigger_job.strip()
+
     if args.deliver_chat_id:
         route["deliver_extra"] = {"chat_id": args.deliver_chat_id}
 
@@ -213,6 +227,8 @@ def _cmd_subscribe(args):
     print(f"  Deliver: {route['deliver']}")
     if route.get("deliver_only"):
         print("  Mode: direct delivery (no agent, zero LLM cost)")
+    if route.get("trigger_job"):
+        print(f"  Triggers job: {route['trigger_job']} (no agent run)")
     if route.get("prompt"):
         prompt_preview = route["prompt"][:80] + ("..." if len(route["prompt"]) > 80 else "")
         label = "Message" if route.get("deliver_only") else "Prompt"
@@ -247,6 +263,8 @@ def _cmd_list(args):
         print(f"    Deliver: {deliver}")
         if route.get("script"):
             print(f"    Script:  {route['script']}")
+        if route.get("trigger_job"):
+            print(f"    Triggers: {route['trigger_job']} (no agent run)")
         print()
 
 

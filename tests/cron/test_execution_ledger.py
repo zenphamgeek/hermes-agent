@@ -89,10 +89,137 @@ def test_cron_runs_cli_prints_execution_history(monkeypatch, tmp_path, capsys):
     assert "boom" in output
 
 
+def test_cron_execution_inspects_unknown_without_offering_unsafe_retry(
+    monkeypatch, tmp_path, capsys
+):
+    executions = _point_ledger(monkeypatch, tmp_path)
+    row = executions.create_execution("inspect-job", source="builtin")
+    monkeypatch.setattr(executions, "_PROCESS_ID", "different-process")
+    monkeypatch.setattr(executions, "_owner_is_live", lambda *_args: False)
+    executions.recover_interrupted_executions()
+
+    from hermes_cli.cron import cron_execution
+
+    assert cron_execution(row["id"]) == 0
+    output = capsys.readouterr().out
+    assert f"id: {row['id']}" in output
+    assert "status: unknown" in output
+    assert "Retry unavailable" in output
+    assert executions.list_executions(job_id="inspect-job") == [
+        executions.get_execution(row["id"])
+    ]
+
+
+def test_cron_execution_missing_id_fails(monkeypatch, tmp_path, capsys):
+    _point_ledger(monkeypatch, tmp_path)
+    from hermes_cli.cron import cron_execution
+
+    assert cron_execution("missing") == 1
+    assert "Execution not found: missing" in capsys.readouterr().out
+
+
+def test_cron_execution_corrupt_store_fails_without_overwrite(monkeypatch, tmp_path, capsys):
+    executions = _point_ledger(monkeypatch, tmp_path)
+    executions.EXECUTIONS_FILE.parent.mkdir(parents=True)
+    executions.EXECUTIONS_FILE.write_bytes(b"not a sqlite database")
+    from hermes_cli.cron import cron_execution
+
+    assert cron_execution("anything") == 1
+    assert "Failed to read execution ledger:" in capsys.readouterr().err
+    assert executions.EXECUTIONS_FILE.read_bytes() == b"not a sqlite database"
+
+
+def test_cron_execution_missing_id_sets_nonzero_process_exit(tmp_path):
+    repo = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env["HERMES_HOME"] = str(tmp_path / "home")
+    result = subprocess.run(
+        [sys.executable, "-m", "hermes_cli.main", "cron", "execution", "missing"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "Execution not found: missing" in result.stdout
+
+
+def test_cron_execution_inspect_alias_sets_nonzero_process_exit(tmp_path):
+    repo = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env["HERMES_HOME"] = str(tmp_path / "profile-home")
+    result = subprocess.run(
+        [sys.executable, "-m", "hermes_cli.main", "cron", "inspect", "missing"],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "Execution not found: missing" in result.stdout
+
+
 def test_quick_backup_includes_execution_ledger():
     from hermes_cli.backup import _QUICK_STATE_FILES
 
     assert "cron/executions.db" in _QUICK_STATE_FILES
+
+
+def test_finish_records_cost_and_tokens(monkeypatch, tmp_path):
+    executions = _point_ledger(monkeypatch, tmp_path)
+
+    row = executions.create_execution("cost-job", source="builtin")
+    executions.mark_execution_running(row["id"])
+    done = executions.finish_execution(
+        row["id"], success=True, cost=0.1234, tokens=5678
+    )
+
+    assert done["cost"] == 0.1234
+    assert done["tokens"] == 5678
+    latest = executions.latest_execution("cost-job")
+    assert latest["cost"] == 0.1234
+    assert latest["tokens"] == 5678
+
+
+def test_legacy_store_gains_cost_columns(monkeypatch, tmp_path):
+    """A store created before cost/tokens existed is migrated in place."""
+    import cron.executions as executions
+
+    db = tmp_path / "cron" / "executions.db"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """CREATE TABLE executions (
+             id TEXT PRIMARY KEY,
+             job_id TEXT NOT NULL,
+             source TEXT NOT NULL,
+             process_id TEXT NOT NULL,
+             pid INTEGER NOT NULL,
+             process_started_at INTEGER,
+             status TEXT NOT NULL,
+             claimed_at TEXT NOT NULL,
+             started_at TEXT,
+             finished_at TEXT,
+             error TEXT
+           )"""
+    )
+    conn.execute(
+        "INSERT INTO executions (id, job_id, source, process_id, pid, status, claimed_at) "
+        "VALUES ('old-1', 'j', 'builtin', 'p', 1, 'completed', '2026-01-01T00:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(executions, "EXECUTIONS_FILE", db)
+    executions.create_execution("new-job", source="builtin")  # triggers schema init
+
+    conn = sqlite3.connect(db)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(executions)")}
+    conn.close()
+    assert {"cost", "tokens"} <= cols
+    assert executions.latest_execution("j")["id"] == "old-1"
 
 
 def test_failed_execution_keeps_error(monkeypatch, tmp_path):
