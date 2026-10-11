@@ -223,6 +223,7 @@ node_modules
 .env.production
 .env.secrets
 .fleet_roster.json
+.security/publish_overrides.log
 fleet_roster.json
 fleet_roster.yml
 modal_token_profile.md

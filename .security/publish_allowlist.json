@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "description": "Allowlist for false-positive patterns in public release payloads",
+  "allowed_patterns": [],
+  "updated_at": "2026-10-11T16:35:00Z"
+}

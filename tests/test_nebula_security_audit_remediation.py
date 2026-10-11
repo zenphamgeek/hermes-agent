@@ -353,6 +353,70 @@ def test_f1_staging_artifacts_zero_secrets():
     assert not errors, f"Staging publish-boundary secret scan failed with {len(errors)} errors: {errors}"
 
 
+def test_f1_publish_payload_scanner_blocks_secrets():
+    """Verify enforce_publish_gate blocks payload containing leaked credentials."""
+    from tools.verify_approval_provenance import enforce_publish_gate, SecurityAuditFailure
+
+    # Clean payload passes
+    clean_snippet = {
+        "title": "Tập 01: Xác Suất trong AI | ZENPHAM",
+        "description": "Nghịch lý Laplace và Bayes...",
+        "tags": ["AI", "Math"],
+    }
+    enforce_publish_gate(clean_snippet, context="clean_test")
+
+    # Malicious payload with Google OAuth token must fail
+    dirty_snippet = {
+        "title": "Tập 01: Test",
+        "description": "Debug token: ya29.a0ARrdaM_FakeTokenStringForTesting1234567890",
+    }
+    with pytest.raises(SecurityAuditFailure) as exc_info:
+        enforce_publish_gate(dirty_snippet, context="dirty_test")
+    assert "Release Gate Hard Stop" in str(exc_info.value)
+    assert "ya29" in str(exc_info.value)
+
+
+def test_f1_publish_payload_break_glass_logging(tmp_path, monkeypatch):
+    """Verify break-glass override requires >=15 chars reason and logs audit record."""
+    from tools.verify_approval_provenance import enforce_publish_gate, SecurityAuditFailure
+
+    dirty_payload = "Bearer sk-ant-api03-FakeAnthropicKeyForTestingOnly-12345"
+
+    # 1. Override without reason fails
+    monkeypatch.setenv("HERMES_ALLOW_PUBLISH_OVERRIDE", "1")
+    monkeypatch.setenv("HERMES_OVERRIDE_REASON", "short")
+    with pytest.raises(SecurityAuditFailure) as exc_info:
+        enforce_publish_gate(dirty_payload, context="break_glass_fail")
+    assert "must be at least 15 characters" in str(exc_info.value)
+
+    # 2. Override with valid reason succeeds and writes to log
+    log_file = tmp_path / "test_overrides.log"
+    monkeypatch.setattr("tools.verify_approval_provenance.OVERRIDES_LOG", log_file)
+    valid_reason = "Emergency deployment authorized by SecOps lead"
+    monkeypatch.setenv("HERMES_OVERRIDE_REASON", valid_reason)
+
+    enforce_publish_gate(dirty_payload, context="break_glass_success")
+    assert log_file.is_file()
+    log_content = log_file.read_text(encoding="utf-8")
+    assert valid_reason in log_content
+    assert "break_glass_success" in log_content
+
+
+def test_f1_publish_payload_allowlist_filtering():
+    """Verify allowlist permits vetted benign substrings."""
+    from tools.verify_approval_provenance import audit_publish_payload
+
+    payload = {"info": "Reference to ya29.benign_mock_identifier"}
+    # Without allowlist -> flagged
+    leaks = audit_publish_payload(payload, context="test", allowlist=[])
+    assert len(leaks) > 0
+
+    # With allowlist -> allowed
+    leaks_allowed = audit_publish_payload(payload, context="test", allowlist=["ya29.benign_mock_identifier"])
+    assert len(leaks_allowed) == 0
+
+
+
 
 
 

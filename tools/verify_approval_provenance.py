@@ -40,7 +40,7 @@ SECRET_VALUE_PATTERNS = [
 ]
 
 
-def check_for_secrets(obj: Any, path: str = "") -> list[str]:
+def check_for_secrets(obj: Any, path: str = "", allowlist: list[str] | None = None) -> list[str]:
     """Recursively inspect a JSON object for secret keys or token values."""
     leaks = []
     if isinstance(obj, dict):
@@ -48,16 +48,95 @@ def check_for_secrets(obj: Any, path: str = "") -> list[str]:
             current_path = f"{path}.{k}" if path else k
             for pat in FORBIDDEN_KEY_PATTERNS:
                 if re.search(pat, k, re.IGNORECASE):
-                    leaks.append(f"Forbidden key name '{k}' at {current_path}")
-            leaks.extend(check_for_secrets(v, current_path))
+                    if not (allowlist and any(allowed in k for allowed in allowlist)):
+                        leaks.append(f"Forbidden key name '{k}' at {current_path}")
+            leaks.extend(check_for_secrets(v, current_path, allowlist=allowlist))
     elif isinstance(obj, list):
         for idx, item in enumerate(obj):
-            leaks.extend(check_for_secrets(item, f"{path}[{idx}]"))
+            leaks.extend(check_for_secrets(item, f"{path}[{idx}]", allowlist=allowlist))
     elif isinstance(obj, str):
+        if allowlist and any(allowed in obj for allowed in allowlist):
+            return []
         for pat in SECRET_VALUE_PATTERNS:
             if re.search(pat, obj):
                 leaks.append(f"Potential secret token matching '{pat}' at {path}")
     return leaks
+
+
+class SecurityAuditFailure(RuntimeError):
+    """Raised when unpermitted secrets are detected in a publish or approval payload."""
+    pass
+
+
+ALLOWLIST_FILE = REPO_ROOT / ".security" / "publish_allowlist.json"
+OVERRIDES_LOG = REPO_ROOT / ".security" / "publish_overrides.log"
+
+
+def load_publish_allowlist() -> list[str]:
+    """Load approved benign patterns/substrings from .security/publish_allowlist.json."""
+    if not ALLOWLIST_FILE.is_file():
+        return []
+    try:
+        data = json.loads(ALLOWLIST_FILE.read_text(encoding="utf-8"))
+        return data.get("allowed_patterns", [])
+    except Exception:
+        return []
+
+
+def audit_publish_payload(payload: Any, context: str = "publish", allowlist: list[str] | None = None) -> list[str]:
+    """Scan an in-memory publish payload (dict, list, str) or resolved manifest for leaked secrets.
+
+    Filters out any matches permitted in allowlist.
+    """
+    if allowlist is None:
+        allowlist = load_publish_allowlist()
+
+    return check_for_secrets(payload, path=context, allowlist=allowlist)
+
+
+def enforce_publish_gate(payload: Any, context: str = "publish") -> None:
+    """Hard release gate before invoking external publish APIs (YouTube, Webhooks).
+
+    If secret patterns are detected:
+    - If HERMES_ALLOW_PUBLISH_OVERRIDE=1 is set, requires HERMES_OVERRIDE_REASON (>=15 chars),
+      logs the break-glass event to .security/publish_overrides.log, and proceeds with warning.
+    - Otherwise, raises SecurityAuditFailure and terminates the upload.
+    """
+    leaks = audit_publish_payload(payload, context=context)
+    if not leaks:
+        return
+
+    import os
+    from datetime import datetime, timezone
+
+    allow_override = os.environ.get("HERMES_ALLOW_PUBLISH_OVERRIDE") == "1"
+    override_reason = os.environ.get("HERMES_OVERRIDE_REASON", "").strip()
+
+    if allow_override:
+        if len(override_reason) < 15:
+            raise SecurityAuditFailure(
+                f"Break-glass publish override rejected: HERMES_OVERRIDE_REASON must be at least 15 characters, got: '{override_reason}'"
+            )
+        # Log the break-glass bypass with audit trail
+        log_entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "context": context,
+            "leak_count": len(leaks),
+            "leaks_sample": leaks[:3],
+            "reason": override_reason,
+            "authorized_by": os.environ.get("USER", "unknown"),
+        }
+        OVERRIDES_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(OVERRIDES_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+        print(f"⚠️ [SECURITY BREAK-GLASS] Publish allowed with warning under override: '{override_reason}'")
+        return
+
+    raise SecurityAuditFailure(
+        f"🚨 Release Gate Hard Stop: Leaked credential(s) detected in {context} payload!\n"
+        f"Findings: {leaks}\n"
+        f"To inspect, verify your payload or add vetted false-positives to .security/publish_allowlist.json."
+    )
 
 
 def audit_approvals(verbose: bool = False) -> tuple[int, int, list[str]]:
