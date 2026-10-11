@@ -236,6 +236,71 @@ function CardFooter({ arc, task }: { arc: ArcState | null; task: KanbanTask }) {
   )
 }
 
+export function formatTenantLabel(tenant: string): { label: string; logo: string } {
+  const t = tenant.toLowerCase()
+  if (t === 'phamtrai_dialy' || t === 'dialy') {
+    return { label: 'Địa Lý Ba Tôi', logo: '🌏' }
+  }
+  if (t === 'toi_doc_sach') {
+    return { label: 'Tôi Đọc Sách', logo: '📖' }
+  }
+  if (t === 'zenpham') {
+    return { label: 'ZenPham', logo: '🔴' }
+  }
+  return { label: tenant, logo: '🏷️' }
+}
+
+export function getChannelBadge(task: { title?: string | null; body?: string | null; tenant?: string | null }) {
+  const title = (task.title || '').toLowerCase()
+  const body = (task.body || '').toLowerCase()
+  const tenant = (task.tenant || '').toLowerCase()
+
+  if (
+    tenant === 'phamtrai_dialy' ||
+    tenant === 'dialy' ||
+    title.includes('địa lý') ||
+    title.includes('phamtrai') ||
+    title.includes('miền sông') ||
+    body.includes('phamtrai_dialy')
+  ) {
+    return {
+      label: 'Địa Lý Ba Tôi',
+      logo: '🌏',
+      className: 'kanban-channel-badge kanban-channel-badge--dialy',
+      title: 'Kênh: Biết Địa lý từ Ba tôi (@phamtrai-dialy)'
+    }
+  }
+
+  if (
+    tenant === 'toi_doc_sach' ||
+    title.includes('tôi đọc sách') ||
+    title.includes('đọc sách') ||
+    body.includes('toi_doc_sach')
+  ) {
+    return {
+      label: 'Tôi Đọc Sách',
+      logo: '📖',
+      className: 'kanban-channel-badge kanban-channel-badge--toidocsach',
+      title: 'Kênh: Tôi Đọc Sách (@toidocsach)'
+    }
+  }
+
+  if (
+    tenant === 'zenpham' ||
+    title.includes('zenpham') ||
+    body.includes('zenpham')
+  ) {
+    return {
+      label: 'ZenPham',
+      logo: '🔴',
+      className: 'kanban-channel-badge kanban-channel-badge--zenpham',
+      title: 'Kênh: ZenPham (@zenpham-g3l)'
+    }
+  }
+
+  return null
+}
+
 function Card({
   columns,
   onDelete,
@@ -259,6 +324,7 @@ function Card({
   const summary = task.latest_summary || task.body
   const fallback = useDefaultAssignee()
   const arc = arcState(task, fallback)
+  const channel = getChannelBadge(task)
 
   return (
     <ContextMenu>
@@ -293,9 +359,17 @@ function Card({
           {(arc === 'running' || arc === 'stale') && !dragging && !selected && (
             <span aria-hidden className={cn('kanban-arc', arc === 'stale' && 'kanban-arc--stale')} />
           )}
-          <span className="line-clamp-2 text-[0.8125rem] font-medium leading-snug text-foreground">
-            {task.title || task.id}
-          </span>
+          <div className="flex flex-col gap-1">
+            {channel && (
+              <span className={channel.className} title={channel.title}>
+                <span>{channel.logo}</span>
+                <span>{channel.label}</span>
+              </span>
+            )}
+            <span className="line-clamp-2 text-[0.8125rem] font-medium leading-snug text-foreground">
+              {task.title || task.id}
+            </span>
+          </div>
           {summary && (
             <span className="line-clamp-2 text-[0.6875rem] leading-snug text-(--ui-text-tertiary)">{summary}</span>
           )}
@@ -919,12 +993,16 @@ function FilterMenu({
               {k.allTenants}
               {check(!tenant)}
             </DropdownMenuItem>
-            {board.tenants.map(name => (
-              <DropdownMenuItem key={name} onSelect={() => onTenant(name)}>
-                {name}
-                {check(tenant === name)}
-              </DropdownMenuItem>
-            ))}
+            {board.tenants.map(name => {
+              const meta = formatTenantLabel(name)
+              return (
+                <DropdownMenuItem key={name} onSelect={() => onTenant(name)}>
+                  <span className="mr-1">{meta.logo}</span>
+                  <span className="flex-1">{meta.label}</span>
+                  {check(tenant === name)}
+                </DropdownMenuItem>
+              )
+            })}
           </>
         )}
         <DropdownMenuSeparator />

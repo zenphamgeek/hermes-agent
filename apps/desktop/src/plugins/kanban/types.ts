@@ -201,6 +201,7 @@ export const COLUMN_META: Record<string, { codicon: string; tone: string }> = {
   blocked: { codicon: 'error', tone: '#f87171' },
   review: { codicon: 'eye', tone: '#fbbf24' },
   done: { codicon: 'pass', tone: 'var(--ui-text-tertiary)' },
+  published: { codicon: 'broadcast', tone: '#ef4444' },
   archived: { codicon: 'archive', tone: 'var(--ui-text-quaternary)' }
 }
 

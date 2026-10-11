@@ -45,6 +45,7 @@ import {
   taskKey,
   uploadAttachment
 } from './api'
+import { getChannelBadge } from './board'
 import { ModelOverrideField, overridePatch } from './model-override'
 import {
   type Diagnostic,
@@ -682,6 +683,15 @@ export function TaskDrawer({
           ) : (
             <span className="font-mono text-sm text-(--ui-text-tertiary)">{shortId(id)}</span>
           )}
+          {task && (() => {
+            const ch = getChannelBadge(task)
+            return ch ? (
+              <span className={cn(ch.className, 'text-[0.6875rem] py-0.5')} title={ch.title}>
+                <span>{ch.logo}</span>
+                <span>{ch.label}</span>
+              </span>
+            ) : null
+          })()}
           {task && (
             <span className="font-mono text-[0.625rem] text-(--ui-text-quaternary)" data-selectable-text="true">
               {shortId(task.id)}
@@ -764,7 +774,22 @@ export function TaskDrawer({
                 />
               </MetaRow>
               {typeof task.priority === 'number' && <MetaRow label={k.metaPriority}>{task.priority}</MetaRow>}
-              {task.tenant && <MetaRow label={k.metaTenant}>{task.tenant}</MetaRow>}
+              {task.tenant && (
+                <MetaRow label={k.metaTenant}>
+                  {(() => {
+                    const ch = getChannelBadge(task)
+                    if (ch) {
+                      return (
+                        <span className={cn(ch.className, 'text-xs')} title={ch.title}>
+                          <span>{ch.logo}</span>
+                          <span>{ch.label}</span>
+                        </span>
+                      )
+                    }
+                    return <span>{task.tenant}</span>
+                  })()}
+                </MetaRow>
+              )}
               {task.workspace_path && (
                 <MetaRow label={k.workspace}>
                   {task.workspace_kind ? `${task.workspace_kind}: ` : ''}

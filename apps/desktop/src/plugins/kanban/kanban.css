@@ -44,3 +44,40 @@
     --kanban-arc-angle: 360deg;
   }
 }
+
+/* Multi-Channel Video Production Badges */
+.kanban-channel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  width: fit-content;
+  border-width: 1px;
+  border-style: solid;
+  letter-spacing: 0.02em;
+}
+
+.kanban-channel-badge--zenpham {
+  background: rgba(239, 68, 68, 0.14);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.15);
+}
+
+.kanban-channel-badge--toidocsach {
+  background: rgba(16, 185, 129, 0.14);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.15);
+}
+
+.kanban-channel-badge--dialy {
+  background: rgba(6, 182, 212, 0.16);
+  color: #38bdf8;
+  border-color: rgba(6, 182, 212, 0.48);
+  box-shadow: 0 0 6px rgba(6, 182, 212, 0.2);
+}
