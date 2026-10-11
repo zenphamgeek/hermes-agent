@@ -30,6 +30,11 @@ class RoutingViolation(ValueError):
     pass
 
 
+class NoCapacityError(RoutingViolation):
+    """Raised when no compliant fleet node has capacity to serve the requested route."""
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Immutable Version-Controlled Invariants (Ground Truth)
 # ---------------------------------------------------------------------------
@@ -456,6 +461,81 @@ assert_routing_invariant = assert_routing_legal
 assert_routing_allowed = assert_routing_legal
 enforce_routing_invariant = assert_routing_legal
 enforce_routing_policy = assert_routing_legal
+
+
+# ---------------------------------------------------------------------------
+# Deterministic Fleet Route Resolver & Partial-Outage Fail-Closed Boundary
+# ---------------------------------------------------------------------------
+def resolve_fleet_route(
+    model: str,
+    pro_claude_available: bool = True,
+    nebula_available: bool = True,
+    ultra_available: bool = True,
+    pro_gemini_available: bool = True,
+    task_complexity: float = 1.0,
+    roster_path: Optional[Path] = None,
+    ledger_path: Optional[Path] = None,
+    task_id: Optional[str] = None,
+) -> Tuple[str, str]:
+    """Resolves a legal execution route (node, model) under partial-dependency outage.
+
+    Guarantees:
+      1. Ultra accounts (ultra-2, lthn.ariana) NEVER serve Claude models under ANY failure state.
+      2. Nebula gateway (nebula, b.ai) NEVER serves Gemini models under ANY failure state.
+      3. Compound Partial Outage (Nebula down AND Pro Claude quota exhausted):
+         FAILS CLOSED by raising NoCapacityError. Never spills over to Ultra.
+      4. Missing roster file: falls back cleanly to version-controlled defaults.
+    """
+    model_lower = model.strip().lower()
+    is_claude = any(c in model_lower for c in ("claude", "opus", "sonnet"))
+    is_gemini = any(g in model_lower for g in ("gemini", "flash"))
+
+    if not is_claude and not is_gemini:
+        # Unknown model family: fail closed per sovereign policy
+        raise RoutingViolation(f"Unknown or unapproved model family for fleet routing: {model!r}")
+
+    if is_claude:
+        # Claude routing: Pro-first -> Nebula fallback -> FAIL CLOSED
+        if pro_claude_available:
+            selected_node = "pro-1"
+            selected_model = model
+        elif nebula_available:
+            if "opus-4.8" in model_lower or "claude-opus-4.8" in model_lower:
+                selected_node = "nebula"
+                selected_model = "claude-opus-4.8"
+            else:
+                # Nebula strictly serves claude-opus-4.8 only
+                raise NoCapacityError(
+                    f"Pro Claude nodes exhausted and Nebula only serves claude-opus-4.8 (requested: {model!r}). "
+                    f"Fail-closed: zero legal Claude capacity."
+                )
+        else:
+            # Compound outage: Pro Claude exhausted AND Nebula unavailable
+            raise NoCapacityError(
+                f"Zero legal Claude capacity: all Pro Claude nodes are exhausted and Nebula gateway is unavailable. "
+                f"Fail-closed to protect Ultra Claude quota (Ultra is strictly Gemini-only)."
+            )
+    else:
+        # Gemini routing: Ultra (for high complexity >= 2.5) -> Pro Gemini -> FAIL CLOSED
+        # Nebula is strictly forbidden for Gemini
+        if task_complexity >= 2.5 and ultra_available:
+            selected_node = "ultra-2"
+            selected_model = model
+        elif pro_gemini_available:
+            selected_node = "pro-1"
+            selected_model = model
+        elif ultra_available:
+            selected_node = "ultra-2"
+            selected_model = model
+        else:
+            raise NoCapacityError(
+                f"Zero legal Gemini capacity: Pro Gemini nodes and Ultra nodes are both unavailable. "
+                f"Nebula gateway cannot serve Gemini."
+            )
+
+    # Invariant tripwire check before returning
+    assert_routing_legal(selected_node, selected_model, ledger_path=ledger_path, task_id=task_id)
+    return selected_node, selected_model
 
 
 # ---------------------------------------------------------------------------

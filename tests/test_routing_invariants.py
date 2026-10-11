@@ -398,6 +398,93 @@ def test_verify_roster_consistency_detects_tier_tampering(tmp_path: Path):
         verify_roster_consistency(tampered_roster, fail_closed=True)
 
 
+@pytest.mark.parametrize("pro_avail", [True, False])
+@pytest.mark.parametrize("nebula_avail", [True, False])
+@pytest.mark.parametrize("ultra_avail", [True, False])
+def test_claude_compound_outage_property_invariants(pro_avail: bool, nebula_avail: bool, ultra_avail: bool):
+    """Nebula Finding 6 / Compound Outage Invariant:
+    Under ANY node availability state, Claude tasks NEVER route to Ultra accounts.
+    If no legal capacity exists (Pro exhausted AND Nebula down), it MUST fail-closed with NoCapacityError.
+    """
+    from hermes_cli.routing_policy import (
+        resolve_fleet_route,
+        NoCapacityError,
+        IMMUTABLE_ULTRA_ACCOUNTS,
+    )
+
+    # 1. Test claude-opus-4.8 (eligible for Nebula fallback)
+    if not pro_avail and not nebula_avail:
+        with pytest.raises(NoCapacityError, match=r"Zero legal Claude capacity"):
+            resolve_fleet_route(
+                model="claude-opus-4.8",
+                pro_claude_available=pro_avail,
+                nebula_available=nebula_avail,
+                ultra_available=ultra_avail,
+            )
+    else:
+        node, model = resolve_fleet_route(
+            model="claude-opus-4.8",
+            pro_claude_available=pro_avail,
+            nebula_available=nebula_avail,
+            ultra_available=ultra_avail,
+        )
+        assert node not in IMMUTABLE_ULTRA_ACCOUNTS, f"Claude task breached Ultra boundary: {node}"
+        if not pro_avail and nebula_avail:
+            assert node == "nebula"
+        elif pro_avail:
+            assert node == "pro-1"
+
+    # 2. Test non-opus-4.8 Claude model (e.g. claude-opus-5-5-high, not eligible for Nebula)
+    if not pro_avail:
+        with pytest.raises(NoCapacityError):
+            resolve_fleet_route(
+                model="claude-opus-5-5-high",
+                pro_claude_available=pro_avail,
+                nebula_available=nebula_avail,
+                ultra_available=ultra_avail,
+            )
+    else:
+        node, model = resolve_fleet_route(
+            model="claude-opus-5-5-high",
+            pro_claude_available=pro_avail,
+            nebula_available=nebula_avail,
+            ultra_available=ultra_avail,
+        )
+        assert node not in IMMUTABLE_ULTRA_ACCOUNTS
+        assert node == "pro-1"
+
+
+@pytest.mark.parametrize("ultra_avail", [True, False])
+@pytest.mark.parametrize("pro_gemini_avail", [True, False])
+@pytest.mark.parametrize("nebula_avail", [True, False])
+def test_gemini_compound_outage_never_touches_nebula(ultra_avail: bool, pro_gemini_avail: bool, nebula_avail: bool):
+    """Under ANY failure state, Gemini tasks NEVER touch Nebula nodes."""
+    from hermes_cli.routing_policy import (
+        resolve_fleet_route,
+        NoCapacityError,
+        IMMUTABLE_NEBULA_NODES,
+    )
+
+    if not ultra_avail and not pro_gemini_avail:
+        with pytest.raises(NoCapacityError, match=r"Zero legal Gemini capacity"):
+            resolve_fleet_route(
+                model="gemini-3.8-flash-high",
+                pro_claude_available=True,
+                nebula_available=nebula_avail,
+                ultra_available=ultra_avail,
+                pro_gemini_available=pro_gemini_avail,
+            )
+    else:
+        node, model = resolve_fleet_route(
+            model="gemini-3.8-flash-high",
+            pro_claude_available=True,
+            nebula_available=nebula_avail,
+            ultra_available=ultra_avail,
+            pro_gemini_available=pro_gemini_avail,
+        )
+        assert node not in IMMUTABLE_NEBULA_NODES, f"Gemini task breached Nebula boundary: {node}"
+
+
 
 
 
