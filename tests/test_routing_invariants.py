@@ -542,6 +542,151 @@ def test_redact_routing_attestation_record_crypto_shredding(tmp_path):
     assert redact_routing_attestation_record("nonexistent-task", ledger_path=ledger_file) == 0
 
 
+def test_assert_failover_scope_equivalence():
+    """Property Invariant: Scope equivalence must prevent trust boundary crossing on failover."""
+    from hermes_cli.routing_policy import (
+        ScopeViolation,
+        TrustScope,
+        assert_failover_scope_equivalence,
+        Tier,
+    )
+
+    # 1. Standard failover between Pro nodes passes
+    assert assert_failover_scope_equivalence(primary_node="pro-1", target_node="sunward") is True
+
+    # 2. Non-confidential, non-code-exec failover to Nebula passes
+    assert assert_failover_scope_equivalence(primary_node="pro-1", target_node="nebula") is True
+    assert assert_failover_scope_equivalence(primary_node="pro-1", target_node="b.ai") is True
+
+    # 3. Confidential flag blocks failover to Nebula
+    with pytest.raises(ScopeViolation, match=r"Trust Boundary Breach.*Confidential task"):
+        assert_failover_scope_equivalence(
+            primary_node="pro-1", target_node="nebula", task_is_confidential=True
+        )
+    with pytest.raises(ScopeViolation, match=r"Trust Boundary Breach.*Confidential task"):
+        assert_failover_scope_equivalence(
+            primary_node="pro-1", target_node="b.ai", task_is_confidential=True
+        )
+
+    # 4. Confidential TrustScope blocks failover to Nebula
+    conf_scope = TrustScope(name="confidential_audit", is_confidential=True)
+    with pytest.raises(ScopeViolation, match=r"Trust Boundary Breach.*Confidential task"):
+        assert_failover_scope_equivalence(
+            primary_node="pro-1", target_node="nebula", required_scope=conf_scope
+        )
+
+    # 5. Code execution requirement blocks failover to Nebula
+    with pytest.raises(ScopeViolation, match=r"Execution Scope Breach.*code execution"):
+        assert_failover_scope_equivalence(
+            primary_node="pro-1", target_node="nebula", task_requires_code_exec=True
+        )
+
+    exec_scope = TrustScope(name="terminal_runner", requires_code_execution=True)
+    with pytest.raises(ScopeViolation, match=r"Execution Scope Breach.*code execution"):
+        assert_failover_scope_equivalence(
+            primary_node="pro-1", target_node="nebula", required_scope=exec_scope
+        )
+
+    # 6. Minimum Tier ULTRA blocks failover to Pro or Nebula
+    ultra_scope = TrustScope(name="ultra_proof", minimum_tier=Tier.ULTRA)
+    with pytest.raises(ScopeViolation, match=r"Tier Scope Breach.*Task requires ULTRA tier"):
+        assert_failover_scope_equivalence(
+            primary_node="ultra-2", target_node="pro-1", required_scope=ultra_scope
+        )
+    with pytest.raises(ScopeViolation, match=r"Tier Scope Breach.*Task requires ULTRA tier"):
+        assert_failover_scope_equivalence(
+            primary_node="ultra-2", target_node="nebula", required_scope=ultra_scope
+        )
+
+    # 7. Minimum Tier ULTRA passes when failing over to another Ultra account
+    assert assert_failover_scope_equivalence(
+        primary_node="ultra-2", target_node="lthn.ariana", required_scope=ultra_scope
+    ) is True
+
+
+def test_check_retention_sla_admission_headroom(tmp_path: Path):
+    """Admission Control Invariant: Backpressure new ingress when approaching 72h retention boundary."""
+    import json
+    import time
+    from hermes_cli.routing_policy import (
+        check_retention_sla_admission_headroom,
+        record_routing_attestation,
+    )
+
+    ledger_file = tmp_path / "admission_sla_ledger.jsonl"
+    now = time.time()
+
+    # Case 1: Non-existent ledger allows admission
+    can_admit, reason, metrics = check_retention_sla_admission_headroom(ledger_path=ledger_file, now=now)
+    assert can_admit is True
+    assert reason == "OK"
+    assert metrics["total_records"] == 0
+
+    # Case 2: Fresh records well within 72h window allow admission
+    record_routing_attestation("pro-1", "gemini-3.8-flash-high", "ALLOWED", ledger_path=ledger_file, task_id="t-1")
+    can_admit, reason, metrics = check_retention_sla_admission_headroom(ledger_path=ledger_file, now=now)
+    assert can_admit is True
+    assert metrics["unredacted_records"] == 1
+    assert metrics["backpressure_active"] is False
+
+    # Case 3: Stale record older than 71h (headroom margin 1h on 72h SLA) triggers backpressure
+    stale_ts = now - (71.5 * 3600.0)
+    stale_entry = {
+        "account": "pro-1",
+        "model": "claude-opus-5-5-high",
+        "verdict": "ALLOWED",
+        "task_id": "stale-task-1",
+        "timestamp": stale_ts,
+        "policy_version": "1.0.0",
+        "digest": "0" * 64,
+        "redacted": False,
+    }
+    with open(ledger_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(stale_entry) + "\n")
+
+    can_admit, reason, metrics = check_retention_sla_admission_headroom(ledger_path=ledger_file, now=now)
+    assert can_admit is False
+    assert "GDPR Retention SLA backpressure: Oldest un-shredded record age" in reason
+    assert metrics["backpressure_active"] is True
+
+    # Case 4: If the stale record is redacted (shredded), backpressure clears
+    # Re-write ledger with stale entry marked redacted
+    with open(ledger_file, "w", encoding="utf-8") as f:
+        stale_entry_redacted = dict(stale_entry)
+        stale_entry_redacted["redacted"] = True
+        stale_entry_redacted["account"] = "[REDACTED]"
+        f.write(json.dumps(stale_entry_redacted) + "\n")
+
+    can_admit, reason, metrics = check_retention_sla_admission_headroom(ledger_path=ledger_file, now=now)
+    assert can_admit is True
+    assert metrics["redacted_records"] == 1
+    assert metrics["unredacted_records"] == 0
+    assert metrics["backpressure_active"] is False
+
+    # Case 5: Unredacted backlog exceeds max_unshredded_backlog capacity threshold
+    with open(ledger_file, "w", encoding="utf-8") as f:
+        for i in range(15):
+            entry = {
+                "account": "pro-1",
+                "model": "gemini-3.8-flash-high",
+                "verdict": "ALLOWED",
+                "task_id": f"batch-{i}",
+                "timestamp": now - (i * 60),
+                "policy_version": "1.0.0",
+                "digest": "0" * 64,
+                "redacted": False,
+            }
+            f.write(json.dumps(entry) + "\n")
+
+    can_admit, reason, metrics = check_retention_sla_admission_headroom(
+        ledger_path=ledger_file, max_unshredded_backlog=10, now=now
+    )
+    assert can_admit is False
+    assert "exceeds maximum deletion capacity threshold" in reason
+    assert metrics["backpressure_active"] is True
+
+
+
 
 
 

@@ -35,6 +35,11 @@ class NoCapacityError(RoutingViolation):
     pass
 
 
+class ScopeViolation(RoutingViolation):
+    """Raised when a failover cascade crosses an unauthorized trust or scope boundary."""
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Immutable Version-Controlled Invariants (Ground Truth)
 # ---------------------------------------------------------------------------
@@ -998,5 +1003,159 @@ _GLOBAL_CRDT_QUOTA_LEDGER = MonotonicCRDTQuotaLedger()
 
 def get_crdt_quota_ledger() -> MonotonicCRDTQuotaLedger:
     return _GLOBAL_CRDT_QUOTA_LEDGER
+
+
+# ---------------------------------------------------------------------------
+# Scope-Equivalence Failover Guard & Trust Boundary Enforcement
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class TrustScope:
+    """Security scope and isolation contract for tasks and agent delegations."""
+    name: str
+    allowed_toolsets: frozenset[str] = frozenset()
+    is_confidential: bool = False
+    requires_code_execution: bool = False
+    minimum_tier: Tier = Tier.PRO
+
+
+def assert_failover_scope_equivalence(
+    primary_node: str,
+    target_node: str,
+    required_scope: Optional[TrustScope] = None,
+    task_is_confidential: bool = False,
+    task_requires_code_exec: bool = False,
+) -> bool:
+    """Verifies that cascading failover across nodes preserves authorization scope boundaries.
+
+    Fails closed:
+      - If task is confidential, it cannot failover to an external public API gateway (e.g. Nebula).
+      - If task requires code execution or terminal capabilities, it cannot failover to an
+        API node that lacks runtime tool execution capabilities.
+      - If required_scope dictates a minimum tier, target_node must belong to that tier or higher.
+    """
+    primary_lower = primary_node.strip().lower()
+    target_lower = target_node.strip().lower()
+
+    is_target_nebula = any(n in target_lower for n in IMMUTABLE_NEBULA_NODES)
+    is_target_ultra = any(u in target_lower for u in IMMUTABLE_ULTRA_ACCOUNTS)
+
+    # 1. Confidentiality barrier: confidential workloads cannot failover to public API gateways
+    if task_is_confidential or (required_scope and required_scope.is_confidential):
+        if is_target_nebula:
+            raise ScopeViolation(
+                f"Trust Boundary Breach: Confidential task on primary node {primary_node!r} "
+                f"cannot failover to external API gateway {target_node!r}."
+            )
+
+    # 2. Execution environment barrier: tasks requiring terminal / code exec cannot failover to API-only nodes
+    if task_requires_code_exec or (required_scope and required_scope.requires_code_execution):
+        if is_target_nebula:
+            raise ScopeViolation(
+                f"Execution Scope Breach: Task requiring code execution on {primary_node!r} "
+                f"cannot failover to non-execution gateway {target_node!r}."
+            )
+
+    # 3. Minimum tier barrier
+    if required_scope:
+        if required_scope.minimum_tier == Tier.ULTRA and not is_target_ultra:
+            raise ScopeViolation(
+                f"Tier Scope Breach: Task requires ULTRA tier scope; "
+                f"target node {target_node!r} is not an Ultra tier node."
+            )
+
+    return True
+
+
+# ---------------------------------------------------------------------------
+# GDPR 72h Crypto-Shredding Retention Backpressure on Admission Control
+# ---------------------------------------------------------------------------
+MAX_RETENTION_SLA_SECONDS: float = 72.0 * 3600.0  # 72 hours (GDPR Article 17)
+DEFAULT_RETENTION_HEADROOM_MARGIN_SECONDS: float = 3600.0  # 1 hour headroom margin
+
+
+def check_retention_sla_admission_headroom(
+    ledger_path: Optional[Path] = None,
+    max_unshredded_backlog: int = 10000,
+    headroom_margin_seconds: float = DEFAULT_RETENTION_HEADROOM_MARGIN_SECONDS,
+    now: Optional[float] = None,
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """Evaluates whether the system has sufficient headroom to admit new requests within the 72h GDPR SLA.
+
+    Couples rate-limiting and admission control to the crypto-shredding retention clock:
+    A request that would create data that cannot be guaranteed to be deleted within the 72h GDPR
+    window gets backpressured at the admission boundary rather than admitted and later force-shredded.
+
+    Returns:
+      (can_admit: bool, reason: str, metrics: Dict[str, Any])
+    """
+    target_ledger = ledger_path or DEFAULT_ATTESTATION_LEDGER_PATH
+    current_time = now if now is not None else time.time()
+    sla_cutoff_time = current_time - (MAX_RETENTION_SLA_SECONDS - headroom_margin_seconds)
+
+    metrics: Dict[str, Any] = {
+        "total_records": 0,
+        "unredacted_records": 0,
+        "redacted_records": 0,
+        "oldest_unredacted_age_seconds": 0.0,
+        "headroom_seconds": MAX_RETENTION_SLA_SECONDS,
+        "backpressure_active": False,
+    }
+
+    if not target_ledger.is_file():
+        return True, "OK", metrics
+
+    oldest_unredacted_ts = current_time
+
+    try:
+        with open(target_ledger, "r", encoding="utf-8") as f:
+            for line in f:
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                try:
+                    entry = json.loads(line_str)
+                except Exception:
+                    continue
+
+                metrics["total_records"] += 1
+                if entry.get("redacted"):
+                    metrics["redacted_records"] += 1
+                else:
+                    metrics["unredacted_records"] += 1
+                    ts = float(entry.get("timestamp", current_time))
+                    if ts < oldest_unredacted_ts:
+                        oldest_unredacted_ts = ts
+
+        if metrics["unredacted_records"] > 0:
+            oldest_age = current_time - oldest_unredacted_ts
+            metrics["oldest_unredacted_age_seconds"] = max(0.0, oldest_age)
+            metrics["headroom_seconds"] = max(0.0, MAX_RETENTION_SLA_SECONDS - oldest_age)
+
+            # Check 1: Oldest unredacted record exceeds SLA threshold (71h)
+            if oldest_unredacted_ts <= sla_cutoff_time:
+                metrics["backpressure_active"] = True
+                return (
+                    False,
+                    f"GDPR Retention SLA backpressure: Oldest un-shredded record age ({oldest_age / 3600:.2f}h) "
+                    f"exceeds 72h deletion headroom ({metrics['headroom_seconds'] / 3600:.2f}h remaining).",
+                    metrics,
+                )
+
+        # Check 2: Unredacted backlog exceeds capacity threshold
+        if metrics["unredacted_records"] >= max_unshredded_backlog:
+            metrics["backpressure_active"] = True
+            return (
+                False,
+                f"GDPR Retention SLA backpressure: Un-shredded backlog ({metrics['unredacted_records']}) "
+                f"exceeds maximum deletion capacity threshold ({max_unshredded_backlog}).",
+                metrics,
+            )
+
+        return True, "OK", metrics
+
+    except Exception as e:
+        logger.warning("Failed to evaluate retention SLA admission headroom: %s", e)
+        return True, f"Degraded admission check: {e}", metrics
+
 
 
