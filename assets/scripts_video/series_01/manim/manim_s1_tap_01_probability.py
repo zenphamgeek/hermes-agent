@@ -40,7 +40,7 @@ COLOR_VIOLET = "#7c4dff"
 COLOR_TEXT = "#f0f4fc"
 COLOR_MUTED = "#64748b"
 COLOR_BORDER = "#1e293b"
-COLOR_CARD_BG = "#131726"
+# COLOR_CARD_BG removed per Rule 29 (Borderless Canvas)
 COLOR_PANEL = "#141824"
 
 FONT_FAMILY = "Noto Sans"
@@ -61,12 +61,16 @@ def add_zenpham_brand(scene: Scene):
         logo_mobj = ImageMobject(str(logo_file))
         logo_mobj.scale_to_fit_height(0.65)
         logo_mobj.to_corner(UR, buff=0.45)
-        scene.add(logo_mobj)
     else:
         emblem = Circle(radius=0.25, stroke_color=COLOR_GOLD, stroke_width=1.5, fill_color=COLOR_PANEL, fill_opacity=0.85)
         emblem_txt = Text("Z", font=FONT_FAMILY, font_size=12, weight=BOLD, color=COLOR_GOLD).move_to(emblem.get_center())
         logo_mobj = VGroup(emblem, emblem_txt).to_corner(UR, buff=0.45)
+    
+    if isinstance(scene, ThreeDScene):
+        scene.add_fixed_in_frame_mobjects(logo_mobj)
+    else:
         scene.add(logo_mobj)
+    return logo_mobj
 
 def create_hud_header(title_str: str) -> VGroup:
     """Clean centered HUD header without text watermark or badges."""
@@ -83,12 +87,12 @@ def create_hud_header(title_str: str) -> VGroup:
 class S1E1Scene01ColdOpen(Scene):
     def construct(self):
         self.camera.background_color = COLOR_BG
-        add_zenpham_brand(self)
+        # Cold Opener 0% Logo Rule: Channel logo omitted in Scene 01 (followed by 5.80s Logo Stinger)
         header = create_hud_header("TẬP 01: BẢN CHẤT CỦA XÁC SUẤT TRONG AI")
         self.add(header)
 
         # Telemetry HUD Card (42% Right)
-        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_color=COLOR_BORDER, stroke_width=1.5, fill_color=COLOR_CARD_BG, fill_opacity=0.92)
+        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_opacity=0.0, fill_opacity=0.0)
         card_bg.move_to(np.array([3.4, 0.4, 0]))
         hud_title = Text("CƠ HỌC TẤT ĐỊNH NEWTON", font=FONT_FAMILY, font_size=13, weight=BOLD, color=COLOR_CYAN)
         hud_title.next_to(card_bg.get_top(), DOWN, buff=0.25)
@@ -180,7 +184,7 @@ class S1E1Scene02LaplaceDemon(ThreeDScene):
         self.add_fixed_in_frame_mobjects(header)
 
         # Fixed HUD (Right)
-        hud_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.4, stroke_color=COLOR_BORDER, stroke_width=1.5, fill_color=COLOR_CARD_BG, fill_opacity=0.92)
+        hud_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_opacity=0.0, fill_opacity=0.0)
         hud_bg.move_to(np.array([3.4, 0.4, 0]))
         hud_title = Text("HAI TẦNG BẤT ĐỊNH", font=FONT_FAMILY, font_size=13, weight=BOLD, color=COLOR_ROSE)
         hud_title.next_to(hud_bg.get_top(), DOWN, buff=0.25)
@@ -230,11 +234,15 @@ class S1E1Scene02LaplaceDemon(ThreeDScene):
 
         self.play(time_t.animate.set_value(2.0), *[Create(c) for c in curves], run_time=18.0)
 
-        # Continuous 3D rotation and oscillation for remaining time
-        self.begin_ambient_camera_rotation(rate=0.08)
+        # Continuous Local 3D rotation of phase space objects (Zero Camera Sway, UI remains 100% steady)
+        curves_group = VGroup(*curves)
         remaining_time = max(1.0, 65.29 - 22.5)
-        self.wait(remaining_time)
-        self.stop_ambient_camera_rotation()
+        self.play(
+            Rotate(curves_group, angle=PI*0.8, axis=OUT, about_point=axes.c2p(0, 0, 0)),
+            Rotate(axes, angle=PI*0.4, axis=OUT, about_point=axes.c2p(0, 0, 0)),
+            run_time=remaining_time,
+            rate_func=linear
+        )
 
 # =============================================================================
 # SCENE 03: S1E1Scene03ShannonInformation (~74.49s)
@@ -248,7 +256,7 @@ class S1E1Scene03ShannonInformation(Scene):
         self.add(header)
 
         # Telemetry Card (Right 42%)
-        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_color=COLOR_BORDER, stroke_width=1.5, fill_color=COLOR_CARD_BG, fill_opacity=0.92)
+        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_opacity=0.0, fill_opacity=0.0)
         card_bg.move_to(np.array([3.4, 0.4, 0]))
         hud_title = Text("LÝ THUYẾT THÔNG TIN SHANNON", font=FONT_FAMILY, font_size=13, weight=BOLD, color=COLOR_GOLD)
         hud_title.next_to(card_bg.get_top(), DOWN, buff=0.25)
@@ -345,7 +353,7 @@ class S1E1Scene04BayesianBalance(Scene):
         self.add(header)
 
         # Telemetry Card (Right 42%)
-        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_color=COLOR_BORDER, stroke_width=1.5, fill_color=COLOR_CARD_BG, fill_opacity=0.92)
+        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_opacity=0.0, fill_opacity=0.0)
         card_bg.move_to(np.array([3.4, 0.4, 0]))
         hud_title = Text("CẬP NHẬT XÁC SUẤT BAYES", font=FONT_FAMILY, font_size=13, weight=BOLD, color=COLOR_CYAN)
         hud_title.next_to(card_bg.get_top(), DOWN, buff=0.25)
@@ -422,7 +430,7 @@ class S1E1Scene05SoftmaxTemperature(Scene):
         self.add(header)
 
         # Telemetry HUD (Right 42%)
-        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.4, stroke_color=COLOR_BORDER, stroke_width=1.5, fill_color=COLOR_CARD_BG, fill_opacity=0.92)
+        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_opacity=0.0, fill_opacity=0.0)
         card_bg.move_to(np.array([3.4, 0.4, 0]))
         hud_title = Text("HÀM BIẾN ĐỔI SOFTMAX", font=FONT_FAMILY, font_size=13, weight=BOLD, color=COLOR_GOLD)
         hud_title.next_to(card_bg.get_top(), DOWN, buff=0.25)
@@ -502,7 +510,7 @@ class S1E1Scene06GaltonLawOfLargeNumbers(Scene):
         self.add(header)
 
         # Telemetry Card (Right 42%)
-        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_color=COLOR_BORDER, stroke_width=1.5, fill_color=COLOR_CARD_BG, fill_opacity=0.92)
+        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_opacity=0.0, fill_opacity=0.0)
         card_bg.move_to(np.array([3.4, 0.4, 0]))
         hud_title = Text("TRẬT TỰ TỪ HỖN LOẠN", font=FONT_FAMILY, font_size=13, weight=BOLD, color=COLOR_GOLD)
         hud_title.next_to(card_bg.get_top(), DOWN, buff=0.25)
@@ -571,7 +579,7 @@ class S1E1Scene07ConfidenceTrapECE(Scene):
         self.add(header)
 
         # Telemetry Card (Right 42%)
-        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_color=COLOR_BORDER, stroke_width=1.5, fill_color=COLOR_CARD_BG, fill_opacity=0.92)
+        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_opacity=0.0, fill_opacity=0.0)
         card_bg.move_to(np.array([3.4, 0.4, 0]))
         hud_title = Text("SAI SỐ HIỆU CHUẨN KỲ VỌNG (ECE)", font=FONT_FAMILY, font_size=13, weight=BOLD, color=COLOR_ROSE)
         hud_title.next_to(card_bg.get_top(), DOWN, buff=0.25)
@@ -634,7 +642,7 @@ class S1E1Scene08OceanOfUncertainty(Scene):
         self.add(header)
 
         # Telemetry Card (Right 42%) — Curiosity Bridge to S1E2
-        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_color=COLOR_GOLD, stroke_width=2.0, fill_color=COLOR_CARD_BG, fill_opacity=0.94)
+        card_bg = RoundedRectangle(corner_radius=0.15, width=4.8, height=4.2, stroke_opacity=0.0, fill_opacity=0.0)
         card_bg.move_to(np.array([3.4, 0.4, 0]))
         hud_title = Text("HẸN GẶP LẠI Ở TẬP 02", font=FONT_FAMILY, font_size=14, weight=BOLD, color=COLOR_GOLD)
         hud_title.next_to(card_bg.get_top(), DOWN, buff=0.25)

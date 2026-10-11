@@ -7,13 +7,15 @@ Trong tập mở màn của Series "Tôi Làm Việc", chúng ta cùng đi sâu 
 
 TIMESTAMPS:
 00:00 - Cú búng tay trong bóng tối & Nghịch lý tất định
-01:02 - Quỷ Laplace & Hai tầng ngẫu nhiên: Bản thể vs Nhận thức
-02:07 - Claude Shannon & Thước đo độ bất ngờ (1 Bit thông tin)
-03:22 - Cán cân cơ học Bayes: Cập nhật niềm tin bằng bằng chứng
-04:31 - Ma trận trọng số, đa tạp Softmax & Bàn xoay Nhiệt độ (Temperature)
-06:01 - Phép màu Định luật Số lớn & Bàn chốt cản Galton
-07:10 - Chiếc bẫy tự tin (Overconfidence Gap) & Hiệu chuẩn sai số ECE
-08:19 - Đại dương bất định & Hẹn gặp lại ở Tập 02 (Gradient Descent)
+01:06 - Nhận diện thương hiệu ZenPham Masterclass (Logo Stinger)
+01:12 - Quỷ Laplace & Hai tầng ngẫu nhiên: Bản thể vs Nhận thức
+02:18 - Claude Shannon & Thước đo độ bất ngờ (1 Bit thông tin)
+03:38 - Cán cân cơ học Bayes: Cập nhật niềm tin bằng bằng chứng
+04:49 - Ma trận trọng số, đa tạp Softmax & Bàn xoay Nhiệt độ (Temperature)
+06:25 - Phép màu Định luật Số lớn & Bàn chốt cản Galton
+07:41 - Chiếc bẫy tự tin (Overconfidence Gap) & Hiệu chuẩn sai số ECE
+08:55 - Đại dương bất định & Hẹn gặp lại ở Tập 02 (Gradient Descent)
+10:01 - Closing Screen & Series 1 25-Thumbnail Mosaic (Lưới 5x5)
 
 ---
 Toàn bộ đồ họa toán học được lập trình động lực học trực quan bằng Manim Community (2K QHD 60fps).

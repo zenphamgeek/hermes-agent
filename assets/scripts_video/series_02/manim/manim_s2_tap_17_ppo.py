@@ -67,22 +67,26 @@ COLOR_ROSE = "#ff2a6d"
 COLOR_VIOLET = "#a78bfa"
 
 
-def add_zenpham_brand(scene: Scene, ep_title: str):
-    """ZenPham 2K QHD watermark and contextual header."""
-    brand = Text("ZENPHAM", font=DEFAULT_FONT, font_size=13.0, weight=BOLD, color=COLOR_GOLD)
-    sub = Text("KỸ NGHỆ LLM TỐI TÂN", font=DEFAULT_FONT, font_size=12.0, color=COLOR_MUTED).next_to(brand, DOWN, buff=0.06)
-    watermark = VGroup(brand, sub).to_corner(UR, buff=0.45)
-
-    badge_bg = RoundedRectangle(
-        corner_radius=0.12, height=0.46, width=8.6,
-        fill_color=COLOR_PANEL, fill_opacity=0.92, stroke_color=COLOR_CYAN, stroke_width=1.0
-    ).to_edge(UP, buff=0.35)
-    badge_txt = Text(
-        f"ZENPHAM // TÔI LÀM VIỆC — TẬP 17: {ep_title}",
-        font=DEFAULT_FONT, font_size=12.0, weight=BOLD, color=COLOR_TEXT
-    ).move_to(badge_bg.get_center())
-
-    scene.add(watermark, badge_bg, badge_txt)
+def add_zenpham_brand(scene: Scene, ep_title: str = ""):
+    """Clean Minimalist Brand HUD: Small channel logo in upper corner (UR), zero text clutter."""
+    logo_rel = Path("assets/brand/zenpham-brand-kit/zenpham-logo-transparent-2000x2000.png")
+    logo_abs = Path("/home/zen/hermes-agent") / logo_rel
+    logo_work = Path("/work") / logo_rel
+    logo_file = (
+        logo_work if logo_work.exists()
+        else logo_abs if logo_abs.exists()
+        else logo_rel
+    )
+    if logo_file.exists():
+        logo_mobj = ImageMobject(str(logo_file))
+        logo_mobj.scale_to_fit_height(0.65)
+        logo_mobj.to_corner(UR, buff=0.45)
+        scene.add(logo_mobj)
+    else:
+        emblem = Circle(radius=0.25, stroke_color="#ffd700", stroke_width=1.5, fill_color="#141824", fill_opacity=0.85)
+        emblem_txt = Text("Z", font=FONT_FAMILY, font_size=12, weight=BOLD, color="#ffd700").move_to(emblem.get_center())
+        logo_mobj = VGroup(emblem, emblem_txt).to_corner(UR, buff=0.45)
+        scene.add(logo_mobj)
 
 
 # ==============================================================================

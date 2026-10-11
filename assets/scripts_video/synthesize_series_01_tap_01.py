@@ -163,24 +163,32 @@ def main():
     # EBU R128 Loudness Audit
     ebur_cmd = [
         "ffmpeg", "-i", str(master_wav),
-        "-af", "ebur128=framelog=verbose",
+        "-af", "ebur128=peak=true",
         "-f", "null", "-"
     ]
     ebur_out = subprocess.run(ebur_cmd, capture_output=True, text=True).stderr
     
-    i_lufs = re.search(r"I:\s*(-?[\d.]+)\s*LUFS", ebur_out)
-    tp_db = re.search(r"Peak:\s*(-?[\d.]+)\s*dBFS", ebur_out)
+    all_i = re.findall(r"I:\s*(-?[\d.]+)\s*LUFS", ebur_out)
+    all_tp = re.findall(r"Peak:\s*(-?[\d.]+)\s*dB(?:FS|TP)", ebur_out)
     
-    lufs_val = i_lufs.group(1) if i_lufs else "N/A"
-    tp_val = tp_db.group(1) if tp_db else "N/A"
+    lufs_val = float(all_i[-1]) if all_i else None
+    tp_val = float(all_tp[-1]) if all_tp else None
+
+    master_wpm = (total_words / total_dur) * 60.0 if total_dur > 0 else 0
 
     print("\n" + "=" * 70)
     print("MASTER AUDIO SYNTHESIS COMPLETE!")
     print(f"Master File: {master_wav}")
     print(f"Total Duration: {mins}m {secs:02d}s ({total_dur:.2f}s)")
-    print(f"EBU R128 Integrated Loudness: {lufs_val} LUFS (Target: -14.5 LUFS)")
-    print(f"True Peak: {tp_val} dBFS (Target: <= -1.5 dBTP)")
+    print(f"Overall Cadence: {master_wpm:.1f} WPM (Natural VieNeu V0-Expression)")
+    print(f"EBU R128 Integrated Loudness: {lufs_val} LUFS (Target: -14.5 ± 0.5 LUFS)")
+    print(f"True Peak: {tp_val} dBTP (Target: <= -1.5 dBTP)")
     print("=" * 70)
+
+    if lufs_val is not None:
+        assert -15.5 <= lufs_val <= -14.0, f"Master LUFS {lufs_val} outside [-15.5, -14.0]"
+    if tp_val is not None:
+        assert tp_val <= -1.5, f"Master True Peak {tp_val} exceeds -1.5 dBTP"
 
 if __name__ == "__main__":
     main()

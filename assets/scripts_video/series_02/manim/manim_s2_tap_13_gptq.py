@@ -22,27 +22,26 @@ COLOR_TEXT = "#e2e8f0"
 COLOR_MUTED = "#64748b"
 
 
-def add_zenpham_brand(scene, ep_title="GPTQ VS AWQ"):
-    header_text = Text(
-        f"ZENPHAM // TÔI LÀM VIỆC — {ep_title}",
-        font="Noto Sans",
-        font_size=15,
-        weight=BOLD,
-        color=COLOR_TEXT
+def add_zenpham_brand(scene: Scene, ep_title: str = ""):
+    """Clean Minimalist Brand HUD: Small channel logo in upper corner (UR), zero text clutter."""
+    logo_rel = Path("assets/brand/zenpham-brand-kit/zenpham-logo-transparent-2000x2000.png")
+    logo_abs = Path("/home/zen/hermes-agent") / logo_rel
+    logo_work = Path("/work") / logo_rel
+    logo_file = (
+        logo_work if logo_work.exists()
+        else logo_abs if logo_abs.exists()
+        else logo_rel
     )
-    box_w = max(8.0, header_text.width + 0.8)
-    header_box = RoundedRectangle(
-        corner_radius=0.12,
-        height=0.55,
-        width=box_w,
-        fill_color=COLOR_PANEL,
-        fill_opacity=0.9,
-        stroke_color=COLOR_CYAN,
-        stroke_width=1.2
-    )
-    header_box.to_edge(UP, buff=0.35)
-    header_text.move_to(header_box.get_center())
-    scene.add(header_box, header_text)
+    if logo_file.exists():
+        logo_mobj = ImageMobject(str(logo_file))
+        logo_mobj.scale_to_fit_height(0.65)
+        logo_mobj.to_corner(UR, buff=0.45)
+        scene.add(logo_mobj)
+    else:
+        emblem = Circle(radius=0.25, stroke_color="#ffd700", stroke_width=1.5, fill_color="#141824", fill_opacity=0.85)
+        emblem_txt = Text("Z", font=FONT_FAMILY, font_size=12, weight=BOLD, color="#ffd700").move_to(emblem.get_center())
+        logo_mobj = VGroup(emblem, emblem_txt).to_corner(UR, buff=0.45)
+        scene.add(logo_mobj)
 
 
 # ==============================================================================
