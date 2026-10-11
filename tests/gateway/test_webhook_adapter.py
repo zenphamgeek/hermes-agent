@@ -319,7 +319,23 @@ class TestValidateSignature:
         assert replay_events[0]["replay_window_seconds"] == 60
         assert replay_events[0]["skew_seconds"] >= 90
 
+    def test_replay_window_clamped_to_safe_bounds(self):
+        """Operator misconfiguration cannot set an unbounded multi-hour or non-positive replay window."""
+        from gateway.platforms.webhook import MIN_REPLAY_WINDOW_SECONDS, MAX_REPLAY_WINDOW_SECONDS
+
+        # 1. Multi-hour window (24h) clamped to MAX_REPLAY_WINDOW_SECONDS (900s)
+        adapter_huge = _make_adapter(replay_window_seconds=86400)
+        assert adapter_huge._replay_window_seconds == MAX_REPLAY_WINDOW_SECONDS
+
+        # 2. Too short / negative window clamped to MIN_REPLAY_WINDOW_SECONDS (10s)
+        adapter_tiny = _make_adapter(replay_window_seconds=2)
+        assert adapter_tiny._replay_window_seconds == MIN_REPLAY_WINDOW_SECONDS
+
+        adapter_neg = _make_adapter(replay_window_seconds=-50)
+        assert adapter_neg._replay_window_seconds == MIN_REPLAY_WINDOW_SECONDS
+
     @pytest.mark.asyncio
+
     async def test_security_audit_events_recorded_on_rejections(self):
         """Structured security audit buffer records invalid signature, rate limit, and body size events."""
         secret = "audit-secret"

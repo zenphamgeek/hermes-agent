@@ -67,6 +67,10 @@ from gateway.response_filters import is_autonomous_silence_response
 
 logger = logging.getLogger(__name__)
 
+MIN_REPLAY_WINDOW_SECONDS: int = 10
+MAX_REPLAY_WINDOW_SECONDS: int = 900  # 15 minutes hard ceiling to prevent unbounded replay vulnerability
+
+
 
 def _is_webhook_silence_response(content: Any) -> bool:
     """Whether an agent response means "deliberately say nothing".
@@ -240,9 +244,18 @@ class WebhookAdapter(BasePlatformAdapter):
         self._route_processor = WebhookRouteProcessor(
             script_timeout_seconds=self._script_timeout_seconds
         )
-        self._replay_window_seconds: int = int(
-            config.extra.get("replay_window_seconds", 300)
+        raw_replay_window = int(config.extra.get("replay_window_seconds", 300))
+        self._replay_window_seconds: int = max(
+            MIN_REPLAY_WINDOW_SECONDS,
+            min(raw_replay_window, MAX_REPLAY_WINDOW_SECONDS),
         )
+        if raw_replay_window != self._replay_window_seconds:
+            logger.warning(
+                "[webhook] Configured replay_window_seconds (%s) clamped to safe bounds [%s, %s]",
+                raw_replay_window,
+                MIN_REPLAY_WINDOW_SECONDS,
+                MAX_REPLAY_WINDOW_SECONDS,
+            )
         self.security_audit_events: list[dict[str, Any]] = []
 
     def _log_security_audit(

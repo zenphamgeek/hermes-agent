@@ -1078,6 +1078,8 @@ def check_retention_sla_admission_headroom(
     max_unshredded_backlog: int = 10000,
     headroom_margin_seconds: float = DEFAULT_RETENTION_HEADROOM_MARGIN_SECONDS,
     now: Optional[float] = None,
+    account: Optional[str] = None,
+    max_per_account_backlog: Optional[int] = None,
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """Evaluates whether the system has sufficient headroom to admit new requests within the 72h GDPR SLA.
 
@@ -1085,12 +1087,18 @@ def check_retention_sla_admission_headroom(
     A request that would create data that cannot be guaranteed to be deleted within the 72h GDPR
     window gets backpressured at the admission boundary rather than admitted and later force-shredded.
 
+    Includes Tenant/Account-fair shedding under 10x spikes:
+      - If global backlog is high, quiet accounts with backlogs below their fair share
+        (default: max_unshredded_backlog // 4) are NOT starved by a single noisy account.
+      - Oldest unredacted record SLA expiration attributes strictly to the offending account.
+
     Returns:
       (can_admit: bool, reason: str, metrics: Dict[str, Any])
     """
     target_ledger = ledger_path or DEFAULT_ATTESTATION_LEDGER_PATH
     current_time = now if now is not None else time.time()
     sla_cutoff_time = current_time - (MAX_RETENTION_SLA_SECONDS - headroom_margin_seconds)
+    target_account = account.strip().lower() if account else None
 
     metrics: Dict[str, Any] = {
         "total_records": 0,
@@ -1099,12 +1107,16 @@ def check_retention_sla_admission_headroom(
         "oldest_unredacted_age_seconds": 0.0,
         "headroom_seconds": MAX_RETENTION_SLA_SECONDS,
         "backpressure_active": False,
+        "unredacted_by_account": {},
+        "oldest_unredacted_by_account": {},
     }
 
     if not target_ledger.is_file():
         return True, "OK", metrics
 
     oldest_unredacted_ts = current_time
+    unredacted_by_acc: Dict[str, int] = {}
+    oldest_by_acc: Dict[str, float] = {}
 
     try:
         with open(target_ledger, "r", encoding="utf-8") as f:
@@ -1123,8 +1135,17 @@ def check_retention_sla_admission_headroom(
                 else:
                     metrics["unredacted_records"] += 1
                     ts = float(entry.get("timestamp", current_time))
+                    acc = str(entry.get("account", "unknown")).strip().lower()
+
+                    unredacted_by_acc[acc] = unredacted_by_acc.get(acc, 0) + 1
+                    if acc not in oldest_by_acc or ts < oldest_by_acc[acc]:
+                        oldest_by_acc[acc] = ts
+
                     if ts < oldest_unredacted_ts:
                         oldest_unredacted_ts = ts
+
+        metrics["unredacted_by_account"] = unredacted_by_acc
+        metrics["oldest_unredacted_by_account"] = oldest_by_acc
 
         if metrics["unredacted_records"] > 0:
             oldest_age = current_time - oldest_unredacted_ts
@@ -1133,23 +1154,62 @@ def check_retention_sla_admission_headroom(
 
             # Check 1: Oldest unredacted record exceeds SLA threshold (71h)
             if oldest_unredacted_ts <= sla_cutoff_time:
+                # If checking a specific account, only backpressure if THIS account owns an expired record
+                if target_account:
+                    acc_oldest = oldest_by_acc.get(target_account, current_time)
+                    if acc_oldest <= sla_cutoff_time:
+                        acc_age = current_time - acc_oldest
+                        metrics["backpressure_active"] = True
+                        return (
+                            False,
+                            f"GDPR Retention SLA backpressure: Account {target_account!r} oldest un-shredded record age "
+                            f"({acc_age / 3600:.2f}h) exceeds 72h deletion headroom.",
+                            metrics,
+                        )
+                else:
+                    metrics["backpressure_active"] = True
+                    return (
+                        False,
+                        f"GDPR Retention SLA backpressure: Oldest un-shredded record age ({oldest_age / 3600:.2f}h) "
+                        f"exceeds 72h deletion headroom ({metrics['headroom_seconds'] / 3600:.2f}h remaining).",
+                        metrics,
+                    )
+
+        # Check 2: Unredacted backlog capacity threshold with tenant fairness
+        if target_account:
+            acc_backlog = unredacted_by_acc.get(target_account, 0)
+            per_account_limit = (
+                max_per_account_backlog
+                if max_per_account_backlog is not None
+                else max(50, max_unshredded_backlog // 4)
+            )
+            # If the specific account exceeds its quota, shed it
+            if acc_backlog >= per_account_limit:
                 metrics["backpressure_active"] = True
                 return (
                     False,
-                    f"GDPR Retention SLA backpressure: Oldest un-shredded record age ({oldest_age / 3600:.2f}h) "
-                    f"exceeds 72h deletion headroom ({metrics['headroom_seconds'] / 3600:.2f}h remaining).",
+                    f"GDPR Retention SLA backpressure: Account {target_account!r} un-shredded backlog ({acc_backlog}) "
+                    f"exceeds fair tenant threshold ({per_account_limit}).",
                     metrics,
                 )
-
-        # Check 2: Unredacted backlog exceeds capacity threshold
-        if metrics["unredacted_records"] >= max_unshredded_backlog:
-            metrics["backpressure_active"] = True
-            return (
-                False,
-                f"GDPR Retention SLA backpressure: Un-shredded backlog ({metrics['unredacted_records']}) "
-                f"exceeds maximum deletion capacity threshold ({max_unshredded_backlog}).",
-                metrics,
-            )
+            # Emergency global hard ceiling: 2x max_unshredded_backlog sheds all
+            if metrics["unredacted_records"] >= max_unshredded_backlog * 2:
+                metrics["backpressure_active"] = True
+                return (
+                    False,
+                    f"GDPR Retention SLA backpressure: Emergency system-wide backlog "
+                    f"({metrics['unredacted_records']}) exceeded emergency limit ({max_unshredded_backlog * 2}).",
+                    metrics,
+                )
+        else:
+            if metrics["unredacted_records"] >= max_unshredded_backlog:
+                metrics["backpressure_active"] = True
+                return (
+                    False,
+                    f"GDPR Retention SLA backpressure: Un-shredded backlog ({metrics['unredacted_records']}) "
+                    f"exceeds maximum deletion capacity threshold ({max_unshredded_backlog}).",
+                    metrics,
+                )
 
         return True, "OK", metrics
 

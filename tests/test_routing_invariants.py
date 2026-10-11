@@ -686,6 +686,123 @@ def test_check_retention_sla_admission_headroom(tmp_path: Path):
     assert metrics["backpressure_active"] is True
 
 
+def test_retention_sla_admission_tenant_fairness_under_10x(tmp_path: Path):
+    """Under 10x burst traffic from a noisy account, quiet accounts must NOT be starved."""
+    import json
+    import time
+    from hermes_cli.routing_policy import check_retention_sla_admission_headroom
+
+    ledger_file = tmp_path / "tenant_fairness_ledger.jsonl"
+    now = time.time()
+
+    # Noisy Account A generates 90 unredacted records (90% of traffic)
+    # Quiet Account B generates 5 unredacted records
+    with open(ledger_file, "w", encoding="utf-8") as f:
+        for i in range(90):
+            entry_a = {
+                "account": "noisy-tenant-a",
+                "model": "gemini-3.8-flash-high",
+                "verdict": "ALLOWED",
+                "task_id": f"noisy-{i}",
+                "timestamp": now - (i * 10),
+                "policy_version": "1.0.0",
+                "digest": "0" * 64,
+                "redacted": False,
+            }
+            f.write(json.dumps(entry_a) + "\n")
+        for j in range(5):
+            entry_b = {
+                "account": "quiet-tenant-b",
+                "model": "gemini-3.8-flash-high",
+                "verdict": "ALLOWED",
+                "task_id": f"quiet-{j}",
+                "timestamp": now - (j * 10),
+                "policy_version": "1.0.0",
+                "digest": "0" * 64,
+                "redacted": False,
+            }
+            f.write(json.dumps(entry_b) + "\n")
+
+    # Global threshold = 50, per-account fair share = 25
+    # 1. Noisy Tenant A (90 records >= 25 limit) must be shed
+    can_admit_a, reason_a, metrics_a = check_retention_sla_admission_headroom(
+        ledger_path=ledger_file,
+        max_unshredded_backlog=50,
+        max_per_account_backlog=25,
+        now=now,
+        account="noisy-tenant-a",
+    )
+    assert can_admit_a is False
+    assert "noisy-tenant-a" in reason_a
+    assert "exceeds fair tenant threshold" in reason_a
+
+    # 2. Quiet Tenant B (5 records < 25 limit) must be ADMITTED, avoiding noisy-neighbor starvation!
+    can_admit_b, reason_b, metrics_b = check_retention_sla_admission_headroom(
+        ledger_path=ledger_file,
+        max_unshredded_backlog=50,
+        max_per_account_backlog=25,
+        now=now,
+        account="quiet-tenant-b",
+    )
+    assert can_admit_b is True
+    assert reason_b == "OK"
+    assert metrics_b["unredacted_by_account"]["quiet-tenant-b"] == 5
+    assert metrics_b["unredacted_by_account"]["noisy-tenant-a"] == 90
+
+
+def test_retention_sla_stale_record_tenant_isolation(tmp_path: Path):
+    """Oldest unredacted record SLA expiration attributes strictly to the offending account."""
+    import json
+    import time
+    from hermes_cli.routing_policy import check_retention_sla_admission_headroom
+
+    ledger_file = tmp_path / "stale_isolation_ledger.jsonl"
+    now = time.time()
+    stale_ts = now - (71.5 * 3600.0)
+
+    # Account A has an expired unredacted record (>71h)
+    # Account B has only fresh records (<1h)
+    with open(ledger_file, "w", encoding="utf-8") as f:
+        entry_a = {
+            "account": "expired-tenant-a",
+            "model": "claude-opus-5-5-high",
+            "verdict": "ALLOWED",
+            "task_id": "stale-a",
+            "timestamp": stale_ts,
+            "policy_version": "1.0.0",
+            "digest": "0" * 64,
+            "redacted": False,
+        }
+        f.write(json.dumps(entry_a) + "\n")
+        entry_b = {
+            "account": "fresh-tenant-b",
+            "model": "gemini-3.8-flash-high",
+            "verdict": "ALLOWED",
+            "task_id": "fresh-b",
+            "timestamp": now - 300,
+            "policy_version": "1.0.0",
+            "digest": "0" * 64,
+            "redacted": False,
+        }
+        f.write(json.dumps(entry_b) + "\n")
+
+    # 1. Offending Account A is backpressured
+    can_admit_a, reason_a, _ = check_retention_sla_admission_headroom(
+        ledger_path=ledger_file, now=now, account="expired-tenant-a"
+    )
+    assert can_admit_a is False
+    assert "expired-tenant-a" in reason_a
+    assert "exceeds 72h deletion headroom" in reason_a
+
+    # 2. Innocent Account B is admitted
+    can_admit_b, reason_b, _ = check_retention_sla_admission_headroom(
+        ledger_path=ledger_file, now=now, account="fresh-tenant-b"
+    )
+    assert can_admit_b is True
+    assert reason_b == "OK"
+
+
+
 
 
 
