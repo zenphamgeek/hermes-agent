@@ -83,11 +83,17 @@ def test_f2_kanban_cli_url_sanitization():
     xss_payloads = [
         "javascript:alert(document.cookie)",
         "javascript:/*https://youtube.com*/alert(1)",
+        "java%73cript:alert(1)",
+        "%6a%61%76%61%73%63%72%69%70%74:alert(1)",
+        "javascript%3aalert(1)",
         "data:text/html,<script>alert(1)</script>",
         "vbscript:msgbox(1)",
         "file:///etc/passwd",
         "https://youtube.com<script>",
         "https://youtube.com\" onclick=\"alert(1)",
+        "https://youtube.com/%00bad",
+        "https://youtube.com/\x00bad",
+        "https://youtube.com/\r\nbad",
     ]
     for payload in xss_payloads:
         malicious_task = _make_task(
@@ -99,6 +105,7 @@ def test_f2_kanban_cli_url_sanitization():
         )
         rendered = kb_cli._fmt_task_line(malicious_task)
         assert " -> " not in rendered, f"Malicious payload leaked into task line: {payload}"
+
 
 
 def test_f2_kanban_dashboard_js_url_sanitizer():

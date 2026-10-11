@@ -57,7 +57,7 @@ def _fmt_task_line(t: kb.Task) -> str:
     url = ""
     if t.result:
         raw_res = t.result.strip()
-        if (raw_res.startswith("https://") or raw_res.startswith("http://")) and not any(c in raw_res for c in " \t\r\n<>\"'`"):
+        if (raw_res.startswith("https://") or raw_res.startswith("http://")) and not any(ord(c) < 32 or ord(c) == 127 or c in "<>\"'`" for c in raw_res) and "%00" not in raw_res.lower():
             try:
                 from urllib.parse import urlparse
                 parsed = urlparse(raw_res)
