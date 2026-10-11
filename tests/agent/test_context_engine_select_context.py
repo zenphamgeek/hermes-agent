@@ -22,6 +22,7 @@ from agent.context_engine import ContextEngine
 from agent.conversation_loop import (
     _apply_context_engine_selection,
     _notify_context_engine_turn_complete,
+    _selection_fingerprint,
 )
 
 
@@ -109,6 +110,130 @@ def test_base_noop_select_context_is_short_circuited_not_called():
 
 
 
+
+
+def test_selection_reused_for_identical_retry_request():
+    class _Engine(_MinimalEngine):
+        def __init__(self):
+            self.calls = 0
+
+        def select_context(self, request_messages, **kwargs):
+            self.calls += 1
+            return [*request_messages, {"role": "user", "content": f"route-{self.calls}"}]
+
+    engine = _Engine()
+    cache = {}
+    first = _apply_context_engine_selection(
+        _agent_with(engine), REQUEST, HISTORY, HISTORY[-1],
+        logger=MagicMock(), selection_cache=cache,
+    )
+    first[-1]["content"] = "mutated downstream"
+    retry = _apply_context_engine_selection(
+        _agent_with(engine), [dict(m) for m in REQUEST], HISTORY, HISTORY[-1],
+        logger=MagicMock(), selection_cache=cache,
+    )
+
+    assert engine.calls == 1
+    assert retry[-1]["content"] == "route-1"
+
+
+def test_selection_runs_again_when_reference_context_changes():
+    class _Engine(_MinimalEngine):
+        def __init__(self):
+            self.calls = 0
+
+        def select_context(self, request_messages, **kwargs):
+            self.calls += 1
+            return list(request_messages)
+
+    engine = _Engine()
+    agent = _agent_with(engine)
+    cache = {}
+    _apply_context_engine_selection(
+        agent, REQUEST, HISTORY, HISTORY[-1], logger=MagicMock(), selection_cache=cache,
+    )
+    changed_history = [*HISTORY, {"role": "assistant", "content": "new branch"}]
+    _apply_context_engine_selection(
+        agent, REQUEST, changed_history, changed_history[-1],
+        logger=MagicMock(), selection_cache=cache,
+    )
+
+    assert engine.calls == 2
+
+
+def test_selection_runs_again_when_logical_request_changes():
+    class _Engine(_MinimalEngine):
+        def __init__(self):
+            self.calls = 0
+
+        def select_context(self, request_messages, **kwargs):
+            self.calls += 1
+            return list(request_messages)
+
+    engine = _Engine()
+    agent = _agent_with(engine)
+    cache = {}
+    _apply_context_engine_selection(
+        agent, REQUEST, HISTORY, HISTORY[-1], logger=MagicMock(), selection_cache=cache,
+    )
+    changed = [*REQUEST, {"role": "assistant", "content": "tool loop"}]
+    _apply_context_engine_selection(
+        agent, changed, HISTORY, HISTORY[-1], logger=MagicMock(), selection_cache=cache,
+    )
+
+    assert engine.calls == 2
+
+
+def test_selection_not_reused_when_engine_not_deterministic():
+    class _NonDeterministicEngine(_MinimalEngine):
+        selection_is_deterministic = False
+
+        def __init__(self):
+            self.calls = 0
+
+        def select_context(self, request_messages, **kwargs):
+            self.calls += 1
+            return [*request_messages, {"role": "user", "content": f"route-{self.calls}"}]
+
+    engine = _NonDeterministicEngine()
+    cache = {}
+    first = _apply_context_engine_selection(
+        _agent_with(engine), REQUEST, HISTORY, HISTORY[-1],
+        logger=MagicMock(), selection_cache=cache,
+    )
+    retry = _apply_context_engine_selection(
+        _agent_with(engine), [dict(m) for m in REQUEST], HISTORY, HISTORY[-1],
+        logger=MagicMock(), selection_cache=cache,
+    )
+
+    assert engine.calls == 2
+    assert first[-1]["content"] == "route-1"
+    assert retry[-1]["content"] == "route-2"
+    assert "fingerprint" not in cache
+
+
+def test_selection_fingerprint_deterministic_and_sensitive_to_changes():
+    req_a = [{"role": "user", "content": "hello"}]
+    req_b = [{"role": "user", "content": "hello"}]
+    history_a = [{"role": "system", "content": "you are helpful"}]
+    history_b = [{"role": "system", "content": "you are helpful"}]
+    inc_a = {"role": "user", "content": "latest"}
+    inc_b = {"role": "user", "content": "latest"}
+
+    fp1 = _selection_fingerprint(req_a, history_a, inc_a)
+    fp2 = _selection_fingerprint(req_b, history_b, inc_b)
+    assert fp1 == fp2
+    assert len(fp1) == 64
+
+    # Any change in request, history, or incoming message alters the fingerprint
+    req_diff = [{"role": "user", "content": "hello!"}]
+    assert _selection_fingerprint(req_diff, history_a, inc_a) != fp1
+
+    hist_diff = [{"role": "system", "content": "different"}]
+    assert _selection_fingerprint(req_a, hist_diff, inc_a) != fp1
+
+    inc_diff = {"role": "user", "content": "different"}
+    assert _selection_fingerprint(req_a, history_a, inc_diff) != fp1
 
 
 def test_empty_list_keeps_original_request():

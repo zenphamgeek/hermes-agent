@@ -1249,7 +1249,11 @@ def build_turn_context(
     if agent._memory_manager:
         try:
             _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
-            agent._memory_manager.on_turn_start(agent._user_turn_count, _turn_msg)
+            agent._memory_manager.on_turn_start(
+                agent._user_turn_count,
+                _turn_msg,
+                session_id=agent.session_id or "",
+            )
         except Exception:
             pass
 
@@ -1262,7 +1266,12 @@ def build_turn_context(
         try:
             _query = original_user_message if isinstance(original_user_message, str) else ""
             if not is_trivial_prompt(_query):
-                ext_prefetch_cache = agent._memory_manager.prefetch_all(_query) or ""
+                ext_prefetch_cache = agent._memory_manager.prefetch_all(
+                    _query,
+                    session_id=agent.session_id or "",
+                ) or ""
+                from agent.learning_proposals import record_memory_recall
+                record_memory_recall(hit=bool(ext_prefetch_cache))
         except Exception:
             pass
         # Deterministic, model-independent recall indicator: when memory was

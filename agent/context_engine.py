@@ -212,6 +212,16 @@ class ContextEngine(ABC):
 
     # -- Optional: per-turn context selection (distinct from compression) --
 
+    selection_is_deterministic: bool = True
+    """Whether select_context() is a pure function of its inputs.
+
+    When True (default), identical requests re-built during retry recovery can safely
+    reuse the cached selection result without invoking the engine again.
+    Engines that perform non-deterministic context routing, time-sensitive redaction,
+    or live permission checks should override this to False to ensure select_context()
+    re-runs on every retry attempt.
+    """
+
     def select_context(
         self,
         request_messages: List[Dict[str, Any]],
@@ -261,9 +271,10 @@ class ContextEngine(ABC):
         compressor and any non-implementing engine. An engine that *does*
         replace the list changes its own cache prefix by definition; that is
         the engine's concern, and cache-control breakpoints are re-derived on
-        the selected list. The hook is evaluated per provider request (so it
-        re-runs on retries within a turn), consistent with "select the context
-        for THIS request".
+        the selected list. The host evaluates the hook once for each distinct
+        logical request and reuses that selection when retry recovery rebuilds
+        the same request. A later tool-loop request has different messages and
+        therefore gets a fresh selection.
 
         Args:
             request_messages: The assembled request message list (system

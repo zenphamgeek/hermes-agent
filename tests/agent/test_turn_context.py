@@ -236,8 +236,25 @@ def test_prefetch_runs_for_substantive_user_message():
     agent, mm = _agent_with_memory_manager()
     query = "what did we decide about the deploy pipeline?"
     ctx = _build(agent, user_message=query)
-    mm.prefetch_all.assert_called_once_with(query)
+    mm.prefetch_all.assert_called_once_with(query, session_id="sess-1")
     assert ctx.ext_prefetch_cache == "REMEMBERED CONTEXT"
+
+
+def test_memory_turn_hooks_receive_active_session_id():
+    agent, mm = _agent_with_memory_manager()
+    agent.session_id = "gateway-session-42"
+
+    _build(agent, user_message="recall this session's deployment decision")
+
+    mm.on_turn_start.assert_called_once_with(
+        1,
+        "recall this session's deployment decision",
+        session_id="gateway-session-42",
+    )
+    mm.prefetch_all.assert_called_once_with(
+        "recall this session's deployment decision",
+        session_id="gateway-session-42",
+    )
 
 
 def test_turn_start_replaces_stale_parent_history_with_compression_child():

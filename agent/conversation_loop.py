@@ -16,6 +16,7 @@ resolved through :func:`_ra` so those patches keep working.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -1355,6 +1356,36 @@ def _redecorate_prompt_cache_for_provider(
     return messages, prepared, planned_tools
 
 
+
+def _selection_fingerprint(
+    api_messages: List[Dict[str, Any]],
+    conversation_messages: Optional[List[Dict[str, Any]]],
+    incoming_message: Optional[Dict[str, Any]],
+) -> str:
+    """Compute a deterministic SHA-256 fingerprint for context engine selection inputs.
+
+    Used to avoid O(N) structural object graph comparisons on retries within a turn,
+    mitigating CPU amplification (CWE-400) on large context windows.
+    """
+    hasher = hashlib.sha256()
+    try:
+        payload = json.dumps(
+            {
+                "api": api_messages,
+                "conv": conversation_messages,
+                "inc": incoming_message,
+            },
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8", errors="replace")
+        hasher.update(payload)
+    except Exception:
+        hasher.update(
+            repr((api_messages, conversation_messages, incoming_message)).encode("utf-8", errors="replace")
+        )
+    return hasher.hexdigest()
+
+
 def _apply_context_engine_selection(
     agent: Any,
     api_messages: List[Dict[str, Any]],
@@ -1362,6 +1393,7 @@ def _apply_context_engine_selection(
     incoming_message: Optional[Dict[str, Any]],
     *,
     logger: Any,
+    selection_cache: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Run the optional per-turn ``ContextEngine.select_context()`` hook.
 
@@ -1393,6 +1425,29 @@ def _apply_context_engine_selection(
         pass
 
     session_label = getattr(agent, "session_id", None) or "-"
+    if getattr(engine, "selection_is_deterministic", True) is False:
+        selection_cache = None
+
+    current_fingerprint = (
+        _selection_fingerprint(api_messages, conversation_messages, incoming_message)
+        if selection_cache is not None
+        else None
+    )
+
+    if (
+        selection_cache is not None
+        and current_fingerprint is not None
+        and selection_cache.get("fingerprint") == current_fingerprint
+    ):
+        cached_selected: List[Dict[str, Any]] = selection_cache["selected"]
+        try:
+            from agent.learning_proposals import record_cache_selection
+            record_cache_selection(hit=True)
+        except Exception as err:
+            if logger and hasattr(logger, "debug"):
+                logger.debug("Failed to record cache selection telemetry: %s", err)
+        return [_clone_message_for_send(m) for m in cached_selected]
+
     # Pass shallow copies of the reference-only inputs so an engine that
     # mutates them in place cannot alter persisted transcript state. Only
     # ``request_messages`` (the per-call request list) is meant to be acted on,
@@ -1423,13 +1478,22 @@ def _apply_context_engine_selection(
         return api_messages
 
     if selected is None:
-        return api_messages
+        selected = api_messages
     # Require a NON-EMPTY list of dicts. An empty list must fall open to the
     # original request: ``all([])`` is ``True``, so without the emptiness check
     # a ``[]`` returned by a buggy/failing engine would replace a valid request
     # with an empty message list that the downstream sanitizers cannot restore,
     # reaching the provider as an invalid request instead of failing open.
     if isinstance(selected, list) and selected and all(isinstance(m, dict) for m in selected):
+        if selection_cache is not None and current_fingerprint is not None:
+            selection_cache["fingerprint"] = current_fingerprint
+            selection_cache["selected"] = [_clone_message_for_send(m) for m in selected]
+        try:
+            from agent.learning_proposals import record_cache_selection
+            record_cache_selection(hit=False)
+        except Exception as err:
+            if logger and hasattr(logger, "debug"):
+                logger.debug("Failed to record cache selection telemetry: %s", err)
         return selected
 
     logger.warning(
@@ -1691,6 +1755,10 @@ def run_conversation(
     # (early failure / interrupt) so the hook receives None rather than a
     # stale prior turn's usage.
     agent._last_turn_usage = None
+    # Retry recovery may rebuild an identical provider request. Context routing
+    # is a logical-request decision; reuse it until the transcript/tool loop
+    # changes the assembled request.
+    context_selection_cache: Dict[str, Any] = {}
 
     # Optional opt-in runtime: if api_mode == codex_app_server, hand the
     # turn to the codex app-server subprocess (terminal/file ops/patching
@@ -2119,6 +2187,7 @@ def run_conversation(
             messages,
             _sel_incoming,
             logger=request_logger,
+            selection_cache=context_selection_cache,
         )
 
         # Safety net: strip orphaned tool results / add stubs for missing
