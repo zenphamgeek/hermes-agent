@@ -54,8 +54,7 @@ Trước khi gửi bất kỳ văn bản nào sang OmniVoice TTS:
 3. **Chuẩn hóa số & thời gian theo chuẩn phương Nam:**
    - `2300 năm trước` $\rightarrow$ `hai ngàn ba trăm năm trước` (dùng "ngàn", không dùng "nghìn")
    - `thế kỷ IV` $\rightarrow$ `thế kỷ bốn`
-   - `15/8/1945` $\rightarrow$ `ngày mười lăm tháng tám năm một ngàn chín trăm bốn mươi lăm`
-4. **Sử dụng Engine:** Mọi pipeline phải import và gọi `transform_for_tts()` từ `vietnamese_prosody.py` (tích hợp `vn_text_preprocessor.py` và `vietnamese_expressive_prosody.py`).
+4. **Sử dụng Engine:** Mọi pipeline gọi trực tiếp `tts_v0_synthesizer.py` (TTS V0 Direct Raw Script Synthesis, không dùng bộ tiền xử lý ngữ âm cũ đã bãi bỏ).
 
 ---
 
@@ -70,5 +69,6 @@ Trước khi gửi bất kỳ văn bản nào sang OmniVoice TTS:
 > 4. **Chuỗi Master Phòng Thu 5 Giai Đoạn (Studio Vocal Mastering Chain):** Mọi audio VieNeu raw bắt buộc phải lọc qua chuỗi FFmpeg: `highpass=f=80, equalizer=f=300:t=q:w=1.5:g=-2.0, equalizer=f=3800:t=q:w=1.2:g=3.0, treble=g=3.5:f=9000:t=s, loudnorm=I=-14.5:TP=-1.5:LRA=7.0` (-ar 48000 -ac 2) để đạt chuẩn phát thanh quốc tế EBU R128 trong trẻo, sang trọng.
 > 5. **Mã nguồn thực thi chuẩn:** `assets/scripts_video/tts_v0_synthesizer.py`.
 > 6. **Tham chiếu quy chuẩn:** `.agents/rules/vietnamese_gold_tts_rules.md`.
+> 7. **Lớp Bảo Vệ Vệ Tinh Bất Biến (Invariant Input Sanitization & Subprocess Safety):** Dù gọi trực tiếp kịch bản gốc, mọi lệnh TTS bắt buộc phải kích hoạt hàm phòng thủ `sanitize_tts_input()` từ `assets/scripts_video/tts_input_sanitizer.py` ngay tại biên động cơ (synthesizer boundary) để triệt tiêu ký tự điều khiển (CWE-20), mã thoát ANSI, Trojan Source (CVE-2021-42574) và bảo toàn 100% `shell=False` (array-based subprocess) chống injection (CWE-78).
 
 
