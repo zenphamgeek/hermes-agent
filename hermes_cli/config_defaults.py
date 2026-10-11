@@ -2253,6 +2253,13 @@ DEFAULT_CONFIG = {
         # <id>`; remove by editing the list directly. See
         # ``hermes_cli/security_advisories.py`` for the catalog.
         "acked_advisories": [],
+        # Automation guardrail policies (see cron/workflows.py): per-workflow
+        # or per-step tool allow/deny, merged at workflow deploy time. Format:
+        #   automation_policies:
+        #     allow: [file, web]      # toolsets every automation may use
+        #     deny: [terminal]        # toolsets no automation may use
+        #   Steps may override with per-step `tools.allow` / `tools.deny`.
+        "automation_policies": {},
         # Allow Hermes to lazy-install opt-in backend packages from PyPI
         # the first time the user enables a backend that needs them
         # (e.g. installing ``elevenlabs`` when the user picks ElevenLabs as

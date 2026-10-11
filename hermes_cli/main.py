@@ -439,6 +439,9 @@ import functools as _functools
 from hermes_cli.sessions_cmd import cmd_sessions  # noqa: F401
 from hermes_cli.subcommands._shared import add_accept_hooks_flag as _add_accept_hooks_flag
 from hermes_cli.subcommands.cron import build_cron_parser
+from hermes_cli.subcommands.workflow import build_workflow_parser
+from hermes_cli.subcommands.watch import build_watch_parser
+from hermes_cli.subcommands.automation import build_automation_parser
 from hermes_cli.subcommands.sync import build_sync_parser
 from hermes_cli.subcommands.gateway import build_gateway_parser
 from hermes_cli.subcommands.profile import build_profile_parser
@@ -4704,7 +4707,27 @@ def cmd_cron(args):
     """Cron job management."""
     from hermes_cli.cron import cron_command
 
-    cron_command(args)
+    sys.exit(cron_command(args))
+
+
+def cmd_workflow(args):
+    """Workflow management."""
+    from hermes_cli.workflow import workflow_command
+
+    sys.exit(workflow_command(args))
+
+
+def cmd_watch(args):
+    """File watcher event triggers."""
+    from hermes_cli.watch import watch_command
+
+    sys.exit(watch_command(args))
+
+def cmd_automation(args):
+    """Automation hub status + history."""
+    from hermes_cli.automation import automation_command
+
+    sys.exit(automation_command(args))
 
 
 def cmd_sync(args):
@@ -11038,6 +11061,7 @@ def _resolve_deferred_platform_cli_command(command_name: str | None) -> None:
 _AGENT_COMMANDS = {None, "chat", "acp", "rl"}
 _AGENT_SUBCOMMANDS = {
     "cron": ("cron_command", {"run", "tick"}),
+    "workflow": ("workflow_command", {"run"}),
     "gateway": ("gateway_command", {"run"}),
     "mcp": ("mcp_action", {"serve"}),
 }
@@ -11895,6 +11919,9 @@ def main():
     # cron command  (parser built in hermes_cli/subcommands/cron.py)
     # =========================================================================
     build_cron_parser(subparsers, cmd_cron=cmd_cron)
+    build_workflow_parser(subparsers, cmd_workflow=cmd_workflow)
+    build_watch_parser(subparsers, cmd_watch=cmd_watch)
+    build_automation_parser(subparsers, cmd_automation=cmd_automation)
     build_sync_parser(subparsers, cmd_sync=cmd_sync)
 
     # =========================================================================
@@ -12138,7 +12165,7 @@ def main():
     # =========================================================================
     journey_parser = subparsers.add_parser(
         "journey",
-        aliases=["learning", "memory-graph"],
+        aliases=["memory-graph"],
         help="Timeline of learned skills + memories over time",
         description=(
             "A terminal rendition of the desktop Star Map / Memory Graph: a "
@@ -12153,6 +12180,12 @@ def main():
         _register_journey_cli(journey_parser)
     except Exception as _exc:
         logging.getLogger(__name__).debug("journey CLI wiring failed: %s", _exc)
+
+    learning_parser = subparsers.add_parser(
+        "learning", help="Review and apply learning proposals"
+    )
+    from hermes_cli.learning import register_cli as _register_learning_cli
+    _register_learning_cli(learning_parser)
 
     # =========================================================================
     # memory command  (parser built in hermes_cli/subcommands/memory.py)

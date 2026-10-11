@@ -39,6 +39,7 @@ _STATUS_ICONS = {
     "scheduled":"⏱",
     "blocked":  "⊘",
     "done":     "✓",
+    "published":"★",
     "archived": "—",
 }
 
@@ -53,7 +54,8 @@ def _fmt_task_line(t: kb.Task) -> str:
     icon = _STATUS_ICONS.get(t.status, "?")
     assignee = t.assignee or "(unassigned)"
     tenant = f" [{t.tenant}]" if t.tenant else ""
-    return f"{icon} {t.id}  {t.status:8s}  {assignee:20s}{tenant}  {t.title}"
+    url = f" -> {t.result}" if t.result and t.result.startswith("http") else ""
+    return f"{icon} {t.id}  {t.status:9s}  {assignee:20s}{tenant}  {t.title}{url}"
 
 
 def _task_to_dict(t: kb.Task) -> dict[str, Any]:

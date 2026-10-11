@@ -99,7 +99,7 @@ _log = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-VALID_STATUSES = {"triage", "todo", "scheduled", "ready", "running", "blocked", "review", "done", "archived"}
+VALID_STATUSES = {"triage", "todo", "scheduled", "ready", "running", "blocked", "review", "done", "published", "archived"}
 VALID_INITIAL_STATUSES = {"running", "blocked"}
 
 # Typed block reasons. Distinguishes the two fundamentally different things a
@@ -3930,7 +3930,7 @@ def parent_results(conn: sqlite3.Connection, task_id: str) -> list[tuple[str, Op
         SELECT t.id AS id, t.result AS result
         FROM tasks t
         JOIN task_links l ON l.parent_id = t.id
-        WHERE l.child_id = ? AND t.status = 'done'
+        WHERE l.child_id = ? AND t.status IN ('done', 'published')
         ORDER BY t.completed_at ASC
         """,
         (task_id,),
@@ -4572,7 +4572,7 @@ def _parents_satisfied(conn: sqlite3.Connection, task_id: str) -> bool:
         "SELECT 1 FROM task_links l "
         "JOIN tasks p ON p.id = l.parent_id "
         "WHERE l.child_id = ? "
-        "AND p.status NOT IN ('done', 'archived') LIMIT 1",
+        "AND p.status NOT IN ('done', 'published', 'archived') LIMIT 1",
         (task_id,),
     ).fetchone() is None
 
@@ -4604,7 +4604,7 @@ def claim_task(
         undone = conn.execute(
             "SELECT 1 FROM task_links l "
             "JOIN tasks p ON p.id = l.parent_id "
-            "WHERE l.child_id = ? AND p.status NOT IN ('done', 'archived') LIMIT 1",
+            "WHERE l.child_id = ? AND p.status NOT IN ('done', 'published', 'archived') LIMIT 1",
             (task_id,),
         ).fetchone()
         if undone:
@@ -6763,7 +6763,7 @@ def _landing_status_after_parents(conn: sqlite3.Connection, task_id: str) -> str
         "SELECT 1 FROM task_links l "
         "JOIN tasks p ON p.id = l.parent_id "
         "WHERE l.child_id = ? "
-        "AND p.status NOT IN ('done', 'archived') LIMIT 1",
+        "AND p.status NOT IN ('done', 'published', 'archived') LIMIT 1",
         (task_id,),
     ).fetchone()
     return "todo" if undone_parents else "ready"
@@ -11453,7 +11453,7 @@ def gc_events(
     with write_txn(conn):
         cur = conn.execute(
             "DELETE FROM task_events WHERE created_at < ? AND task_id IN "
-            "(SELECT id FROM tasks WHERE status IN ('done', 'archived'))",
+            "(SELECT id FROM tasks WHERE status IN ('done', 'published', 'archived'))",
             (cutoff,),
         )
     return int(cur.rowcount or 0)

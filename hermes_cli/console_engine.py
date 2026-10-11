@@ -853,6 +853,27 @@ class HermesConsoleEngine:
                 [("create",), ("edit",), ("remove",), ("tick",)],
                 {("create",), ("edit",), ("remove",), ("tick",)},
             ),
+            "workflow": (
+                "hermes_cli.subcommands.workflow",
+                "build_workflow_parser",
+                "cmd_workflow",
+                [("deploy",), ("run",), ("remove",), ("pause",), ("resume",)],
+                {("deploy",), ("run",), ("remove",), ("pause",), ("resume",)},
+            ),
+            "watch": (
+                "hermes_cli.subcommands.watch",
+                "build_watch_parser",
+                "cmd_watch",
+                [("add",), ("serve",), ("remove",), ("list",)],
+                {("add",), ("remove",)},
+            ),
+            "automation": (
+                "hermes_cli.subcommands.automation",
+                "build_automation_parser",
+                "cmd_automation",
+                [("status",), ("history",)],
+                set(),
+            ),
         }
 
         for root, (module, builder, main_handler, paths, mutating) in extracted.items():
