@@ -1,167 +1,1663 @@
 1
-00:00:00,000 --> 00:00:12,540
-Một cú búng tay trong bóng tối... Đồng xu kim loại xoay tròn trên không trung rồi rơi xuống mặt bàn.
+00:00:00,000 --> 00:00:01,140
+Một cú búng tay trong
 
 2
-00:00:12,540 --> 00:00:25,080
-Người đời thường mỉm cười bảo nhau: sấp hay ngửa là chuyện hên xui, là sự ngẫu nhiên của số phận... Nhưng nếu đứng dưới góc nhìn của vật lý cơ học cổ điển, không hề có một chút ngẫu nhiên nào tồn tại ở đây cả.
+00:00:01,140 --> 00:00:01,740
+bóng tối...
 
 3
-00:00:25,080 --> 00:00:37,620
-Góc búng ngón tay, lực tác động, mật độ không khí, và trọng lực của Trái Đất — tất cả đều tuân theo những định luật tất định nghiêm ngặt của Isaac Newton. Nếu có một thước đo đủ tinh vi để đo lường trọn vẹn từng thông số ấy ngay từ khoảnh khắc rời tay... mặt tiếp đất của đồng xu đã được an bài từ trước khi nó kịp bay lên.
+00:00:02,180 --> 00:00:03,390
+Đồng xu kim loại xoay
 
 4
-00:00:37,620 --> 00:00:50,160
-Sự bất định mà ta cảm thấy... không nằm ở bản thân đồng xu, mà bắt nguồn từ chính sự bất lực của giác quan con người trong việc nắm bắt những biến thiên cực nhỏ.
+00:00:03,390 --> 00:00:04,400
+tròn trên không trung
 
 5
-00:00:50,160 --> 00:01:02,700
-Vậy thì tại sao... một cỗ máy vi mạch hiện đại — thứ được xây dựng từ hàng tỷ bóng bán dẫn tất định bậc nhất — lại phải liên tục tung những đồng xu xác suất để trò chuyện cùng chúng ta?
+00:00:04,840 --> 00:00:06,140
+rồi rơi xuống mặt bàn.
 
 6
-00:01:02,700 --> 00:01:19,022
-Năm 1814, nhà toán học người Pháp Pierre-Simon Laplace từng mường tượng ra một thực thể trí tuệ siêu phàm — người đời sau gọi là Quỷ Laplace.
+00:00:06,720 --> 00:00:07,740
+Người đời thường mỉm cười
 
 7
-00:01:19,022 --> 00:01:35,345
-Nếu thực thể ấy biết trọn vẹn vị trí và vận tốc của từng hạt nguyên tử trong vũ trụ tại một khoảnh khắc duy nhất, thì từ quỹ đạo của một thiên hà xa xôi cho đến mặt tiếp đất của đồng xu trên tay bạn... tương lai sẽ hiển hiện rõ ràng hệt như quá khứ. Không có gì là bất định, và khái niệm may rủi hoàn toàn biến mất.
+00:00:07,740 --> 00:00:09,920
+bảo nhau: sấp hay ngửa
 
 8
-00:01:35,345 --> 00:01:51,667
-Điều này dẫn chúng ta đến một sự phân định triết học sâu sắc giữa hai tầng ngẫu nhiên: Ngẫu nhiên bản thể — tức tự thân vũ trụ vốn hỗn loạn từ gốc rễ; và Ngẫu nhiên nhận thức — tức thế giới vốn dĩ tất định, nhưng trí tuệ con người quá hữu hạn để thu thập đủ thông tin.
+00:00:09,920 --> 00:00:10,780
+là chuyện hên xui,
 
 9
-00:01:51,667 --> 00:02:07,990
-Đồng xu không hề gieo quẻ may rủi. Khi chúng ta nói xác suất ngửa là năm mươi phần trăm, đó không phải là đặc tính của đồng kim loại... Xác suất, thực chất chỉ là chiếc gương phản chiếu sự thiếu hụt thông tin của chính chúng ta.
+00:00:11,380 --> 00:00:12,380
+là sự ngẫu nhiên của
 
 10
-00:02:07,990 --> 00:02:22,888
-Mùa hè năm 1948, giữa những căn phòng thí nghiệm tĩnh lặng của viện Bell, một kỹ sư trẻ tên là Claude Shannon đã đặt ra một câu hỏi làm đảo lộn văn minh nhân loại: Thông tin... thực chất là gì?
+00:00:12,380 --> 00:00:12,980
+số phận...
 
 11
-00:02:22,888 --> 00:02:37,786
-Câu trả lời của Shannon giản dị đến mức làm người ta sững sờ: Thông tin không phải là những con chữ bóng bẩy hay âm thanh ồn ào. Thông tin chính là thước đo của sự giải tỏa độ bất định.
+00:00:13,360 --> 00:00:14,480
+Nhưng nếu đứng dưới góc
 
 12
-00:02:37,786 --> 00:02:52,684
-Hãy hình dung: nếu một đồng xu hoàn toàn cân bằng, cơ hội chia đều năm mươi — năm mươi, sự bất định nằm ở mức cực đại. Khoảnh khắc đồng xu rơi xuống và hé lộ kết quả, bạn nhận được chính xác một đơn vị thông tin cơ bản — đúng một bit, đơn vị nhị phân nền tảng của toàn bộ kỷ nguyên số.
+00:00:14,480 --> 00:00:15,920
+nhìn của vật lý cơ học
 
 13
-00:02:52,684 --> 00:03:07,582
-Nhưng nếu một kẻ gian lận đưa cho bạn đồng xu có hai mặt đều là ngửa? Xác suất mặt ngửa là một trăm phần trăm. Khi nó rơi xuống, bạn chẳng học thêm được điều gì mới mẻ cả. Độ bất ngờ bằng không, và lượng thông tin nhận về cũng bằng không.
+00:00:15,920 --> 00:00:17,660
+cổ điển, không hề có
 
 14
-00:03:07,582 --> 00:03:22,480
-Nguyên lý trên chỉ ra rằng: sự kiện càng hiếm hoi bất ngờ, lượng thông tin chuyên chở càng khổng lồ. Và Entrô-pi... chính là thể tích trung bình của những sự bất ngờ ấy trong một hệ thống.
+00:00:17,660 --> 00:00:18,900
+một chút ngẫu nhiên nào
 
 15
-00:03:22,480 --> 00:03:36,260
-Khi đối diện với một thế giới bất định, cỗ máy thông minh không suy nghĩ bằng những định kiến cứng nhắc. Nó tư duy theo tinh thần của một mục sư người Anh ở thế kỷ mười tám: Thomas Bayes.
+00:00:18,900 --> 00:00:19,960
+tồn tại ở đây cả.
 
 16
-00:03:36,260 --> 00:03:50,040
-Tư duy Bayes không đòi hỏi chúng ta phải biết chắc chắn sự thật ngay từ đầu. Trước khi có dữ liệu, cỗ máy nắm giữ một niềm tin ban đầu — gọi là xác suất tiền nghiệm. Đó có thể là một giả định mơ hồ rằng đồng xu này vốn dĩ cân bằng.
+00:00:20,640 --> 00:00:21,620
+Góc búng ngón tay,
 
 17
-00:03:50,040 --> 00:04:03,820
-Nhưng điều kỳ diệu xảy ra khi bằng chứng xuất hiện: nếu bạn tung đồng xu mười lần, và cả mười lần đều ngửa... chiếc cán cân toán học lập tức chuyển động.
+00:00:22,280 --> 00:00:22,880
+lực tác động,
 
 18
-00:04:03,820 --> 00:04:17,600
-Mỗi dữ liệu quan sát mới giống như một giọt nước đổ thêm vào đĩa cân, bẻ cong niềm tin cũ để nhào nặn nên một niềm tin mới — gọi là xác suất hậu nghiệm. Cỗ máy không hề có lòng tự ái hay cố chấp bảo thủ. Nó sẵn sàng từ bỏ giả định ban đầu để cúi đầu trước sức nặng của bằng chứng thực nghiệm.
+00:00:23,500 --> 00:00:24,440
+mật độ không khí,
 
 19
-00:04:17,600 --> 00:04:31,379
-Đó chính là cốt lõi của việc học máy: không phải sự thông thái tuyệt đối, mà là khả năng tự sửa mình liên tục, từng bước uốn cong niềm tin để tiệm cận chân lý khách quan.
+00:00:24,440 --> 00:00:25,940
+và trọng lực của Trái
 
 20
-00:04:31,379 --> 00:04:44,291
-Giờ đây, chúng ta hãy bước vào sâu bên trong bộ não điện toán của một mô hình ngôn ngữ lớn như ChatGPT. Cỗ máy không hề suy nghĩ bằng câu chữ hay cảm xúc... Ở tầng tính toán cuối cùng, mạng nơ-ron chỉ xuất xưởng một mảng gồm hàng chục ngàn con số thô ráp — các kỹ sư gọi chúng là logits.
+00:00:25,940 --> 00:00:27,240
+Đất — tất cả đều
 
 21
-00:04:44,291 --> 00:04:57,202
-Để biến những con số không giới hạn này thành một phân phối xác suất hợp lệ có tổng bằng một, cỗ máy áp dụng một phép biến đổi toán học thanh lịch: hàm Softmax.
+00:00:27,240 --> 00:00:28,420
+tuân theo những định luật
 
 22
-00:04:57,202 --> 00:05:10,114
-Khi bạn đưa vào câu gợi ý: *"Mặt trời mọc ở hướng..."*, không gian vector lập tức biến dạng. Điểm số của từ *"Đông"* được khuếch đại lũy thừa, trong khi các từ *"Tây"*, *"Nam"*, hay *"biển cả"* bị ghìm sâu xuống đáy vực.
+00:00:28,420 --> 00:00:29,680
+tất định nghiêm ngặt của
 
 23
-00:05:10,114 --> 00:05:23,025
-Nhưng cỗ máy không chọn từ một cách mù quáng. Nó nắm trong tay một chiếc van điều áp tinh tế mang tên Nhiệt độ — Temperature.
+00:00:29,680 --> 00:00:30,500
+Isaac Newton.
 
 24
-00:05:23,025 --> 00:05:35,937
-Nếu vặn nhiệt độ về gần số không, phân phối xác suất co rút thành một mũi kim sắc lẹm. Cỗ máy trở nên cực kỳ bảo thủ, luôn chọn từ có xác suất cao nhất, lặp đi lặp lại những câu văn sáo mòn vô hồn.
+00:00:31,000 --> 00:00:32,280
+Nếu có một thước đo
 
 25
-00:05:35,937 --> 00:05:48,848
-Nhưng nếu vặn nhiệt độ lên quá cao... mặt cong xác suất bị nung chảy và san phẳng hoàn toàn. Mọi từ vựng kỳ quặc nhất đều có cơ hội trồi lên, cỗ máy bắt đầu nói sảng và rơi vào ảo giác mê muội.
+00:00:32,280 --> 00:00:33,100
+đủ tinh vi
 
 26
-00:05:48,848 --> 00:06:01,760
-Nghệ thuật của trí tuệ nhân tạo nằm ở một khoảng nhiệt độ cân bằng mong manh — nơi sự chuẩn xác của toán học hòa quyện cùng một chút ngẫu hứng bất ngờ.
+00:00:33,600 --> 00:00:34,960
+để đo lường trọn vẹn
 
 27
-00:06:01,760 --> 00:06:13,198
-Ở cấp độ một cú búng tay đơn lẻ, số phận của từng hạt bụi là điều không thể đoán định.
+00:00:34,960 --> 00:00:36,440
+từng thông số ấy ngay
 
 28
-00:06:13,198 --> 00:06:24,636
-Nhưng khi bạn lặp lại hành động ấy hàng triệu lần, một trật tự vĩ đại đột ngột xuất hiện từ đáy sâu của sự hỗn loạn. Đó là phép màu của Định luật Số lớn và Phân phối Chuẩn.
+00:00:36,440 --> 00:00:37,720
+từ khoảnh khắc rời tay...
 
 29
-00:06:24,636 --> 00:06:36,075
-Hãy quan sát những hạt ánh sáng rơi qua bàn chốt cản. Từng hạt riêng lẻ nảy sang trái hay sang phải hoàn toàn vô trật tự, tưởng chừng như một mớ bòng bong mù mịt. Thế nhưng, khi hàng ngàn hạt tích tụ lại ở đáy sàn, chúng không hề tạo thành một đống hỗn độn vô nghĩa.
+00:00:38,320 --> 00:00:39,640
+mặt tiếp đất của đồng xu
 
 30
-00:06:36,075 --> 00:06:47,513
-Chúng tự động dâng lên, vẽ nên một đường cong hình chuông hoàn mỹ tuyệt đối — đối xứng, cân đối và thanh tao kỳ lạ.
+00:00:39,640 --> 00:00:41,320
+đã được an bài từ
 
 31
-00:06:47,513 --> 00:06:58,951
-Mỗi mô hình ngôn ngữ lớn hôm nay đang tung hàng tỷ đồng xu xác suất mỗi giây. Từng token riêng lẻ có vẻ ngẫu nhiên, nhưng khi tích tụ qua hàng trăm ngàn bước dự đoán, những câu văn khúc chiết, những vần thơ đẫm lệ, và những dòng mã lập trình phức tạp đột ngột thành hình.
+00:00:41,320 --> 00:00:42,520
+trước khi nó kịp bay
 
 32
-00:06:58,951 --> 00:07:10,390
-Trí tuệ nhân tạo không nằm ở từng con số đơn độc. Nó nảy sinh từ sự hội tụ của số lớn — nơi sự hỗn loạn đầu hàng trước quy luật của cái đẹp toán học.
+00:00:42,520 --> 00:00:44,500
+lên. Sự bất định mà
 
 33
-00:07:10,390 --> 00:07:24,172
-Nhưng quy luật xác suất cũng đặt ra một cái bẫy nghiệt ngã nhất của công nghệ hôm nay: hội chứng ảo giác — Hallucination.
+00:00:44,500 --> 00:00:45,200
+ta cảm thấy...
 
 34
-00:07:24,172 --> 00:07:37,954
-Dưới lăng kính toán học thuần túy, cỗ máy không hề biết nói dối. Nó không có ác tâm, cũng chẳng có mưu mô đánh lừa con người. Nó chỉ đơn giản là đang tung một đồng xu bị lệch phân phối ngoài vùng dữ liệu mà nó từng được huấn luyện.
+00:00:45,200 --> 00:00:46,960
+không nằm ở bản thân
 
 35
-00:07:37,954 --> 00:07:51,736
-Hiểm họa lớn nhất của trí tuệ nhân tạo không phải là một cỗ máy ngây ngô biết mình dốt. Hiểm họa thực sự nằm ở một cỗ máy phát biểu những điều hoàn toàn sai lầm với một độ tự tin toán học lên tới chín mươi chín phần trăm...
+00:00:46,960 --> 00:00:48,800
+đồng xu, mà bắt nguồn
 
 36
-00:07:51,736 --> 00:08:05,518
-Các nhà khoa học đo lường bi kịch ấy bằng một chỉ số mang tên Sai số Hiệu chuẩn Kỳ vọng — ECE. Khi khoảng cách giữa niềm tin chủ quan của cỗ máy và chân lý khách quan thực tế bị xé toạc, cỗ máy trở thành một kẻ huyễn tưởng đầy nguy hiểm trong vỏ bọc thông thái.
+00:00:48,800 --> 00:00:49,880
+từ chính sự bất lực
 
 37
-00:08:05,518 --> 00:08:19,300
-Làm chủ trí tuệ nhân tạo, vì thế, không phải là mù quáng tôn thờ những con số xác suất hào nhoáng, mà là sự tỉnh táo đo lường ranh giới của sự bất định và biết khi nào cỗ máy đang nói trong sự mơ hồ.
+00:00:49,880 --> 00:00:51,300
+của giác quan con người
 
 38
-00:08:19,300 --> 00:08:32,032
-Nhìn thấu qua lớp sương mù công nghệ, cỗ máy suy cho cùng vẫn là một cỗ máy tính toán xác suất khổng lồ. Nhưng trong từng phép tính phân phối ấy, nó phản chiếu lại chính sự hữu hạn và khát vọng tìm kiếm chân lý ngàn đời của loài người.
+00:00:51,300 --> 00:00:52,520
+trong việc nắm bắt những
 
 39
-00:08:32,032 --> 00:08:44,764
-Đồng xu đã rơi xuống, nhưng hành trình nhận thức của chúng ta chỉ mới bắt đầu. Con người và cỗ máy, theo một cách nào đó, đang cùng chèo lái con thuyền tư duy giữa một đại dương bất định bao la... Chúng ta học cách chung sống với xác suất, không phải để đầu hàng may rủi, mà để tìm thấy trật tự ẩn giấu đằng sau sự hỗn mang.
+00:00:52,520 --> 00:00:53,540
+biến thiên cực nhỏ.
 
 40
-00:08:44,764 --> 00:08:57,495
-Thế nhưng, khi cỗ máy rơi vào một không gian bóng tối với hàng ngàn tỷ tham số, làm sao nó biết hướng nào để bước đi? Làm sao nó biết cách tự sửa mình để biến sai số thành sự thông tuệ?
+00:00:53,540 --> 00:00:55,120
+Vậy thì tại sao...
 
 41
-00:08:57,495 --> 00:09:10,227
-Ở tập tiếp theo, chúng ta sẽ cùng bước xuống thung lũng bóng tối vạn chiều của mạng nơ-ron — nơi cỗ máy tìm đường qua chiếc la bàn vĩ đại của toán học: Đạo hàm và Gradient Descent.
+00:00:55,120 --> 00:00:56,860
+một cỗ máy vi mạch
 
 42
-00:09:10,227 --> 00:09:22,959
-Xin chào và hẹn gặp lại các bạn.
+00:00:56,860 --> 00:00:57,920
+hiện đại —
+
+43
+00:00:57,920 --> 00:00:59,080
+thứ được xây dựng từ
+
+44
+00:00:59,080 --> 00:01:00,240
+hàng tỷ bóng bán dẫn
+
+45
+00:01:00,240 --> 00:01:01,320
+tất định bậc nhất —
+
+46
+00:01:01,320 --> 00:01:02,760
+lại phải liên tục tung
+
+47
+00:01:02,760 --> 00:01:04,060
+những đồng xu xác suất
+
+48
+00:01:04,060 --> 00:01:05,620
+để trò chuyện cùng chúng
+
+49
+00:01:05,620 --> 00:01:06,220
+ta?
+
+50
+00:01:12,110 --> 00:01:14,470
+Năm 1814, nhà toán
+
+51
+00:01:14,470 --> 00:01:15,250
+học người Pháp
+
+52
+00:01:15,790 --> 00:01:18,010
+Pierre-Simon Laplace từng mường
+
+53
+00:01:18,010 --> 00:01:19,070
+tượng ra một thực thể
+
+54
+00:01:19,070 --> 00:01:20,730
+trí tuệ siêu phàm — người
+
+55
+00:01:20,730 --> 00:01:22,670
+đời sau gọi là Quỷ Laplace.
+
+56
+00:01:23,070 --> 00:01:24,630
+Nếu thực thể ấy biết
+
+57
+00:01:24,630 --> 00:01:26,490
+trọn vẹn vị trí và
+
+58
+00:01:26,490 --> 00:01:27,850
+vận tốc của từng hạt
+
+59
+00:01:27,850 --> 00:01:29,590
+nguyên tử trong vũ trụ
+
+60
+00:01:29,930 --> 00:01:30,990
+tại một khoảnh khắc duy
+
+61
+00:01:30,990 --> 00:01:32,490
+nhất, thì từ quỹ đạo
+
+62
+00:01:32,490 --> 00:01:33,530
+của một thiên hà xa
+
+63
+00:01:33,530 --> 00:01:34,630
+xôi cho đến mặt tiếp
+
+64
+00:01:34,630 --> 00:01:35,790
+đất của đồng xu trên
+
+65
+00:01:35,790 --> 00:01:36,250
+tay bạn...
+
+66
+00:01:36,250 --> 00:01:37,830
+tương lai sẽ hiển hiện
+
+67
+00:01:37,830 --> 00:01:39,530
+rõ ràng hệt như quá khứ.
+
+68
+00:01:40,010 --> 00:01:41,370
+Không có gì là bất định,
+
+69
+00:01:41,370 --> 00:01:43,150
+và khái niệm may rủi
+
+70
+00:01:43,150 --> 00:01:44,090
+hoàn toàn biến mất.
+
+71
+00:01:44,550 --> 00:01:45,630
+Điều này dẫn chúng ta
+
+72
+00:01:45,630 --> 00:01:46,970
+đến một sự phân định
+
+73
+00:01:46,970 --> 00:01:48,410
+triết học sâu sắc giữa
+
+74
+00:01:48,410 --> 00:01:49,390
+hai tầng ngẫu nhiên:
+
+75
+00:01:49,690 --> 00:01:50,650
+Ngẫu nhiên bản thể
+
+76
+00:01:51,210 --> 00:01:53,090
+— tức tự thân vũ trụ
+
+77
+00:01:53,090 --> 00:01:54,350
+vốn hỗn loạn từ gốc
+
+78
+00:01:54,350 --> 00:01:56,190
+rễ; và Ngẫu nhiên nhận
+
+79
+00:01:56,190 --> 00:01:56,960
+thức —
+
+80
+00:01:56,960 --> 00:01:58,050
+tức thế giới vốn dĩ
+
+81
+00:01:58,050 --> 00:01:59,810
+tất định, nhưng trí tuệ
+
+82
+00:01:59,810 --> 00:02:01,210
+con người quá hữu hạn
+
+83
+00:02:01,210 --> 00:02:02,970
+để thu thập đủ thông tin.
+
+84
+00:02:02,970 --> 00:02:05,090
+Đồng xu không hề gieo
+
+85
+00:02:05,090 --> 00:02:05,850
+quẻ may rủi.
+
+86
+00:02:06,350 --> 00:02:07,630
+Khi chúng ta nói xác suất
+
+87
+00:02:07,630 --> 00:02:09,280
+ngửa là năm mươi phần
+
+88
+00:02:09,280 --> 00:02:10,750
+trăm, đó không phải là
+
+89
+00:02:10,750 --> 00:02:11,830
+đặc tính của đồng kim
+
+90
+00:02:11,830 --> 00:02:13,730
+loại... Xác suất,
+
+91
+00:02:13,730 --> 00:02:15,310
+thực chất chỉ là chiếc
+
+92
+00:02:15,310 --> 00:02:16,610
+gương phản chiếu sự thiếu
+
+93
+00:02:16,610 --> 00:02:17,730
+hụt thông tin của chính
+
+94
+00:02:17,730 --> 00:02:18,330
+chúng ta.
+
+95
+00:02:18,680 --> 00:02:20,720
+Mùa hè năm 1948,
+
+96
+00:02:21,540 --> 00:02:23,100
+giữa những căn phòng thí
+
+97
+00:02:23,100 --> 00:02:24,440
+nghiệm tĩnh lặng của viện
+
+98
+00:02:24,440 --> 00:02:26,200
+Bell, một kỹ sư trẻ
+
+99
+00:02:26,200 --> 00:02:28,240
+tên là Claude Shannon đã
+
+100
+00:02:28,240 --> 00:02:29,480
+đặt ra một câu hỏi
+
+101
+00:02:29,940 --> 00:02:31,200
+làm đảo lộn văn minh
+
+102
+00:02:31,200 --> 00:02:32,380
+nhân loại: Thông tin...
+
+103
+00:02:32,940 --> 00:02:33,640
+thực chất là gì?
+
+104
+00:02:34,180 --> 00:02:35,253
+Câu trả lời của Shannon
+
+105
+00:02:35,253 --> 00:02:36,440
+giản dị đến mức
+
+106
+00:02:36,940 --> 00:02:38,000
+làm người ta sững sờ:
+
+107
+00:02:38,520 --> 00:02:40,280
+Thông tin không phải là
+
+108
+00:02:40,280 --> 00:02:41,780
+những con chữ bóng bẩy
+
+109
+00:02:41,780 --> 00:02:43,140
+hay âm thanh ồn ào.
+
+110
+00:02:43,680 --> 00:02:45,140
+Thông tin chính là thước đo
+
+111
+00:02:45,140 --> 00:02:46,700
+của sự giải tỏa độ
+
+112
+00:02:46,700 --> 00:02:47,300
+bất định.
+
+113
+00:02:47,760 --> 00:02:48,320
+Hãy hình dung:
+
+114
+00:02:48,320 --> 00:02:49,940
+nếu một đồng xu hoàn
+
+115
+00:02:49,940 --> 00:02:50,640
+toàn cân bằng,
+
+116
+00:02:51,280 --> 00:02:52,540
+cơ hội chia đều năm
+
+117
+00:02:52,540 --> 00:02:53,140
+mươi —
+
+118
+00:02:53,140 --> 00:02:54,960
+năm mươi, sự bất định
+
+119
+00:02:54,960 --> 00:02:56,060
+nằm ở mức cực đại.
+
+120
+00:02:56,600 --> 00:02:58,040
+Khoảnh khắc đồng xu rơi
+
+121
+00:02:58,040 --> 00:03:00,000
+xuống và hé lộ kết
+
+122
+00:03:00,000 --> 00:03:01,880
+quả, bạn nhận được chính
+
+123
+00:03:01,880 --> 00:03:03,220
+xác một đơn vị thông tin
+
+124
+00:03:03,220 --> 00:03:04,380
+cơ bản —
+
+125
+00:03:04,380 --> 00:03:05,040
+đúng một bit,
+
+126
+00:03:05,760 --> 00:03:06,780
+đơn vị nhị phân nền
+
+127
+00:03:06,780 --> 00:03:07,960
+tảng của toàn bộ kỷ
+
+128
+00:03:07,960 --> 00:03:08,560
+nguyên số.
+
+129
+00:03:08,860 --> 00:03:10,160
+Nhưng nếu một kẻ gian
+
+130
+00:03:10,160 --> 00:03:11,500
+lận đưa cho bạn đồng xu
+
+131
+00:03:11,500 --> 00:03:12,840
+có hai mặt đều là
+
+132
+00:03:12,840 --> 00:03:14,600
+ngửa? Xác suất mặt ngửa
+
+133
+00:03:14,600 --> 00:03:15,540
+là một trăm phần trăm.
+
+134
+00:03:15,540 --> 00:03:16,980
+Khi nó rơi xuống,
+
+135
+00:03:17,260 --> 00:03:18,280
+bạn chẳng học thêm được
+
+136
+00:03:18,280 --> 00:03:19,440
+điều gì mới mẻ cả.
+
+137
+00:03:20,100 --> 00:03:21,260
+Độ bất ngờ bằng không,
+
+138
+00:03:21,260 --> 00:03:23,060
+và lượng thông tin nhận
+
+139
+00:03:23,060 --> 00:03:24,240
+về cũng bằng không.
+
+140
+00:03:24,580 --> 00:03:25,660
+Nguyên lý trên chỉ ra
+
+141
+00:03:25,660 --> 00:03:27,480
+rằng: sự kiện càng hiếm
+
+142
+00:03:27,480 --> 00:03:28,240
+hoi bất ngờ,
+
+143
+00:03:28,760 --> 00:03:29,820
+lượng thông tin chuyên chở
+
+144
+00:03:29,820 --> 00:03:30,620
+càng khổng lồ.
+
+145
+00:03:31,020 --> 00:03:31,980
+Và Entrô-pi...
+
+146
+00:03:31,980 --> 00:03:33,780
+chính là thể tích trung
+
+147
+00:03:33,780 --> 00:03:36,120
+bình của những
+
+148
+00:03:36,120 --> 00:03:37,640
+sự bất ngờ ấy trong
+
+149
+00:03:37,640 --> 00:03:38,320
+một hệ thống.
+
+150
+00:03:38,570 --> 00:03:39,970
+Khi đối diện với một
+
+151
+00:03:39,970 --> 00:03:40,970
+thế giới bất định,
+
+152
+00:03:41,430 --> 00:03:42,510
+cỗ máy thông minh không
+
+153
+00:03:42,510 --> 00:03:44,050
+suy nghĩ bằng những định
+
+154
+00:03:44,050 --> 00:03:45,070
+kiến cứng nhắc.
+
+155
+00:03:45,410 --> 00:03:46,630
+Nó tư duy theo tinh
+
+156
+00:03:46,630 --> 00:03:47,730
+thần của một mục sư
+
+157
+00:03:47,730 --> 00:03:49,183
+người Anh ở thế kỷ
+
+158
+00:03:49,183 --> 00:03:50,930
+mười tám: Thomas Bayes.
+
+159
+00:03:51,370 --> 00:03:52,890
+Tư duy Bayes không đòi
+
+160
+00:03:52,890 --> 00:03:53,810
+hỏi chúng ta phải biết
+
+161
+00:03:53,810 --> 00:03:55,270
+chắc chắn sự thật ngay
+
+162
+00:03:55,270 --> 00:03:55,870
+từ đầu.
+
+163
+00:03:56,070 --> 00:03:57,330
+Trước khi có dữ liệu,
+
+164
+00:03:57,770 --> 00:03:58,810
+cỗ máy nắm giữ một
+
+165
+00:03:58,810 --> 00:04:00,040
+niềm tin ban đầu —
+
+166
+00:04:00,040 --> 00:04:01,570
+gọi là xác suất tiền nghiệm.
+
+167
+00:04:02,050 --> 00:04:02,950
+Đó có thể là một
+
+168
+00:04:02,950 --> 00:04:04,290
+giả định mơ hồ rằng
+
+169
+00:04:04,290 --> 00:04:06,130
+đồng xu này vốn dĩ
+
+170
+00:04:06,130 --> 00:04:06,530
+cân bằng.
+
+171
+00:04:06,530 --> 00:04:08,110
+Nhưng điều kỳ diệu xảy
+
+172
+00:04:08,110 --> 00:04:09,430
+ra khi bằng chứng xuất
+
+173
+00:04:09,430 --> 00:04:11,290
+hiện: nếu bạn tung đồng xu
+
+174
+00:04:11,290 --> 00:04:12,790
+mười lần, và cả mười
+
+175
+00:04:12,790 --> 00:04:13,510
+lần đều ngửa...
+
+176
+00:04:13,990 --> 00:04:15,190
+chiếc cán cân toán học
+
+177
+00:04:15,190 --> 00:04:16,190
+lập tức chuyển động.
+
+178
+00:04:16,650 --> 00:04:17,830
+Mỗi dữ liệu quan sát
+
+179
+00:04:18,210 --> 00:04:18,990
+mới giống như một giọt
+
+180
+00:04:18,990 --> 00:04:20,250
+nước đổ thêm vào đĩa
+
+181
+00:04:20,250 --> 00:04:21,990
+cân, bẻ cong niềm tin
+
+182
+00:04:21,990 --> 00:04:23,330
+cũ để nhào nặn
+
+183
+00:04:23,650 --> 00:04:24,950
+nên một niềm tin mới
+
+184
+00:04:24,950 --> 00:04:26,350
+— gọi là xác suất
+
+185
+00:04:26,350 --> 00:04:26,950
+hậu nghiệm.
+
+186
+00:04:27,350 --> 00:04:28,550
+Cỗ máy không hề có
+
+187
+00:04:28,550 --> 00:04:30,290
+lòng tự ái hay cố
+
+188
+00:04:30,290 --> 00:04:30,990
+chấp bảo thủ.
+
+189
+00:04:30,990 --> 00:04:32,850
+Nó sẵn sàng từ bỏ
+
+190
+00:04:32,850 --> 00:04:34,330
+giả định ban đầu để
+
+191
+00:04:34,330 --> 00:04:35,630
+cúi đầu trước sức nặng
+
+192
+00:04:35,630 --> 00:04:36,770
+của bằng chứng thực nghiệm.
+
+193
+00:04:37,310 --> 00:04:38,450
+Đó chính là cốt lõi
+
+194
+00:04:38,450 --> 00:04:39,550
+của việc học máy:
+
+195
+00:04:40,130 --> 00:04:41,250
+không phải sự thông thái
+
+196
+00:04:41,250 --> 00:04:43,130
+tuyệt đối, mà là khả
+
+197
+00:04:43,130 --> 00:04:44,310
+năng tự sửa mình liên
+
+198
+00:04:44,310 --> 00:04:46,050
+tục, từng bước uốn cong
+
+199
+00:04:46,050 --> 00:04:47,610
+niềm tin để tiệm cận
+
+200
+00:04:47,610 --> 00:04:48,550
+chân lý khách quan.
+
+201
+00:04:49,000 --> 00:04:50,760
+Giờ đây, chúng ta hãy
+
+202
+00:04:50,760 --> 00:04:52,000
+bước vào sâu bên trong
+
+203
+00:04:52,000 --> 00:04:53,580
+bộ não điện toán của
+
+204
+00:04:53,580 --> 00:04:54,660
+một mô hình ngôn ngữ
+
+205
+00:04:54,660 --> 00:04:55,870
+lớn như ChatGPT.
+
+206
+00:04:55,870 --> 00:04:57,360
+Cỗ máy không hề suy
+
+207
+00:04:57,360 --> 00:04:58,760
+nghĩ bằng câu chữ hay
+
+208
+00:04:58,760 --> 00:04:59,360
+cảm xúc...
+
+209
+00:04:59,760 --> 00:05:00,840
+Ở tầng tính toán cuối
+
+210
+00:05:00,840 --> 00:05:02,720
+cùng, mạng nơ-ron chỉ xuất
+
+211
+00:05:02,720 --> 00:05:04,740
+xưởng một mảng gồm hàng
+
+212
+00:05:04,740 --> 00:05:05,940
+chục ngàn con số thô
+
+213
+00:05:05,940 --> 00:05:06,540
+ráp —
+
+214
+00:05:06,640 --> 00:05:07,320
+các kỹ sư
+
+215
+00:05:07,720 --> 00:05:08,800
+gọi chúng là logits.
+
+216
+00:05:09,160 --> 00:05:10,400
+Để biến những con số
+
+217
+00:05:11,080 --> 00:05:12,440
+không giới hạn này thành
+
+218
+00:05:12,440 --> 00:05:13,740
+một phân phối xác suất
+
+219
+00:05:13,740 --> 00:05:15,400
+hợp lệ có tổng bằng
+
+220
+00:05:15,400 --> 00:05:17,260
+một, cỗ máy áp dụng
+
+221
+00:05:17,260 --> 00:05:18,500
+một phép biến đổi toán
+
+222
+00:05:18,720 --> 00:05:19,320
+học thanh lịch:
+
+223
+00:05:19,640 --> 00:05:20,320
+hàm Softmax.
+
+224
+00:05:20,620 --> 00:05:21,820
+Khi bạn đưa vào câu
+
+225
+00:05:21,820 --> 00:05:23,700
+gợi ý: *"Mặt trời mọc
+
+226
+00:05:23,700 --> 00:05:25,840
+ở hướng..."*, không gian
+
+227
+00:05:25,840 --> 00:05:27,320
+vector lập tức biến dạng.
+
+228
+00:05:27,880 --> 00:05:29,100
+Điểm số của từ *"Đông"*
+
+229
+00:05:29,680 --> 00:05:30,780
+được khuếch đại lũy thừa,
+
+230
+00:05:31,380 --> 00:05:32,900
+trong khi các từ *"Tây"*,
+
+231
+00:05:34,060 --> 00:05:36,100
+*"Nam"*, hay *"biển cả"*
+
+232
+00:05:36,360 --> 00:05:37,640
+bị ghìm sâu xuống đáy
+
+233
+00:05:37,640 --> 00:05:39,400
+vực. Nhưng cỗ máy không
+
+234
+00:05:39,400 --> 00:05:40,600
+chọn từ một cách mù
+
+235
+00:05:40,600 --> 00:05:42,280
+quáng. Nó nắm trong tay
+
+236
+00:05:42,280 --> 00:05:43,500
+một chiếc van điều áp
+
+237
+00:05:43,500 --> 00:05:44,860
+tinh tế mang tên Nhiệt độ
+
+238
+00:05:45,720 --> 00:05:46,320
+— Temperature.
+
+239
+00:05:46,640 --> 00:05:47,980
+Nếu vặn nhiệt độ về
+
+240
+00:05:47,980 --> 00:05:48,760
+gần số không,
+
+241
+00:05:49,280 --> 00:05:50,440
+phân phối xác suất co
+
+242
+00:05:50,440 --> 00:05:51,900
+rút thành một mũi kim
+
+243
+00:05:51,900 --> 00:05:52,620
+sắc lẹm.
+
+244
+00:05:52,620 --> 00:05:53,920
+Cỗ máy trở nên cực
+
+245
+00:05:53,920 --> 00:05:54,600
+kỳ bảo thủ,
+
+246
+00:05:55,100 --> 00:05:56,800
+luôn chọn từ có xác suất
+
+247
+00:05:56,800 --> 00:05:58,760
+cao nhất, lặp đi lặp
+
+248
+00:05:58,760 --> 00:05:59,920
+lại những câu văn sáo
+
+249
+00:05:59,920 --> 00:06:01,360
+mòn vô hồn.
+
+250
+00:06:01,360 --> 00:06:02,620
+Nhưng nếu vặn nhiệt độ
+
+251
+00:06:02,620 --> 00:06:03,460
+lên quá cao...
+
+252
+00:06:03,940 --> 00:06:04,900
+mặt cong xác suất bị
+
+253
+00:06:04,900 --> 00:06:06,520
+nung chảy và san phẳng
+
+254
+00:06:06,520 --> 00:06:07,140
+hoàn toàn.
+
+255
+00:06:07,800 --> 00:06:08,880
+Mọi từ vựng kỳ quặc
+
+256
+00:06:08,880 --> 00:06:10,540
+nhất đều có cơ hội
+
+257
+00:06:10,540 --> 00:06:12,120
+trồi lên, cỗ máy bắt
+
+258
+00:06:12,120 --> 00:06:14,060
+đầu nói sảng và rơi
+
+259
+00:06:14,060 --> 00:06:15,520
+vào ảo giác mê muội.
+
+260
+00:06:15,520 --> 00:06:17,080
+Nghệ thuật của trí tuệ
+
+261
+00:06:17,080 --> 00:06:18,760
+nhân tạo nằm ở một
+
+262
+00:06:18,760 --> 00:06:20,020
+khoảng nhiệt độ cân bằng
+
+263
+00:06:20,020 --> 00:06:21,000
+mong manh —
+
+264
+00:06:21,000 --> 00:06:22,260
+nơi sự chuẩn xác của
+
+265
+00:06:22,260 --> 00:06:23,920
+toán học hòa quyện cùng
+
+266
+00:06:23,920 --> 00:06:25,160
+một chút ngẫu hứng bất
+
+267
+00:06:25,160 --> 00:06:25,760
+ngờ.
+
+268
+00:06:25,860 --> 00:06:26,920
+Ở cấp độ một cú
+
+269
+00:06:26,920 --> 00:06:28,060
+búng tay đơn lẻ,
+
+270
+00:06:28,640 --> 00:06:29,980
+số phận của từng hạt
+
+271
+00:06:29,980 --> 00:06:31,800
+bụi là điều không thể
+
+272
+00:06:31,800 --> 00:06:32,400
+đoán định.
+
+273
+00:06:32,820 --> 00:06:34,000
+Nhưng khi bạn lặp lại
+
+274
+00:06:34,000 --> 00:06:35,120
+hành động ấy hàng triệu
+
+275
+00:06:35,120 --> 00:06:36,760
+lần, một trật tự vĩ
+
+276
+00:06:36,760 --> 00:06:38,100
+đại đột ngột xuất hiện
+
+277
+00:06:38,100 --> 00:06:39,380
+từ đáy sâu của sự
+
+278
+00:06:39,380 --> 00:06:39,980
+hỗn loạn.
+
+279
+00:06:40,360 --> 00:06:41,500
+Đó là phép màu của
+
+280
+00:06:41,500 --> 00:06:43,140
+Định luật Số lớn và
+
+281
+00:06:43,140 --> 00:06:44,040
+Phân phối Chuẩn.
+
+282
+00:06:44,520 --> 00:06:45,580
+Hãy quan sát những hạt
+
+283
+00:06:45,580 --> 00:06:47,100
+ánh sáng rơi qua bàn
+
+284
+00:06:47,100 --> 00:06:47,740
+chốt cản.
+
+285
+00:06:48,200 --> 00:06:49,420
+Từng hạt riêng lẻ nảy
+
+286
+00:06:49,420 --> 00:06:50,840
+sang trái hay sang phải
+
+287
+00:06:50,840 --> 00:06:52,180
+hoàn toàn vô trật tự,
+
+288
+00:06:52,680 --> 00:06:53,820
+tưởng chừng như một mớ
+
+289
+00:06:53,820 --> 00:06:54,820
+bòng bong mù mịt.
+
+290
+00:06:54,820 --> 00:06:56,640
+Thế nhưng, khi hàng ngàn
+
+291
+00:06:56,640 --> 00:06:57,720
+hạt tích tụ lại ở
+
+292
+00:06:57,720 --> 00:06:59,360
+đáy sàn, chúng không hề
+
+293
+00:06:59,360 --> 00:07:00,780
+tạo thành một đống hỗn
+
+294
+00:07:00,780 --> 00:07:02,000
+độn vô nghĩa.
+
+295
+00:07:02,000 --> 00:07:03,140
+Chúng tự động dâng lên,
+
+296
+00:07:03,860 --> 00:07:05,660
+vẽ nên một đường cong
+
+297
+00:07:05,660 --> 00:07:07,080
+hình chuông hoàn mỹ tuyệt
+
+298
+00:07:07,080 --> 00:07:08,100
+đối —
+
+299
+00:07:08,100 --> 00:07:09,860
+đối xứng, cân đối và
+
+300
+00:07:09,860 --> 00:07:10,800
+thanh tao kỳ lạ.
+
+301
+00:07:11,400 --> 00:07:12,500
+Mỗi mô hình ngôn ngữ
+
+302
+00:07:12,500 --> 00:07:14,580
+lớn hôm nay đang tung
+
+303
+00:07:14,580 --> 00:07:16,200
+hàng tỷ đồng xu xác suất
+
+304
+00:07:16,200 --> 00:07:16,800
+mỗi giây.
+
+305
+00:07:17,240 --> 00:07:19,040
+Từng token riêng lẻ có
+
+306
+00:07:19,040 --> 00:07:19,860
+vẻ ngẫu nhiên,
+
+307
+00:07:20,240 --> 00:07:21,460
+nhưng khi tích tụ qua
+
+308
+00:07:21,460 --> 00:07:22,780
+hàng trăm ngàn bước dự
+
+309
+00:07:22,780 --> 00:07:24,600
+đoán, những câu văn khúc
+
+310
+00:07:24,600 --> 00:07:26,460
+chiết, những vần thơ đẫm
+
+311
+00:07:26,460 --> 00:07:28,130
+lệ, và những dòng mã
+
+312
+00:07:28,130 --> 00:07:29,800
+lập trình phức tạp đột
+
+313
+00:07:29,800 --> 00:07:30,680
+ngột thành hình.
+
+314
+00:07:31,180 --> 00:07:32,760
+Trí tuệ nhân tạo không
+
+315
+00:07:32,760 --> 00:07:33,860
+nằm ở từng con số
+
+316
+00:07:33,860 --> 00:07:34,580
+đơn độc.
+
+317
+00:07:34,780 --> 00:07:35,920
+Nó nảy sinh từ sự
+
+318
+00:07:35,920 --> 00:07:37,140
+hội tụ của số lớn
+
+319
+00:07:37,460 --> 00:07:38,500
+— nơi sự hỗn loạn
+
+320
+00:07:38,500 --> 00:07:40,220
+đầu hàng trước quy luật
+
+321
+00:07:40,220 --> 00:07:41,200
+của cái đẹp toán học.
+
+322
+00:07:41,560 --> 00:07:43,000
+Nhưng quy luật xác suất
+
+323
+00:07:43,000 --> 00:07:44,300
+cũng đặt ra một cái
+
+324
+00:07:44,300 --> 00:07:45,500
+bẫy nghiệt ngã nhất của
+
+325
+00:07:45,500 --> 00:07:46,360
+công nghệ hôm nay:
+
+326
+00:07:46,360 --> 00:07:48,860
+hội chứng ảo giác — Hallucination.
+
+327
+00:07:49,660 --> 00:07:50,900
+Dưới lăng kính toán học
+
+328
+00:07:50,900 --> 00:07:52,760
+thuần túy, cỗ máy không
+
+329
+00:07:52,760 --> 00:07:53,700
+hề biết nói dối.
+
+330
+00:07:54,060 --> 00:07:55,400
+Nó không có ác tâm,
+
+331
+00:07:55,800 --> 00:07:56,820
+cũng chẳng có mưu mô
+
+332
+00:07:56,820 --> 00:07:57,780
+đánh lừa con người.
+
+333
+00:07:58,200 --> 00:08:00,000
+Nó chỉ đơn giản là
+
+334
+00:08:00,000 --> 00:08:01,160
+đang tung một đồng xu
+
+335
+00:08:01,680 --> 00:08:03,000
+bị lệch phân phối ngoài
+
+336
+00:08:03,000 --> 00:08:04,820
+vùng dữ liệu mà nó
+
+337
+00:08:04,820 --> 00:08:05,940
+từng được huấn luyện.
+
+338
+00:08:06,440 --> 00:08:07,520
+Hiểm họa lớn nhất của
+
+339
+00:08:07,520 --> 00:08:09,300
+trí tuệ nhân tạo không
+
+340
+00:08:09,300 --> 00:08:10,300
+phải là một cỗ máy
+
+341
+00:08:10,300 --> 00:08:11,480
+ngây ngô biết mình dốt.
+
+342
+00:08:12,020 --> 00:08:13,740
+Hiểm họa thực sự
+
+343
+00:08:14,160 --> 00:08:15,220
+nằm ở một cỗ máy
+
+344
+00:08:15,220 --> 00:08:16,480
+phát biểu những điều hoàn
+
+345
+00:08:16,480 --> 00:08:17,820
+toàn sai lầm với một
+
+346
+00:08:17,820 --> 00:08:19,220
+độ tự tin toán học
+
+347
+00:08:19,220 --> 00:08:20,460
+lên tới chín mươi chín
+
+348
+00:08:20,460 --> 00:08:20,860
+phần trăm...
+
+349
+00:08:20,860 --> 00:08:22,340
+Các nhà khoa học đo
+
+350
+00:08:22,340 --> 00:08:23,280
+lường bi kịch ấy
+
+351
+00:08:23,640 --> 00:08:24,940
+bằng một chỉ số mang
+
+352
+00:08:24,940 --> 00:08:26,840
+tên Sai số Hiệu chuẩn
+
+353
+00:08:26,840 --> 00:08:28,120
+Kỳ vọng — ECE.
+
+354
+00:08:28,720 --> 00:08:30,040
+Khi khoảng cách giữa niềm
+
+355
+00:08:30,040 --> 00:08:31,420
+tin chủ quan của cỗ
+
+356
+00:08:31,420 --> 00:08:33,180
+máy và chân lý khách
+
+357
+00:08:33,180 --> 00:08:34,360
+quan thực tế bị xé
+
+358
+00:08:34,360 --> 00:08:36,020
+toạc, cỗ máy trở thành
+
+359
+00:08:36,020 --> 00:08:37,840
+một kẻ huyễn tưởng đầy
+
+360
+00:08:37,840 --> 00:08:39,160
+nguy hiểm trong vỏ bọc
+
+361
+00:08:39,160 --> 00:08:39,680
+thông thái.
+
+362
+00:08:39,680 --> 00:08:41,700
+Làm chủ trí tuệ nhân tạo,
+
+363
+00:08:42,200 --> 00:08:43,860
+vì thế, không phải là
+
+364
+00:08:43,860 --> 00:08:45,340
+mù quáng tôn thờ những
+
+365
+00:08:45,340 --> 00:08:46,700
+con số xác suất hào
+
+366
+00:08:46,700 --> 00:08:48,400
+nhoáng, mà là sự tỉnh
+
+367
+00:08:48,400 --> 00:08:50,560
+táo đo lường ranh giới
+
+368
+00:08:50,560 --> 00:08:52,180
+của sự bất định và
+
+369
+00:08:52,180 --> 00:08:53,540
+biết khi nào cỗ máy
+
+370
+00:08:53,540 --> 00:08:54,740
+đang nói trong sự mơ
+
+371
+00:08:54,740 --> 00:08:55,340
+hồ.
+
+372
+00:08:55,420 --> 00:08:56,680
+Nhìn thấu qua lớp sương
+
+373
+00:08:56,680 --> 00:08:57,360
+mù công nghệ,
+
+374
+00:08:58,060 --> 00:08:59,180
+cỗ máy suy cho cùng
+
+375
+00:08:59,180 --> 00:09:00,320
+vẫn là một cỗ máy
+
+376
+00:09:00,320 --> 00:09:01,780
+tính toán xác suất khổng
+
+377
+00:09:01,780 --> 00:09:03,560
+lồ. Nhưng trong từng phép
+
+378
+00:09:03,560 --> 00:09:04,620
+tính phân phối ấy,
+
+379
+00:09:05,120 --> 00:09:06,160
+nó phản chiếu lại chính
+
+380
+00:09:06,160 --> 00:09:07,540
+sự hữu hạn và khát
+
+381
+00:09:07,540 --> 00:09:08,880
+vọng tìm kiếm chân lý
+
+382
+00:09:08,880 --> 00:09:10,000
+ngàn đời của loài người.
+
+383
+00:09:10,580 --> 00:09:12,040
+Đồng xu đã rơi xuống,
+
+384
+00:09:12,040 --> 00:09:13,640
+nhưng hành trình nhận thức
+
+385
+00:09:13,640 --> 00:09:15,300
+của chúng ta chỉ mới
+
+386
+00:09:15,300 --> 00:09:15,900
+bắt đầu.
+
+387
+00:09:16,340 --> 00:09:18,120
+Con người và cỗ máy,
+
+388
+00:09:18,400 --> 00:09:19,280
+theo một cách nào đó,
+
+389
+00:09:19,800 --> 00:09:20,880
+đang cùng chèo lái con
+
+390
+00:09:20,880 --> 00:09:22,460
+thuyền tư duy giữa một
+
+391
+00:09:22,460 --> 00:09:23,620
+đại dương bất định bao
+
+392
+00:09:23,620 --> 00:09:25,180
+la... Chúng ta học cách
+
+393
+00:09:25,180 --> 00:09:27,060
+chung sống với xác suất,
+
+394
+00:09:27,260 --> 00:09:28,420
+không phải để đầu hàng
+
+395
+00:09:28,420 --> 00:09:30,160
+may rủi, mà để tìm
+
+396
+00:09:30,160 --> 00:09:31,460
+thấy trật tự ẩn giấu
+
+397
+00:09:31,460 --> 00:09:33,160
+đằng sau sự hỗn mang.
+
+398
+00:09:33,560 --> 00:09:35,540
+Thế nhưng, khi cỗ máy
+
+399
+00:09:35,540 --> 00:09:36,860
+rơi vào một không gian
+
+400
+00:09:36,860 --> 00:09:38,340
+bóng tối với hàng ngàn
+
+401
+00:09:38,340 --> 00:09:39,140
+tỷ tham số,
+
+402
+00:09:39,480 --> 00:09:40,600
+làm sao nó biết hướng
+
+403
+00:09:40,600 --> 00:09:41,500
+nào để bước đi?
+
+404
+00:09:42,040 --> 00:09:43,020
+Làm sao nó biết cách
+
+405
+00:09:43,020 --> 00:09:44,860
+tự sửa mình để biến
+
+406
+00:09:44,860 --> 00:09:46,220
+sai số thành sự thông
+
+407
+00:09:46,220 --> 00:09:48,080
+tuệ? Ở tập tiếp theo,
+
+408
+00:09:48,560 --> 00:09:49,680
+chúng ta sẽ cùng bước
+
+409
+00:09:49,680 --> 00:09:51,220
+xuống thung lũng bóng tối
+
+410
+00:09:51,220 --> 00:09:52,450
+vạn chiều của mạng nơ-ron
+
+411
+00:09:52,450 --> 00:09:54,260
+— nơi cỗ máy tìm
+
+412
+00:09:54,260 --> 00:09:55,380
+đường qua chiếc la bàn
+
+413
+00:09:55,380 --> 00:09:56,540
+vĩ đại của toán học:
+
+414
+00:09:57,020 --> 00:09:59,040
+Đạo hàm và Gradient Descent.
+
+415
+00:09:59,460 --> 00:10:00,760
+Xin chào và hẹn gặp
+
+416
+00:10:00,760 --> 00:10:01,360
+lại các bạn.
