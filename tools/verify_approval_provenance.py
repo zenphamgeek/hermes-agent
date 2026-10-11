@@ -115,13 +115,55 @@ def audit_approvals(verbose: bool = False) -> tuple[int, int, list[str]]:
     return len(approval_files), clean_count, errors
 
 
+STAGING_DIR = REPO_ROOT / "output" / "youtube_staging"
+
+
+def audit_staging_artifacts(verbose: bool = False) -> tuple[int, list[str]]:
+    """Scan machine-generated publish-boundary artifacts in output/youtube_staging/ for secret leaks."""
+    if not STAGING_DIR.is_dir():
+        return 0, []
+
+    staging_files = []
+    for ext in ("*.json", "*.txt", "*.srt", "*.md"):
+        staging_files.extend(STAGING_DIR.rglob(ext))
+
+    errors = []
+    for path in staging_files:
+        try:
+            if path.suffix == ".json":
+                data = json.loads(path.read_text(encoding="utf-8"))
+                leaks = check_for_secrets(data)
+            else:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+                leaks = []
+                for pat in SECRET_VALUE_PATTERNS:
+                    if re.search(pat, text):
+                        leaks.append(f"Potential secret token matching '{pat}' in text")
+            if leaks:
+                rel = path.relative_to(REPO_ROOT)
+                errors.append(f"{rel}: Found leaked credential(s): {leaks}")
+        except Exception as e:
+            errors.append(f"{path.name}: Failed reading staging file: {e}")
+
+    if verbose and staging_files:
+        print(f"Scanned {len(staging_files)} staging artifacts in {STAGING_DIR.relative_to(REPO_ROOT)}")
+
+    return len(staging_files), errors
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Audit approval manifests for secrets and provenance")
+    parser = argparse.ArgumentParser(description="Audit approval manifests and staging boundary for secrets and provenance")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    parser.add_argument("--skip-staging", action="store_true", help="Skip scanning staging artifacts")
     args = parser.parse_args()
 
     total, clean, errors = audit_approvals(verbose=args.verbose)
     print(f"\nAudit complete: {total} manifests examined ({clean} signed clean).")
+
+    if not args.skip_staging:
+        staging_total, staging_errors = audit_staging_artifacts(verbose=args.verbose)
+        print(f"Staging boundary complete: {staging_total} publish artifacts examined in output/youtube_staging/.")
+        errors.extend(staging_errors)
 
     if errors:
         print(f"❌ {len(errors)} errors found:")
@@ -129,7 +171,7 @@ def main() -> int:
             print(f"  - {err}", file=sys.stderr)
         return 1
 
-    print("✅ All approval manifests passed secret scanning and cryptographic provenance validation.")
+    print("✅ All approval manifests and staging artifacts passed secret scanning and cryptographic provenance validation.")
     return 0
 
 

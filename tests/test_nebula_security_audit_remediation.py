@@ -344,6 +344,16 @@ def test_f5_dirty_tree_addendum_schema_and_verification(tmp_path):
     assert not hex64_re.match("bad_hash")
 
 
+def test_f1_staging_artifacts_zero_secrets():
+    """Verify machine-generated publish artifacts in output/youtube_staging/ contain zero credential leaks."""
+    from tools.verify_approval_provenance import audit_staging_artifacts
+
+    total_scanned, errors = audit_staging_artifacts(verbose=False)
+    assert total_scanned > 0, "Expected at least 1 staging artifact in output/youtube_staging/"
+    assert not errors, f"Staging publish-boundary secret scan failed with {len(errors)} errors: {errors}"
+
+
+
 
 
 
