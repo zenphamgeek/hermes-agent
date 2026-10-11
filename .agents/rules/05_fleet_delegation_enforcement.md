@@ -44,6 +44,15 @@ When a task requires **non-trivial code generation, refactoring, or analysis** (
    - **Never Ask Nebula about Gemini**: Never route Gemini models or query Nebula for Gemini tasks. All Gemini tasks MUST strictly run on AGY CLI nodes (Ultra/Pro).
 3. **Ultra Accounts Strictly Gemini-Only**: Ultra accounts (`ultra-2` / `lthn.Ariana`) exist exclusively for high-complexity Gemini inference (`gemini-3.1-pro-high`, `gemini-3.8-flash-high`). Consuming Claude quota on Ultra accounts for Fleet tasks is ABSOLUTELY FORBIDDEN. Ultra accounts are permanently excluded from Claude routing pools.
 
+## Rule: Mandatory Clef Swarm Participation Across All Fleet Tasks (Sự Tham Gia Của Clef Là Bắt Buộc)
+
+Every fleet job (dispatched via `fleet_run`, `fleet_parallel`, `/api/fleet/run-sync`, `/api/fleet/run`, or autonomous DAG enqueue) MUST engage the **Clef Swarm**:
+1. **Tri-Tier Cognitive Pre-Routing (`decide_async`)**: Pre-classifies domain, complexity $[0.0, 4.0]$, and node persona across Cloudflare Free Edge PoPs $\to$ Modal T4 27B $\to$ Local In-Process Surrogate. Cost strictly `$0.00` (`output_tokens == 0`).
+2. **Deep Dialect Metaprompting (`synthesize_specification`)**: Compiles raw prompts into target dialects (Claude XML `<context>/<task>/<constraints>`, Gemini JSON Schema, Codex scaffold) and injects sovereign invariants.
+3. **Negative-Selection Anomaly Self-Gate (`clef_self_gate`)**: Rejects corrupted dialects, token bloat, or invalid assertions prior to dispatch.
+4. **Automated UAT Specification & Sentinel Anti-Fabrication (`PDCAEvolutionEngine` & `clef_sentinel`)**: Automatically generates and executes verification commands to enforce **Zero-Fake-Pass**.
+- **Fail-Closed Sovereign Mandate**: Any job lacking Clef telemetry or verification fails closed immediately (`JobStatus.FAILED`).
+
 ### Self-Check Before Responding
 
 Before producing any code block >20 lines, ask yourself:

@@ -20,7 +20,7 @@
 
 ---
 
-## The 11 Sovereign Invariants (Never Violated)
+## The 12 Sovereign Invariants (Never Violated)
 
 1. **Evidence-First Verification**: Every claim of completion or audit MUST be backed by genuine console execution logs in the active session.
 2. **Zero-Fake-Pass & Zero-Fabricated-Audit**: Never report tests passed or invent LUFS / timestamp / Whisper metrics without measurement.
@@ -33,3 +33,4 @@
 9. **Fleet-First Code Generation**: Code blocks >20 lines MUST be delegated to `fleet_run` (standalone tasks) or `invoke_subagent` (tasks needing disk access). Never generate large code inline. Never claim delegation without actual tool call evidence.
 10. **Autonomous Action (Kích Hoạt Không Cần Hỏi)**: Execute proactively without asking passive confirmation questions ("Report After, Not Ask Before"). Sense $\to$ Plan $\to$ Execute $\to$ Verify $\to$ Report. Stop and ask only on irreversible catastrophic data deletion.
 11. **Universal Odoo QWeb & Owl UI/UX Convergence**: All internal tool interfaces, telemetry HUDs, and operational cockpits must be architected for frictionless porting into Odoo 20 (Insilos Enterprise) as native Owl Components (`@odoo/owl`, `class X extends Component`, `useState`) and semantic QWeb templates (`t-out`, `t-key`).
+12. **Clef Swarm Mandatory Participation (Sự Tham Gia Bắt Buộc Của Clef Swarm)**: Clef Swarm participation is 100% mandatory across all fleet jobs (sync, async, parallel, smart, DAG enqueue). Every job must traverse the 4-stage Clef lifecycle (Tri-Tier cognitive pre-routing, dialect metaprompt expansion, anomaly self-gate, and automated UAT verification). Zero-Output-Tokens invariant ($0.00 cost) is strictly enforced. Any unmonitored execution fails closed immediately (`JobStatus.FAILED`).

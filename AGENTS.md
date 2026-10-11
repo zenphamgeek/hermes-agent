@@ -105,6 +105,14 @@ All developer tools, monitoring dashboards, operational cockpits, and telemetry 
   - **Tuyệt Đối Không Hỏi Nebula về Gemini**: Cấm ngặt việc gửi request Gemini, điều phối (routing) hoặc thăm dò (query/probe) mô hình Gemini tới Nebula. Mọi tác vụ Gemini bắt buộc phải chạy trên các node AGY CLI (Ultra/Pro).
 - **Strict Gemini-Only for Ultra Tier**: Tất cả các tài khoản Ultra (`ultra-2` / `lthn.Ariana`, v.v.) TUYỆT ĐỐI KHÔNG được tiêu hao hạn ngạch Claude cho các tác vụ Fleet, chỉ phục vụ suy luận chuyên sâu và thẩm định chứng minh Gemini (`gemini-3.1-pro-high`, `gemini-3.8-flash-high`). Ultra accounts vĩnh viễn bị loại khỏi candidate pool của Claude.
 
+### 1.15. Clef Swarm Mandatory Participation Invariant Across All Fleet Jobs (Sự Tham Gia Của Clef Là Bắt Buộc Trong Tất Cả Các Fleet Jobs)
+Clef Swarm participation is **STRICTLY AND ABSOLUTELY MANDATORY** across 100% of Fleet jobs (sync `/api/fleet/run-sync`, async `/api/fleet/run`, parallel `/api/fleet/run-parallel`, smart `/api/fleet/run-smart`, and autonomous DAG queue `/api/fleet/autonomous/enqueue`). Every job MUST engage Clef across the full 4-stage sovereign lifecycle:
+1. **Cognitive Pre-Routing & Classification (`decide_async`)**: Every prompt is evaluated through the Tri-Tier Pool (Cloudflare Workers AI Free Edge PoPs $\to$ Modal GPU T4 27B Escalation $\to$ Local In-Process Surrogate) scoring cognitive complexity $[0.0, 4.0]$, domain classification, and recommended node persona. Enforces the strict **Zero-Output-Tokens Invariant** (`output_tokens == 0`, `$0.00` output cost).
+2. **Deep Prompt Expansion & Dialect-Optimized Metaprompting (`synthesize_specification`)**: Compiles raw prompts into strongly-typed `EnrichedExecutionSpecification` tailored to the target model dialect (Claude XML `<context>/<task>/<constraints>`, Gemini JSON Schema, Codex scaffold), OODA reasoning depth (One-Pass, Structured CoT, Adversarial ToT), and sovereign invariants.
+3. **Negative-Selection Anomaly Self-Gate (`clef_self_gate`)**: Immunology-inspired anomaly gate scanning enriched prompts and UAT instructions for dialect corruption, token bloat, or invalid assertion patterns prior to dispatch.
+4. **Automated UAT Specification & Sentinel Anti-Fabrication (`PDCAEvolutionEngine` & `clef_sentinel`)**: Enforces **Zero-Fake-Pass** by generating deterministic, testable verification commands (file existence, python compilation, AST integrity, and targeted pytest suites). Scans completed outputs for hallucination or fabrication; detects defects and triggers automatic failover retry.
+- **Fail-Closed Sovereign Mandate**: Any job dispatched without Clef telemetry or failing to establish Clef verification MUST fail closed immediately (`JobStatus.FAILED`). Bypassing Clef participation is a critical operational invariant violation.
+
 ---
 
 ## 2. Hermes Agent Core Principles
