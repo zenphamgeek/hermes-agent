@@ -3,14 +3,13 @@
 After every turn, ``AIAgent.run_conversation`` may call
 :func:`spawn_background_review` to fire off a daemon thread that replays
 the conversation snapshot in a forked :class:`AIAgent` and asks itself
-"should any skill/memory be saved or updated?".  Writes go straight to
-the memory + skill stores.  Main conversation and prompt cache are never
-touched.
+"should any skill/memory be saved or updated?". It writes pending proposals
+for human review; approved proposals are applied later through existing memory
+and skill APIs. Main conversation and prompt cache are never touched.
 
 The fork inherits the parent's live runtime (provider, model, base_url,
 credentials, cached system prompt) so it hits the same prefix cache and
-uses the same auth.  It runs with a tool whitelist limited to memory and
-skill management tools; everything else is denied at runtime.
+uses the same auth. It runs without mutating tools.
 
 See the ``hermes-agent-dev`` skill (``references/self-improvement-loop.md``)
 for invariants and PR review criteria.
@@ -22,6 +21,7 @@ import copy
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from agent.thread_scoped_output import thread_scoped_silence
@@ -940,16 +940,8 @@ def _run_review_in_thread(
             # Hardcoding ["memory", "skills"] granted the review LLM the MEMORY.md
             # read/write tool even when a profile set memory_enabled: false,
             # contaminating a memory-disabled profile (#54937 layer 2).
-            review_toolsets = ["skills"]
-            if review_agent._memory_enabled or review_agent._user_profile_enabled:
-                review_toolsets.insert(0, "memory")
-            review_whitelist = {
-                t["function"]["name"]
-                for t in get_tool_definitions(
-                    enabled_toolsets=review_toolsets,
-                    quiet_mode=True,
-                )
-            }
+            # Report-only: autonomous review must never mutate memory or skills.
+            review_whitelist = set()
             set_thread_tool_whitelist(
                 review_whitelist,
                 deny_msg_fmt=(
@@ -972,14 +964,20 @@ def _run_review_in_thread(
                     _digest_history(messages_snapshot) if _routed
                     else messages_snapshot
                 )
-                review_agent.run_conversation(
+                review_result = review_agent.run_conversation(
                     user_message=(
                         prompt
-                        + "\n\nYou can only call memory and skill "
-                        "management tools. Other tools will be denied "
-                        "at runtime — do not attempt them."
+                        + "\n\nREPORT ONLY. Do not call tools or write anything. "
+                        "Return one JSON object with a proposals array. Each proposal "
+                        "must contain kind (memory|skill), action, payload, and concrete "
+                        "evidence quoted from the conversation. Return {\"proposals\": []} "
+                        "when no durable, verified learning exists. Never include secrets."
                     ),
                     conversation_history=_review_history,
+                )
+                _store_review_proposals(
+                    review_result,
+                    source_session_id=getattr(agent, "session_id", None),
                 )
             finally:
                 clear_thread_tool_whitelist()
@@ -1088,6 +1086,151 @@ def _run_review_in_thread(
             _set_approval_callback(None)
         except Exception:
             pass
+
+
+_PROPOSAL_STORE_METRICS: dict[str, int] = {
+    "proposals_seen": 0,
+    "proposals_stored": 0,
+    "proposals_failed": 0,
+    "secrets_scrubbed": 0,
+}
+
+
+def get_background_review_proposal_metrics() -> dict[str, int]:
+    """Return a copy of the background-review proposal storage telemetry metrics."""
+    return dict(_PROPOSAL_STORE_METRICS)
+
+
+def _extract_proposals_json(text: str) -> list[dict[str, Any]]:
+    """Robustly extract the proposals list from model output without fragile widest-span slicing.
+
+    Handles markdown fences (```json ... ```), surrounding conversational preamble,
+    and uses JSONDecoder.raw_decode to parse the actual JSON object.
+    """
+    if not text or not isinstance(text, str):
+        return []
+
+    # Strip code block fences if present
+    cleaned = text.strip()
+    if "```" in cleaned:
+        code_block = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
+        if code_block:
+            cleaned = code_block.group(1).strip()
+
+    # Try direct parse first
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, dict) and "proposals" in data and isinstance(data["proposals"], list):
+            return [p for p in data["proposals"] if isinstance(p, dict)]
+        if isinstance(data, list):
+            return [p for p in data if isinstance(p, dict)]
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Bounded decoder scan for first JSON object containing 'proposals'
+    decoder = json.JSONDecoder()
+    pos = 0
+    while pos < len(text):
+        idx = text.find("{", pos)
+        if idx == -1:
+            break
+        try:
+            obj, end_idx = decoder.raw_decode(text[idx:])
+            if isinstance(obj, dict) and "proposals" in obj and isinstance(obj["proposals"], list):
+                return [p for p in obj["proposals"] if isinstance(p, dict)]
+            pos = idx + 1
+        except (json.JSONDecodeError, ValueError):
+            pos = idx + 1
+
+    return []
+
+
+def _store_review_proposals(
+    result: Any,
+    *,
+    source_session_id: str | None = None,
+) -> None:
+    """Persist valid report-only proposals with secret scrubbing, schema validation, and SRE metrics."""
+    if isinstance(result, dict):
+        text = result.get("final_response") or result.get("content") or ""
+    else:
+        text = str(result or "")
+
+    proposals = _extract_proposals_json(text)
+    if not proposals:
+        logger.debug("background review returned no valid learning proposals")
+        return
+
+    from agent.learning_proposals import (
+        create_proposal,
+        scrub_secrets,
+        _ALLOWED_KINDS,
+        _ALLOWED_ACTIONS,
+    )
+
+    for proposal in proposals:
+        if not isinstance(proposal, dict):
+            continue
+
+        _PROPOSAL_STORE_METRICS["proposals_seen"] += 1
+        kind = str(proposal.get("kind", "")).strip()
+        action = str(proposal.get("action", "")).strip()
+
+        # Schema validation allowlist check (CWE-20)
+        if kind not in _ALLOWED_KINDS or action not in _ALLOWED_ACTIONS.get(kind, set()):
+            logger.warning(
+                "Background review skipped invalid proposal (kind=%r, action=%r) for session %s",
+                kind, action, source_session_id,
+            )
+            _PROPOSAL_STORE_METRICS["proposals_failed"] += 1
+            continue
+
+        raw_payload = proposal.get("payload")
+        if not isinstance(raw_payload, dict) or not raw_payload:
+            logger.warning(
+                "Background review skipped proposal with missing/non-dict payload for session %s",
+                source_session_id,
+            )
+            _PROPOSAL_STORE_METRICS["proposals_failed"] += 1
+            continue
+
+        raw_evidence = proposal.get("evidence")
+        if not isinstance(raw_evidence, str) or not raw_evidence.strip():
+            logger.warning(
+                "Background review skipped proposal with empty evidence for session %s",
+                source_session_id,
+            )
+            _PROPOSAL_STORE_METRICS["proposals_failed"] += 1
+            continue
+
+        # Programmatic secret scrubbing before persistence (CWE-259)
+        payload = scrub_secrets(raw_payload)
+        evidence = scrub_secrets(raw_evidence)
+        research = scrub_secrets(proposal.get("research")) if proposal.get("research") else None
+
+        if payload != raw_payload or evidence != raw_evidence:
+            _PROPOSAL_STORE_METRICS["secrets_scrubbed"] += 1
+
+        try:
+            create_proposal(
+                kind,
+                action,
+                payload,
+                evidence,
+                source_session_id=source_session_id,
+                research=research,
+            )
+            _PROPOSAL_STORE_METRICS["proposals_stored"] += 1
+            logger.info(
+                "Background review stored proposal (%s/%s) for session %s",
+                kind, action, source_session_id,
+            )
+        except Exception as err:
+            _PROPOSAL_STORE_METRICS["proposals_failed"] += 1
+            logger.warning(
+                "Background review failed to store proposal for session %s (kind=%s, action=%s): %s",
+                source_session_id, kind, action, err,
+            )
 
 
 def spawn_background_review_thread(
