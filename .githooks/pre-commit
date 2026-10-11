@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit — Tag-Component ECS Secret Gating System
+# Enforces that no path registered in .security/secret_paths.registry is tracked by git.
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+REGISTRY="${REPO_ROOT}/.security/secret_paths.registry"
+
+if [ ! -f "$REGISTRY" ]; then
+    exit 0
+fi
+
+fail=0
+while IFS= read -r path || [ -n "$path" ]; do
+    # Trim leading/trailing whitespace
+    path="$(echo "$path" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    # Skip empty lines and comments
+    case "$path" in
+        ""|\#*) continue ;;
+    esac
+
+    if git ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+        echo "🚨 BLOCKED: Secret-tagged path is tracked by git: $path" >&2
+        fail=1
+    fi
+done < "$REGISTRY"
+
+if [ "$fail" -ne 0 ]; then
+    echo "❌ Commit aborted: untrack secret-tagged paths with 'git rm --cached <path>'." >&2
+    exit 1
+fi
+
+exit 0

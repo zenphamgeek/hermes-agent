@@ -202,3 +202,55 @@ def test_f3_plugin_api_published_column_and_transition():
     assert body.status == "published"
     assert body.result == "https://youtube.com/watch?v=123"
 
+
+def test_f6_tag_component_secret_paths_registry():
+    """Verify that all paths registered in .security/secret_paths.registry are NOT tracked by git."""
+    registry_path = REPO_ROOT / ".security" / "secret_paths.registry"
+    assert registry_path.is_file(), f"Registry file missing: {registry_path}"
+
+    lines = [
+        line.strip()
+        for line in registry_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    assert len(lines) > 0, "Secret registry must contain at least one pattern"
+
+    for path in lines:
+        proc = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", path],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode != 0, f"Secret-tagged path MUST NOT be tracked in git: {path}"
+
+    # Also verify pre-commit hook exists and is executable
+    pre_commit_path = REPO_ROOT / ".githooks" / "pre-commit"
+    assert pre_commit_path.is_file(), f"Pre-commit hook missing: {pre_commit_path}"
+    assert os.access(pre_commit_path, os.X_OK), f"Pre-commit hook must be executable: {pre_commit_path}"
+
+
+def test_f1_git_rev_list_zero_roster_objects():
+    """Verify git rev-list across all branches/tags contains zero live secret fleet roster objects."""
+    proc = subprocess.run(
+        ["git", "rev-list", "--all", "--objects"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"git rev-list failed: {proc.stderr}"
+
+    roster_lines = [
+        line.strip()
+        for line in proc.stdout.splitlines()
+        if "fleet_roster" in line.lower()
+    ]
+
+    ALLOWED_TEMPLATES = {"fleet_roster.defaults.yml", "fleet_roster.example.yml"}
+    for line in roster_lines:
+        parts = line.split(None, 1)
+        if len(parts) == 2:
+            obj_name = parts[1]
+            assert obj_name in ALLOWED_TEMPLATES, f"Found unauthorized fleet_roster object in git history: {line}"
+
+
