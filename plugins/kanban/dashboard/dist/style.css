@@ -1591,3 +1591,85 @@
 .hermes-kanban-trash-label {
   font-weight: 500;
 }
+
+/* --- Published Column, Channel Badges & YouTube Links --- */
+.hermes-kanban-dot-published {
+  background-color: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+}
+
+[data-kanban-column="published"] .hermes-kanban-column-label {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.hermes-kanban-tag--zenpham {
+  background: rgba(239, 68, 68, 0.14) !important;
+  color: #f87171 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.18);
+  letter-spacing: 0.02em;
+}
+
+.hermes-kanban-tag--toidocsach {
+  background: rgba(16, 185, 129, 0.14) !important;
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.18);
+  letter-spacing: 0.02em;
+}
+
+.hermes-kanban-tag--dialy {
+  background: rgba(6, 182, 212, 0.16) !important;
+  color: #38bdf8 !important;
+  border-color: rgba(6, 182, 212, 0.48) !important;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.22);
+  letter-spacing: 0.02em;
+}
+
+.hermes-kanban-card-yt-wrap {
+  margin-top: 0.4rem;
+  margin-bottom: 0.2rem;
+}
+
+.hermes-kanban-card-yt-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #ff3333;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  padding: 0.18rem 0.45rem;
+  text-decoration: none;
+  transition: all 0.15s ease-in-out;
+}
+
+.hermes-kanban-card-yt-link:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: #ef4444;
+  color: #ffffff;
+  text-decoration: none;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+}
+

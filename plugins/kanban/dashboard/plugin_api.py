@@ -148,7 +148,7 @@ def _conn(board: Optional[str] = None):
 # tasks into ``todo`` and makes the dashboard look like the Scheduled column
 # disappeared.
 BOARD_COLUMNS: list[str] = [
-    "triage", "todo", "scheduled", "ready", "running", "blocked", "review", "done",
+    "triage", "todo", "scheduled", "ready", "running", "blocked", "review", "done", "published",
 ]
 
 
@@ -903,6 +903,15 @@ def update_task(task_id: str, payload: UpdateTaskBody, board: Optional[str] = Qu
                     summary=payload.summary,
                     metadata=payload.metadata,
                 )
+            elif s == "published":
+                ok = kanban_db.complete_task(
+                    conn, task_id,
+                    result=payload.result,
+                    summary=payload.summary,
+                    metadata=payload.metadata,
+                )
+                if ok:
+                    _set_status_direct(conn, task_id, "published")
             elif s == "blocked":
                 ok = kanban_db.block_task(conn, task_id, reason=payload.block_reason)
             elif s == "scheduled":

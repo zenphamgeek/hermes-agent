@@ -54,7 +54,17 @@ def _fmt_task_line(t: kb.Task) -> str:
     icon = _STATUS_ICONS.get(t.status, "?")
     assignee = t.assignee or "(unassigned)"
     tenant = f" [{t.tenant}]" if t.tenant else ""
-    url = f" -> {t.result}" if t.result and t.result.startswith("http") else ""
+    url = ""
+    if t.result:
+        raw_res = t.result.strip()
+        if (raw_res.startswith("https://") or raw_res.startswith("http://")) and not any(c in raw_res for c in " \t\r\n<>\"'`"):
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(raw_res)
+                if parsed.scheme in ("http", "https") and parsed.netloc:
+                    url = f" -> {raw_res}"
+            except Exception:
+                pass
     return f"{icon} {t.id}  {t.status:9s}  {assignee:20s}{tenant}  {t.title}{url}"
 
 

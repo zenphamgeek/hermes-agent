@@ -87,7 +87,7 @@
   }
 
   // Board column display order; any backend status not listed here renders after these.
-  const COLUMN_ORDER = ["triage", "todo", "ready", "running", "blocked", "review", "done"];
+  const COLUMN_ORDER = ["triage", "todo", "ready", "running", "blocked", "review", "done", "published"];
   // English fallback dictionaries — used when the i18n catalog is missing
   // a key, and as defaults for the get*() helpers below so callers running
   // outside any React component (where there's no `t`) still get sane text.
@@ -99,6 +99,7 @@
     blocked: "Blocked",
     review: "Review",
     done: "Done",
+    published: "Published",
     archived: "Archived",
   };
   const FALLBACK_COLUMN_HELP = {
@@ -109,6 +110,7 @@
     blocked: "Worker asked for human input",
     review: "Implementation complete — awaiting review",
     done: "Completed",
+    published: "Đã xuất bản lên YouTube (Live)",
     archived: "Archived",
   };
   const FALLBACK_DESTRUCTIVE = {
@@ -161,6 +163,7 @@
     blocked: "hermes-kanban-dot-blocked",
     review: "hermes-kanban-dot-review",
     done: "hermes-kanban-dot-done",
+    published: "hermes-kanban-dot-published",
     archived: "hermes-kanban-dot-archived",
   };
 
@@ -703,7 +706,21 @@
       if (!boardData) return null;
       const q = search.trim().toLowerCase();
       const filterTask = function (t) {
-        if (tenantFilter && t.tenant !== tenantFilter) return false;
+        if (tenantFilter) {
+          var title_l = (t.title || "").toLowerCase();
+          var tenant_l = (t.tenant || "").toLowerCase();
+          var matchesTenant = false;
+          if (tenantFilter === "phamtrai_dialy" && (tenant_l === "phamtrai_dialy" || tenant_l === "dialy" || title_l.indexOf("địa lý") >= 0 || title_l.indexOf("phamtrai") >= 0 || title_l.indexOf("miền sông") >= 0)) {
+            matchesTenant = true;
+          } else if (tenantFilter === "toi_doc_sach" && (tenant_l === "toi_doc_sach" || title_l.indexOf("tôi đọc sách") >= 0 || title_l.indexOf("đọc sách") >= 0)) {
+            matchesTenant = true;
+          } else if (tenantFilter === "zenpham" && (tenant_l === "zenpham" || title_l.indexOf("zenpham") >= 0)) {
+            matchesTenant = true;
+          } else if (t.tenant === tenantFilter) {
+            matchesTenant = true;
+          }
+          if (!matchesTenant) return false;
+        }
         if (assigneeFilter && t.assignee !== assigneeFilter) return false;
         if (q) {
           const hay = `${t.id} ${t.title || ""} ${t.body || ""} ${t.result || ""} ${t.latest_summary || ""} ${t.assignee || ""} ${t.tenant || ""}`.toLowerCase();
@@ -2185,14 +2202,17 @@
         }),
       ),
       h("div", { className: "flex flex-col gap-1",
-                 title: "Tenants are free-form tags on a task (e.g. customer, project, team). Set them via the task drawer or kanban_create." },
-        h(Label, { className: "text-xs text-muted-foreground" }, tx(t, "tenant", "Tenant")),
+                 title: "Lọc theo kênh xuất bản (ZenPham, Tôi Đọc Sách, Địa Lý) hoặc tenant tag" },
+        h(Label, { className: "text-xs text-muted-foreground font-medium" }, "Kênh / Tenant"),
         h(Select, Object.assign({
           value: props.tenantFilter,
           className: "h-8",
         }, selectChangeHandler(props.setTenantFilter)),
-          h(SelectOption, { value: "" }, tx(t, "allTenants", "All tenants")),
-          tenants.map(function (tn) {
+          h(SelectOption, { value: "" }, "Tất cả kênh (All)"),
+          h(SelectOption, { value: "phamtrai_dialy" }, "🌏 Biết Địa Lý Từ Ba Tôi"),
+          h(SelectOption, { value: "toi_doc_sach" }, "📖 Tôi Đọc Sách"),
+          h(SelectOption, { value: "zenpham" }, "🔴 ZenPham"),
+          tenants.filter(function (tn) { return tn !== "phamtrai_dialy" && tn !== "toi_doc_sach" && tn !== "zenpham"; }).map(function (tn) {
             return h(SelectOption, { key: tn, value: tn }, tn);
           }),
         ),
@@ -2739,6 +2759,21 @@
     return "";
   }
 
+  function safeYouTubeUrl(raw) {
+    if (!raw || typeof raw !== "string") return null;
+    try {
+      var u = new URL(raw.trim());
+      if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+      var host = u.hostname.toLowerCase();
+      if (host === "youtube.com" || host === "www.youtube.com" || host === "m.youtube.com" || host === "youtu.be") {
+        return u.href;
+      }
+      return null;
+    } catch (_e) {
+      return null;
+    }
+  }
+
   function TaskCard(props) {
     const { t: i18n } = useI18n();
     const t = props.task;
@@ -2849,10 +2884,39 @@
               ? h(Badge, { className: "hermes-kanban-priority",
                            title: `Priority ${t.priority}. Higher-priority tasks are claimed first by the dispatcher.` }, `P${t.priority}`)
               : null,
-            t.tenant
-              ? h(Badge, { variant: "outline", className: "hermes-kanban-tag",
-                           title: `Tenant: ${t.tenant}. Free-form tag for grouping tasks (customer, project, team).` }, t.tenant)
-              : null,
+            (function () {
+              var title = (t.title || "").toLowerCase();
+              var body = (t.body || "").toLowerCase();
+              var tenant = (t.tenant || "").toLowerCase();
+              var ch = null;
+
+              if (tenant === "phamtrai_dialy" || tenant === "dialy" || title.indexOf("địa lý") >= 0 || title.indexOf("phamtrai") >= 0 || title.indexOf("miền sông") >= 0 || body.indexOf("phamtrai_dialy") >= 0) {
+                ch = {
+                  label: "🌏 Địa Lý Ba Tôi",
+                  cls: "hermes-kanban-tag--dialy",
+                  desc: "Kênh: Biết Địa lý từ Ba tôi (@phamtrai-dialy)"
+                };
+              } else if (tenant === "toi_doc_sach" || title.indexOf("tôi đọc sách") >= 0 || title.indexOf("đọc sách") >= 0 || body.indexOf("toi_doc_sach") >= 0) {
+                ch = {
+                  label: "📖 Tôi Đọc Sách",
+                  cls: "hermes-kanban-tag--toidocsach",
+                  desc: "Kênh: Tôi Đọc Sách (@toidocsach)"
+                };
+              } else if (tenant === "zenpham" || title.indexOf("zenpham") >= 0 || body.indexOf("zenpham") >= 0) {
+                ch = {
+                  label: "🔴 ZenPham",
+                  cls: "hermes-kanban-tag--zenpham",
+                  desc: "Kênh: ZenPham (@zenpham-g3l)"
+                };
+              }
+
+              if (!ch) return null;
+              return h(Badge, {
+                variant: "outline",
+                className: cn("hermes-kanban-tag", ch.cls),
+                title: ch.desc,
+              }, ch.label);
+            })(),
             progress
               ? h("span", {
                   className: cn(
@@ -2872,6 +2936,18 @@
           ),
           h("div", { className: "hermes-kanban-card-title" },
             t.title || tx(i18n, "untitled", "(untitled)")),
+          safeYouTubeUrl(t.result)
+            ? h("div", { className: "hermes-kanban-card-yt-wrap" },
+                h("a", {
+                  href: safeYouTubeUrl(t.result),
+                  target: "_blank",
+                  rel: "noopener noreferrer",
+                  className: "hermes-kanban-card-yt-link",
+                  title: `Xem video trên YouTube: ${safeYouTubeUrl(t.result)}`,
+                  onClick: function (e) { e.stopPropagation(); },
+                }, "▶ Xem trên YouTube")
+              )
+            : null,
           h("div", { className: "hermes-kanban-card-row hermes-kanban-card-meta" },
             t.assignee
               ? h("span", { className: "hermes-kanban-assignee",
@@ -3581,9 +3657,33 @@
       h("div", { className: "hermes-kanban-drawer-meta" },
         h(MetaRow, { label: tx(i18n, "status", "Status"), value: t.status }),
         h(AssigneeEditor, { task: t, onPatch: props.onPatch }),
-        h(PriorityEditor, { task: t, onPatch: props.onPatch }),
-        h(ModelEditor, { task: t, onPatch: props.onPatch }),
-        t.tenant ? h(MetaRow, { label: tx(i18n, "tenant", "Tenant"), value: t.tenant }) : null,
+        (function () {
+          var title = (t.title || "").toLowerCase();
+          var body = (t.body || "").toLowerCase();
+          var tenant = (t.tenant || "").toLowerCase();
+          var ch = null;
+          if (tenant === "phamtrai_dialy" || tenant === "dialy" || title.indexOf("địa lý") >= 0 || title.indexOf("phamtrai") >= 0 || title.indexOf("miền sông") >= 0) {
+            ch = "🌏 Biết Địa Lý Từ Ba Tôi (@phamtrai-dialy)";
+          } else if (tenant === "toi_doc_sach" || title.indexOf("tôi đọc sách") >= 0 || title.indexOf("đọc sách") >= 0) {
+            ch = "📖 Tôi Đọc Sách (@toidocsach)";
+          } else if (tenant === "zenpham" || title.indexOf("zenpham") >= 0) {
+            ch = "🔴 ZenPham (@zenpham-g3l)";
+          } else if (t.tenant) {
+            ch = t.tenant;
+          }
+          return ch ? h(MetaRow, { label: "Kênh xuất bản", value: ch }) : null;
+        })(),
+        safeYouTubeUrl(t.result)
+          ? h(MetaRow, {
+              label: "YouTube URL",
+              value: h("a", {
+                href: safeYouTubeUrl(t.result),
+                target: "_blank",
+                rel: "noopener noreferrer",
+                style: { color: "#ef4444", fontWeight: "bold", textDecoration: "underline" },
+              }, "▶ " + safeYouTubeUrl(t.result)),
+            })
+          : null,
         h(MetaRow, {
           label: tx(i18n, "workspace", "Workspace"),
           value: `${t.workspace_kind}${t.workspace_path ? ": " + t.workspace_path : ""}`,
