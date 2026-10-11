@@ -416,6 +416,90 @@ def test_f1_publish_payload_allowlist_filtering():
     assert len(leaks_allowed) == 0
 
 
+def test_f1_publish_payload_break_glass_fails_closed_on_unwritable_sink(monkeypatch, tmp_path):
+    """Verify break-glass override strictly fails closed when audit sink is unwritable (auditing auditor failure mode)."""
+    from tools.verify_approval_provenance import enforce_publish_gate, SecurityAuditFailure
+
+    dirty_payload = "Bearer sk-ant-api03-FakeKeyForFailClosedAuditTest-12345"
+    monkeypatch.setenv("HERMES_ALLOW_PUBLISH_OVERRIDE", "1")
+    monkeypatch.setenv("HERMES_OVERRIDE_REASON", "Valid override reason for audit sink test")
+
+    # Point OVERRIDES_LOG to a path inside a non-existent unwritable directory (e.g. invalid filename / directory)
+    unwritable_sink = tmp_path / "read_only_dir" / "publish_overrides.log"
+    # Create the parent directory and make it read-only
+    unwritable_sink.parent.mkdir()
+    os.chmod(unwritable_sink.parent, 0o444)
+    monkeypatch.setattr("tools.verify_approval_provenance.OVERRIDES_LOG", unwritable_sink)
+
+    try:
+        with pytest.raises(SecurityAuditFailure) as exc_info:
+            enforce_publish_gate(dirty_payload, context="unwritable_sink_test")
+        assert "Break-glass audit sink unavailable" in str(exc_info.value)
+        assert "refusing unlogged break-glass override" in str(exc_info.value)
+    finally:
+        # Restore permissions so cleanup works
+        os.chmod(unwritable_sink.parent, 0o755)
+
+
+def test_f1_publish_payload_break_glass_second_actor_validation(monkeypatch, tmp_path):
+    """Verify break-glass enforces distinct second-actor authorization when HERMES_REQUIRE_SECOND_ACTOR=1."""
+    from tools.verify_approval_provenance import enforce_publish_gate, SecurityAuditFailure
+
+    dirty_payload = "Bearer sk-ant-api03-FakeKeyForSecondActorTest-12345"
+    log_file = tmp_path / "second_actor_overrides.log"
+    monkeypatch.setattr("tools.verify_approval_provenance.OVERRIDES_LOG", log_file)
+    monkeypatch.setenv("HERMES_ALLOW_PUBLISH_OVERRIDE", "1")
+    monkeypatch.setenv("HERMES_OVERRIDE_REASON", "Critical emergency fix deployed by lead")
+    monkeypatch.setenv("HERMES_REQUIRE_SECOND_ACTOR", "1")
+    monkeypatch.setenv("USER", "zen_operator")
+
+    # 1. Missing second actor -> fails
+    monkeypatch.delenv("HERMES_OVERRIDE_ACTOR", raising=False)
+    with pytest.raises(SecurityAuditFailure) as exc:
+        enforce_publish_gate(dirty_payload, context="missing_second_actor")
+    assert "requires HERMES_OVERRIDE_ACTOR" in str(exc.value)
+
+    # 2. Self-approval (second actor == current user) -> fails
+    monkeypatch.setenv("HERMES_OVERRIDE_ACTOR", "zen_operator")
+    with pytest.raises(SecurityAuditFailure) as exc:
+        enforce_publish_gate(dirty_payload, context="self_approval")
+    assert "must be distinct from current operator" in str(exc.value)
+
+    # 3. Valid distinct second actor -> succeeds and logs both operator and authorized_by
+    monkeypatch.setenv("HERMES_OVERRIDE_ACTOR", "secops_lead_auditor")
+    enforce_publish_gate(dirty_payload, context="valid_second_actor")
+    assert log_file.is_file()
+    entry = json.loads(log_file.read_text(encoding="utf-8").strip())
+    assert entry["authorized_by"] == "secops_lead_auditor"
+    assert entry["operator"] == "zen_operator"
+
+
+def test_f1_publish_allowlist_schema_validation(monkeypatch, tmp_path):
+    """Verify runtime schema validation for .security/publish_allowlist.json."""
+    from tools.verify_approval_provenance import load_publish_allowlist
+
+    # 1. Valid allowlist file
+    valid_file = tmp_path / "valid_allowlist.json"
+    valid_file.write_text(json.dumps({"allowed_patterns": ["pat1", "pat2"]}), encoding="utf-8")
+    monkeypatch.setattr("tools.verify_approval_provenance.ALLOWLIST_FILE", valid_file)
+    patterns = load_publish_allowlist(strict=True)
+    assert patterns == ["pat1", "pat2"]
+
+    # 2. Malformed JSON or non-dict root
+    invalid_root = tmp_path / "invalid_root.json"
+    invalid_root.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+    monkeypatch.setattr("tools.verify_approval_provenance.ALLOWLIST_FILE", invalid_root)
+    with pytest.raises(ValueError, match="Allowlist schema root must be a dict"):
+        load_publish_allowlist(strict=True)
+
+    # 3. Non-string elements in allowed_patterns
+    invalid_patterns = tmp_path / "invalid_patterns.json"
+    invalid_patterns.write_text(json.dumps({"allowed_patterns": [123, False]}), encoding="utf-8")
+    monkeypatch.setattr("tools.verify_approval_provenance.ALLOWLIST_FILE", invalid_patterns)
+    with pytest.raises(ValueError, match="must be a list of strings"):
+        load_publish_allowlist(strict=True)
+
+
 def test_f3_duration_reconciliation_integrity():
     """Verify scene_timings.json reconciles with metadata.json and description timestamps."""
     timings_path = REPO_ROOT / "assets" / "scripts_video" / "audio" / "series_01" / "tap_01" / "scene_timings.json"

@@ -72,14 +72,28 @@ ALLOWLIST_FILE = REPO_ROOT / ".security" / "publish_allowlist.json"
 OVERRIDES_LOG = REPO_ROOT / ".security" / "publish_overrides.log"
 
 
-def load_publish_allowlist() -> list[str]:
-    """Load approved benign patterns/substrings from .security/publish_allowlist.json."""
+def load_publish_allowlist(strict: bool = False) -> list[str]:
+    """Load approved benign patterns/substrings from .security/publish_allowlist.json.
+
+    Validates schema structure: root must be dict containing 'allowed_patterns' as list[str].
+    """
     if not ALLOWLIST_FILE.is_file():
         return []
     try:
         data = json.loads(ALLOWLIST_FILE.read_text(encoding="utf-8"))
-        return data.get("allowed_patterns", [])
-    except Exception:
+        if not isinstance(data, dict):
+            if strict:
+                raise ValueError(f"Allowlist schema root must be a dict, got {type(data).__name__}")
+            return []
+        patterns = data.get("allowed_patterns", [])
+        if not isinstance(patterns, list) or not all(isinstance(p, str) for p in patterns):
+            if strict:
+                raise ValueError("Allowlist 'allowed_patterns' must be a list of strings")
+            return []
+        return patterns
+    except Exception as e:
+        if strict:
+            raise
         return []
 
 
@@ -99,7 +113,9 @@ def enforce_publish_gate(payload: Any, context: str = "publish") -> None:
 
     If secret patterns are detected:
     - If HERMES_ALLOW_PUBLISH_OVERRIDE=1 is set, requires HERMES_OVERRIDE_REASON (>=15 chars),
-      logs the break-glass event to .security/publish_overrides.log, and proceeds with warning.
+      verifies second actor if HERMES_REQUIRE_SECOND_ACTOR=1,
+      logs the break-glass event to .security/publish_overrides.log (failing closed if sink is unwritable),
+      and proceeds with warning.
     - Otherwise, raises SecurityAuditFailure and terminates the upload.
     """
     leaks = audit_publish_payload(payload, context=context)
@@ -117,19 +133,42 @@ def enforce_publish_gate(payload: Any, context: str = "publish") -> None:
             raise SecurityAuditFailure(
                 f"Break-glass publish override rejected: HERMES_OVERRIDE_REASON must be at least 15 characters, got: '{override_reason}'"
             )
-        # Log the break-glass bypass with audit trail
+
+        current_user = os.environ.get("USER", "unknown")
+        if os.environ.get("HERMES_REQUIRE_SECOND_ACTOR") == "1":
+            second_actor = os.environ.get("HERMES_OVERRIDE_ACTOR", "").strip()
+            if not second_actor or len(second_actor) < 3:
+                raise SecurityAuditFailure(
+                    "Break-glass override rejected: HERMES_REQUIRE_SECOND_ACTOR=1 requires HERMES_OVERRIDE_ACTOR (>=3 chars)"
+                )
+            if second_actor == current_user:
+                raise SecurityAuditFailure(
+                    f"Break-glass override rejected: HERMES_OVERRIDE_ACTOR ('{second_actor}') must be distinct from current operator ('{current_user}')"
+                )
+            authorized_by = second_actor
+        else:
+            authorized_by = os.environ.get("HERMES_OVERRIDE_ACTOR", "").strip() or current_user
+
+        # Log the break-glass bypass with audit trail (fail-closed if unwritable)
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "context": context,
             "leak_count": len(leaks),
             "leaks_sample": leaks[:3],
             "reason": override_reason,
-            "authorized_by": os.environ.get("USER", "unknown"),
+            "authorized_by": authorized_by,
+            "operator": current_user,
         }
-        OVERRIDES_LOG.parent.mkdir(parents=True, exist_ok=True)
-        with open(OVERRIDES_LOG, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-        print(f"⚠️ [SECURITY BREAK-GLASS] Publish allowed with warning under override: '{override_reason}'")
+        try:
+            OVERRIDES_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with open(OVERRIDES_LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+        except Exception as e:
+            raise SecurityAuditFailure(
+                f"Break-glass audit sink unavailable ({e}); refusing unlogged break-glass override"
+            ) from e
+
+        print(f"⚠️ [SECURITY BREAK-GLASS] Publish allowed with warning under override: '{override_reason}' by {authorized_by}")
         return
 
     raise SecurityAuditFailure(
