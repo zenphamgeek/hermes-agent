@@ -123,3 +123,19 @@ def test_package_json_dependencies_exact_pins():
             floating_deps.append((name, ver))
 
     assert not floating_deps, f"Found non-exact pinned dependencies in root package.json: {floating_deps}"
+
+
+def test_lockfile_zero_insecure_protocols():
+    """Verify zero packages in package-lock.json resolve via unencrypted http:// or dangerous schemes."""
+    lockfile_path = REPO_ROOT / "package-lock.json"
+    assert lockfile_path.is_file()
+    with open(lockfile_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    insecure_packages = []
+    for pkg_path, pkg_info in data.get("packages", {}).items():
+        resolved = pkg_info.get("resolved", "")
+        if resolved.startswith("http://"):
+            insecure_packages.append((pkg_path, resolved))
+
+    assert not insecure_packages, f"Found insecure HTTP resolutions in lockfile: {insecure_packages[:5]}"
