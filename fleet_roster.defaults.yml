@@ -1,0 +1,40 @@
+# Default Sovereign Fleet Roster (Topology Fallback for Offline / Fresh Environments)
+# Note: Contains NO credentials or secrets. Real local overrides live in fleet_roster.yml.
+
+version: "1.0"
+pools:
+  pro-claude-pool:
+    description: "Pro CLI nodes with Claude quota (Pro-first routing pool)"
+    nodes:
+      - alias: "pro-1"
+        tier: "pro"
+      - alias: "sunward"
+        tier: "pro"
+      - alias: "insilos"
+        tier: "pro"
+      - alias: "binhthuong"
+        tier: "pro"
+      - alias: "justaskgao"
+        tier: "pro"
+      - alias: "team-3"
+        tier: "pro"
+
+  ultra-gemini-pool:
+    description: "Ultra nodes for high-complexity Gemini inference (strictly Gemini-only)"
+    nodes:
+      - alias: "ultra-2"
+        tier: "ultra"
+        model: "gemini-3.1-pro-high"
+      - alias: "lthn.ariana"
+        tier: "ultra"
+        model: "gemini-3.1-pro-high"
+
+  nebula-pool:
+    description: "Nebula API gateway (strictly fallback-only, strictly Claude Opus 4.8)"
+    nodes:
+      - alias: "nebula"
+        tier: "nebula"
+        model: "claude-opus-4.8"
+      - alias: "b.ai"
+        tier: "nebula"
+        model: "claude-opus-4.8"

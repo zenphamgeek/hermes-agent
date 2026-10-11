@@ -17,7 +17,9 @@ binds.
 from __future__ import annotations
 
 import logging
+import posixpath
 from typing import Awaitable, Callable
+from urllib.parse import unquote
 
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -77,11 +79,16 @@ def _path_is_public(path: str) -> bool:
     * :data:`_GATE_PUBLIC_PREFIXES` — auth-bootstrap routes and static
       mounts. Prefix-matched so ``/assets/foo.css`` lights up via
       ``/assets/``.
+
+    Canonicalization:
+      Decodes URL-encoded octets and normalizes path traversal (e.g. `%2e%2e`, `//`)
+      before matching against allowlists to prevent traversal bypasses.
     """
-    if path in PUBLIC_API_PATHS:
+    clean_path = posixpath.normpath(unquote(path)).rstrip("/") or "/"
+    if clean_path in PUBLIC_API_PATHS:
         return True
     return any(
-        path == prefix or path.startswith(prefix)
+        clean_path == prefix.rstrip("/") or clean_path.startswith(prefix)
         for prefix in _GATE_PUBLIC_PREFIXES
     )
 

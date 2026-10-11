@@ -1,0 +1,25 @@
+# Example Fleet Roster Template
+# Copy this file to fleet_roster.yml and customize with your local node configuration.
+# NOTE: fleet_roster.yml is strictly ignored by .gitignore to prevent accidental PII leakage.
+
+version: "1.0"
+pools:
+  pro-claude-pool:
+    description: "Pro CLI nodes with Claude quota"
+    nodes:
+      - alias: "node-pro-1"
+        tier: "pro"
+      - alias: "node-pro-2"
+        tier: "pro"
+      - alias: "node-pro-3"
+        tier: "pro"
+
+  ultra-gemini-pool:
+    description: "Ultra nodes for high-complexity Gemini inference (Gemini-only)"
+    nodes:
+      - alias: "ultra-1"
+        tier: "ultra"
+        model: "gemini-3.1-pro-high"
+      - alias: "ultra-2"
+        tier: "ultra"
+        model: "gemini-3.1-pro-high"
