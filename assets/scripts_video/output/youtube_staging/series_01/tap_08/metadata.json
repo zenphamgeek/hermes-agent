@@ -1,0 +1,29 @@
+{
+  "title": "Bản Chất Quá Khớp & Khái Quát Hóa // Nghệ Thuật Buông Bỏ Của AI | Zen Phạm",
+  "description": "Tại sao một mạng nơ-ron đạt độ chính xác 100% trong phòng thí nghiệm lại thất bại thảm hại khi bước ra thực tế? Làm sao cỗ máy có thể phân biệt được đâu là quy luật tự nhiên, đâu chỉ là những hạt bụi nhiễu ngẫu nhiên của quá khứ?\n\nChào mừng bạn đến với Tập 08 trong Masterclass \"Tôi Làm Việc — AI Engineering Fundamentals\". Hôm nay, Zen Phạm cùng bạn mổ xẻ hiện tượng Quá Khớp (Overfitting), sự đánh đổi Bias-Variance và vẻ đẹp hình học thuần khiết của nghệ thuật điều chuẩn L1, L2.\n\nMỐC THỜI GIAN MASTERCLASS:\n00:00 - 1. Cạm Bẫy Của Điểm Số Tuyệt Đối & Ảo Ảnh Ghi Nhớ (Cold Open)\n00:56 - 2. Nhận diện thương hiệu Zen Phạm (Brand Stinger)\n01:02 - 3. Hiện Tượng Runge 1901 & Cơn Điên Đa Thức Bậc Cao\n02:04 - 4. Lưỡng Nan Kinh Điển: Bias-Variance Tradeoff\n03:08 - 5. Chiếc Dao Cạo Ockham & Sự Xuất Hiện Của Regularization\n04:08 - 6. Hình Học Đối Ngẫu: Mặt Cầu L2 vs Mặt Kim Cương L1\n05:27 - 7. Kỹ Thuật Ngẫu Nhiên Hóa & Dừng Sớm (Dropout & Early Stopping)\n06:36 - 8. Bí Ẩn Double Descent & Siêu Không Gian Tham Số\n07:44 - 9. Đạo Làm Nghề: Nghệ Thuật Buông Bỏ Để Thấu Suốt & Cầu Nối Tập 09\n08:39 - 10. Màn hình kết thúc & Bảng lưới 25 tập Series 1 (Closing Mosaic)\n\nMã nguồn & Blueprint: https://github.com/phamvuthang/hermes-agent\nTags: #Overfitting #Generalization #MachineLearning #DeepLearning #ZenPham #ToiLamViec #Regularization\n",
+  "tags": [
+    "Overfitting",
+    "Generalization",
+    "Regularization",
+    "DeepLearning",
+    "MachineLearning",
+    "ZenPham",
+    "ToiLamViec"
+  ],
+  "privacyStatus": "private",
+  "duration": 527.007,
+  "duration_seconds": 527.01,
+  "total_clips": 10,
+  "timestamps": [
+    "00:00 - 1. Cạm Bẫy Của Điểm Số Tuyệt Đối & Ảo Ảnh Ghi Nhớ (Cold Open)",
+    "00:56 - 2. Nhận diện thương hiệu Zen Phạm (Brand Stinger)",
+    "01:02 - 3. Hiện Tượng Runge 1901 & Cơn Điên Đa Thức Bậc Cao",
+    "02:04 - 4. Lưỡng Nan Kinh Điển: Bias-Variance Tradeoff",
+    "03:08 - 5. Chiếc Dao Cạo Ockham & Sự Xuất Hiện Của Regularization",
+    "04:08 - 6. Hình Học Đối Ngẫu: Mặt Cầu L2 vs Mặt Kim Cương L1",
+    "05:27 - 7. Kỹ Thuật Ngẫu Nhiên Hóa & Dừng Sớm (Dropout & Early Stopping)",
+    "06:36 - 8. Bí Ẩn Double Descent & Siêu Không Gian Tham Số",
+    "07:44 - 9. Đạo Làm Nghề: Nghệ Thuật Buông Bỏ Để Thấu Suốt & Cầu Nối Tập 09",
+    "08:39 - 10. Màn hình kết thúc & Bảng lưới 25 tập Series 1 (Closing Mosaic)"
+  ]
+}
