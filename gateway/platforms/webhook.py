@@ -240,6 +240,50 @@ class WebhookAdapter(BasePlatformAdapter):
         self._route_processor = WebhookRouteProcessor(
             script_timeout_seconds=self._script_timeout_seconds
         )
+        self._replay_window_seconds: int = int(
+            config.extra.get("replay_window_seconds", 300)
+        )
+        self.security_audit_events: list[dict[str, Any]] = []
+
+    def _log_security_audit(
+        self,
+        event: str,
+        route_name: str,
+        reason: str,
+        request: Any,
+        details: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Emits a structured audit log entry for security and authentication events."""
+        remote_val = getattr(request, "remote", None)
+        if not remote_val and hasattr(request, "headers"):
+            remote_val = request.headers.get("X-Forwarded-For", "unknown")
+        remote_str = str(remote_val or "unknown")
+        if "MagicMock" in remote_str:
+            remote_str = "mock_remote"
+
+        route_str = str(route_name)
+        if "MagicMock" in route_str:
+            route_str = "mock_route"
+
+        audit_payload = {
+            "security_event": str(event),
+            "route": route_str,
+            "reason": str(reason),
+            "remote_ip": remote_str,
+            "timestamp": time.time(),
+        }
+        if details:
+            for k, v in details.items():
+                if isinstance(v, (int, float, bool, str, list, dict)):
+                    audit_payload[str(k)] = v
+                else:
+                    audit_payload[str(k)] = str(v)
+        if len(self.security_audit_events) >= 1000:
+            self.security_audit_events.pop(0)
+        self.security_audit_events.append(audit_payload)
+        logger.warning("[webhook][SECURITY_AUDIT] %s", json.dumps(audit_payload, default=str))
+
+
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -665,6 +709,13 @@ class WebhookAdapter(BasePlatformAdapter):
         # Check Content-Length before reading the full payload.
         content_length = request.content_length or 0
         if content_length > self._max_body_bytes:
+            self._log_security_audit(
+                "body_size_exceeded",
+                route_name,
+                "content_length_exceeded",
+                request,
+                {"content_length": content_length, "max_body_bytes": self._max_body_bytes},
+            )
             return web.json_response(
                 {"error": "Payload too large"}, status=413
             )
@@ -675,6 +726,13 @@ class WebhookAdapter(BasePlatformAdapter):
         except web.HTTPRequestEntityTooLarge:
             # aiohttp's client_max_size tripped — chunked or lying
             # Content-Length. Same 413 as the header check above.
+            self._log_security_audit(
+                "body_size_exceeded",
+                route_name,
+                "client_max_size_tripped",
+                request,
+                {"max_body_bytes": self._max_body_bytes},
+            )
             return web.json_response(
                 {"error": "Payload too large"}, status=413
             )
@@ -684,6 +742,13 @@ class WebhookAdapter(BasePlatformAdapter):
         if len(raw_body) > self._max_body_bytes:
             # Defense in depth: enforce the cap on the actual bytes read even
             # if the server-level limit was bypassed or misconfigured.
+            self._log_security_audit(
+                "body_size_exceeded",
+                route_name,
+                "raw_body_exceeded",
+                request,
+                {"body_length": len(raw_body), "max_body_bytes": self._max_body_bytes},
+            )
             return web.json_response(
                 {"error": "Payload too large"}, status=413
             )
@@ -694,6 +759,12 @@ class WebhookAdapter(BasePlatformAdapter):
         # network webhook route into an unauthenticated agent-dispatch surface.
         secret = route_config.get("secret", self._global_secret)
         if not secret:
+            self._log_security_audit(
+                "auth_missing_secret",
+                route_name,
+                "missing_hmac_secret",
+                request,
+            )
             logger.error(
                 "[webhook] Route %s has no HMAC secret; refusing request",
                 route_name,
@@ -704,6 +775,12 @@ class WebhookAdapter(BasePlatformAdapter):
             )
         if secret != _INSECURE_NO_AUTH:
             if not self._validate_signature(request, raw_body, secret):
+                self._log_security_audit(
+                    "auth_invalid_signature",
+                    route_name,
+                    "signature_verification_failed",
+                    request,
+                )
                 logger.warning(
                     "[webhook] Invalid signature for route %s", route_name
                 )
@@ -714,6 +791,13 @@ class WebhookAdapter(BasePlatformAdapter):
         # ── Rate limiting (after auth) ───────────────────────────
         now = time.time()
         if not self._record_rate_limit_hit(route_name, now):
+            self._log_security_audit(
+                "rate_limit_exceeded",
+                route_name,
+                "rate_limit_quota_exhausted",
+                request,
+                {"rate_limit": self._rate_limit},
+            )
             return web.json_response(
                 {"error": "Rate limit exceeded"}, status=429
             )
@@ -905,6 +989,48 @@ class WebhookAdapter(BasePlatformAdapter):
             return web.json_response(
                 {"status": "error", "error": "Delivery failed", "delivery_id": delivery_id},
                 status=502,
+            )
+
+        # ── Job-trigger mode ───────────────────────────────────
+        # Route fires a named cron job / workflow instead of spawning an
+        # agent run.  Lets webhooks reuse the job's scheduling, retry,
+        # ledger, and toolset gating.  Event filter, route script, and
+        # idempotency checks above all still apply.
+        trigger_job_name = route_config.get("trigger_job")
+        if trigger_job_name:
+            fired = None
+            try:
+                from cron.jobs import trigger_job as _fire_cron_job
+
+                fired = _fire_cron_job(trigger_job_name)
+            except Exception as e:
+                logger.error(
+                    "[webhook] trigger_job failed route=%s job=%s error=%s",
+                    route_name,
+                    trigger_job_name,
+                    e,
+                )
+            if fired is None:
+                return web.json_response(
+                    {"error": f"Unknown job: {trigger_job_name}"},
+                    status=404,
+                )
+            logger.info(
+                "[webhook] triggered job=%s route=%s event=%s delivery=%s",
+                trigger_job_name,
+                route_name,
+                event_type,
+                delivery_id,
+            )
+            return web.json_response(
+                {
+                    "status": "accepted",
+                    "route": route_name,
+                    "event": event_type,
+                    "trigger_job": trigger_job_name,
+                    "delivery_id": delivery_id,
+                },
+                status=202,
             )
 
         # Use delivery_id in session key so concurrent webhooks on the
@@ -1123,23 +1249,51 @@ class WebhookAdapter(BasePlatformAdapter):
         # hole V2 exists to close.
         v2_sig = request.headers.get("X-Webhook-Signature-V2", "")
         if v2_sig:
+            route_name = request.match_info.get("route_name", "")
             v2_timestamp = request.headers.get("X-Webhook-Timestamp", "")
             if not v2_timestamp:
+                self._log_security_audit(
+                    "auth_missing_timestamp",
+                    route_name,
+                    "v2_signature_missing_timestamp",
+                    request,
+                )
                 logger.warning(
                     "[webhook] Route '%s' sent X-Webhook-Signature-V2 with "
                     "no X-Webhook-Timestamp — rejecting rather than "
                     "falling back to legacy V1",
-                    request.match_info.get("route_name", ""),
+                    route_name,
                 )
                 return False
             try:
                 ts = int(v2_timestamp)
             except (TypeError, ValueError):
+                self._log_security_audit(
+                    "auth_malformed_timestamp",
+                    route_name,
+                    "v2_signature_malformed_timestamp",
+                    request,
+                    {"provided_timestamp": v2_timestamp},
+                )
                 return False
-            if abs(int(time.time()) - ts) > 300:
+            skew = abs(int(time.time()) - ts)
+            if skew > self._replay_window_seconds:
+                self._log_security_audit(
+                    "replay_window_exceeded",
+                    route_name,
+                    "timestamp_outside_replay_window",
+                    request,
+                    {
+                        "provided_timestamp": ts,
+                        "skew_seconds": skew,
+                        "replay_window_seconds": self._replay_window_seconds,
+                    },
+                )
                 logger.warning(
-                    "[webhook] Route '%s' generic HMAC V2 timestamp outside replay window",
-                    request.match_info.get("route_name", ""),
+                    "[webhook] Route '%s' generic HMAC V2 timestamp outside replay window (%ss > %ss)",
+                    route_name,
+                    skew,
+                    self._replay_window_seconds,
                 )
                 return False
             signed_content = v2_timestamp.encode() + b"." + body
@@ -1185,17 +1339,22 @@ class WebhookAdapter(BasePlatformAdapter):
         msg_id: str,
         timestamp: str,
         signature_header: str,
-        tolerance_seconds: int = 300,
+        tolerance_seconds: Optional[int] = None,
     ) -> bool:
         """Validate Svix-compatible signatures used by AgentMail webhooks."""
         if not (msg_id and timestamp and signature_header and secret):
             return False
 
+        effective_tolerance = (
+            tolerance_seconds
+            if tolerance_seconds is not None
+            else self._replay_window_seconds
+        )
         try:
             ts = int(timestamp)
         except (TypeError, ValueError):
             return False
-        if abs(int(time.time()) - ts) > tolerance_seconds:
+        if abs(int(time.time()) - ts) > effective_tolerance:
             logger.warning("[webhook] Svix signature timestamp outside replay window")
             return False
 

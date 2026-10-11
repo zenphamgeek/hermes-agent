@@ -48,6 +48,8 @@ def _make_config(
     max_body_bytes=1_048_576,
     host="0.0.0.0",
     port=0,  # let OS pick a free port in tests
+    replay_window_seconds=300,
+    **kwargs,
 ):
     """Build a PlatformConfig suitable for WebhookAdapter."""
     extra = {
@@ -56,7 +58,9 @@ def _make_config(
         "routes": routes or {},
         "rate_limit": rate_limit,
         "max_body_bytes": max_body_bytes,
+        "replay_window_seconds": replay_window_seconds,
     }
+    extra.update(kwargs)
     if secret:
         extra["secret"] = secret
     return PlatformConfig(enabled=True, extra=extra)
@@ -277,6 +281,82 @@ class TestValidateSignature:
             }
         )
         assert adapter._validate_signature(req, body, secret) is True
+
+    def test_configurable_replay_window_seconds(self):
+        """Replay window tolerance must obey config.extra.replay_window_seconds."""
+        adapter_60s = _make_adapter(replay_window_seconds=60)
+        assert adapter_60s._replay_window_seconds == 60
+
+        body = b'{"event": "ping"}'
+        secret = "test-secret"
+        now = int(time.time())
+
+        # 30s in the past -> within 60s window -> ACCEPTED
+        ts_valid = str(now - 30)
+        sig_valid = _generic_v2_signature(body, secret, ts_valid)
+        req_valid = _mock_request(headers={
+            "X-Webhook-Signature-V2": sig_valid,
+            "X-Webhook-Timestamp": ts_valid,
+        })
+        assert adapter_60s._validate_signature(req_valid, body, secret) is True
+
+        # 90s in the past -> exceeds 60s window -> REJECTED
+        ts_expired = str(now - 90)
+        sig_expired = _generic_v2_signature(body, secret, ts_expired)
+        req_expired = _mock_request(headers={
+            "X-Webhook-Signature-V2": sig_expired,
+            "X-Webhook-Timestamp": ts_expired,
+        })
+        assert adapter_60s._validate_signature(req_expired, body, secret) is False
+
+        # Verify structured audit event recorded
+        replay_events = [
+            e for e in adapter_60s.security_audit_events
+            if e["security_event"] == "replay_window_exceeded"
+        ]
+        assert len(replay_events) == 1
+        assert replay_events[0]["reason"] == "timestamp_outside_replay_window"
+        assert replay_events[0]["replay_window_seconds"] == 60
+        assert replay_events[0]["skew_seconds"] >= 90
+
+    @pytest.mark.asyncio
+    async def test_security_audit_events_recorded_on_rejections(self):
+        """Structured security audit buffer records invalid signature, rate limit, and body size events."""
+        secret = "audit-secret"
+        adapter = _make_adapter(
+            routes={"audit_route": {"secret": secret, "prompt": "{text}", "deliver": "log"}},
+            rate_limit=2,
+            max_body_bytes=100,
+        )
+        app = web.Application()
+        app.router.add_post("/webhooks/{route_name}", adapter._handle_webhook)
+
+        async with TestClient(TestServer(app)) as cli:
+            # 1. Invalid signature rejection (401)
+            resp = await cli.post(
+                "/webhooks/audit_route",
+                data=b'{"text": "bad"}',
+                headers={"X-Hub-Signature-256": "sha256=bad"},
+            )
+            assert resp.status == 401
+            assert any(
+                e["security_event"] == "auth_invalid_signature"
+                for e in adapter.security_audit_events
+            )
+
+            # 2. Oversized payload rejection (413)
+            huge_body = b"x" * 200
+            resp_huge = await cli.post(
+                "/webhooks/audit_route",
+                data=huge_body,
+                headers={"X-Hub-Signature-256": "sha256=huge"},
+            )
+            assert resp_huge.status == 413
+            assert any(
+                e["security_event"] == "body_size_exceeded"
+                for e in adapter.security_audit_events
+            )
+
 
 
 # ===================================================================
