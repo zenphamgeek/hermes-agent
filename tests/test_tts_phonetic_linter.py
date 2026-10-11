@@ -98,3 +98,27 @@ def test_phonetic_linter_fail_closed_on_broken_report(monkeypatch):
     assert any("Lỗi hợp đồng normalize_for_omnivoice" in v for v in violations_str), (
         f"Expected contract violation error on string report, got: {violations_str}"
     )
+
+
+def test_phonetic_linter_case_insensitive_approved_acronyms(monkeypatch):
+    """Verify lowercase or mixed-case approved acronyms from normalizer (gpu, ai, cuda) are allowed."""
+    monkeypatch.setattr(
+        linter_mod,
+        "normalize_for_omnivoice",
+        lambda text: (text, {"unmapped_english": ["gpu", "ai", "cuda", "vram", "UNKNOWN_TERM"]}),
+    )
+    violations = lint_text("Chạy mô hình trên GPU.")
+    assert len(violations) == 1
+    assert "UNKNOWN_TERM" in violations[0]
+    assert not any(x in violations[0] for x in ("'gpu'", "'ai'", "'cuda'", "'vram'"))
+
+
+def test_phonetic_linter_symlink_confinement(tmp_path):
+    """Verify symlink pointing outside repository is rejected with exit code 2."""
+    symlink_outside = tmp_path / "symlink_to_external"
+    symlink_outside.symlink_to("/tmp")
+    cmd = [sys.executable, str(LINTER_SCRIPT), "--dir", str(symlink_outside)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 2
+    assert "CWE-22 guard" in result.stdout or "CWE-22 guard" in result.stderr
+

@@ -28,6 +28,7 @@ from tts_pronunciation import normalize_for_omnivoice
 APPROVED_ACRONYMS: frozenset[str] = frozenset({
     "AI", "ECE", "GPU", "CUDA", "LLM", "API", "CPU", "RAM", "SRT", "TTS", "VRAM", "RL", "OODA"
 })
+_APPROVED_ACRONYMS_UPPER: frozenset[str] = frozenset(a.upper() for a in APPROVED_ACRONYMS)
 
 def lint_text(text: str, filename: str = "") -> list[str]:
     violations: list[str] = []
@@ -52,8 +53,8 @@ def lint_text(text: str, filename: str = "") -> list[str]:
     else:
         unmapped = report.get("unmapped_english", [])
     
-    # Filter out approved acronyms strictly by exact case match
-    filtered_unmapped = [term for term in unmapped if term not in APPROVED_ACRONYMS]
+    # Filter out approved acronyms case-insensitively against dictionary
+    filtered_unmapped = [term for term in unmapped if term.upper() not in _APPROVED_ACRONYMS_UPPER]
         
     if filtered_unmapped:
         violations.append(f"Phát hiện thuật ngữ tiếng Anh / từ viết tắt trơ trọi chưa qua từ điển: {filtered_unmapped}")
@@ -95,12 +96,12 @@ def main():
     args = parser.parse_args()
 
     REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+    SCRIPTS_ROOT = SCRIPTS_DIR.resolve()
 
-    # CWE-22 Path Traversal & Confinement Guard: validate both --dir and --episode
+    # CWE-22 Path Traversal & Canonical Confinement Guard (Python 3.9+ is_relative_to)
     if args.dir:
         ep_dir = Path(args.dir).resolve()
-        # Confine directory under repository root
-        if REPO_ROOT not in ep_dir.parents and ep_dir != REPO_ROOT:
+        if not ep_dir.is_relative_to(REPO_ROOT):
             print(f"❌ Thư mục nằm ngoài phạm vi cho phép (CWE-22 guard): {ep_dir}")
             sys.exit(2)
         if not ep_dir.is_dir():
@@ -110,8 +111,8 @@ def main():
         if not re.fullmatch(r"[A-Za-z0-9_\-]+", args.episode):
             print(f"❌ Tên tập không hợp lệ (CWE-22 path traversal guard): {args.episode!r}")
             sys.exit(2)
-        ep_dir = (SCRIPTS_DIR / f"episode_logistics_{args.episode}").resolve()
-        if SCRIPTS_DIR not in ep_dir.parents and ep_dir != SCRIPTS_DIR:
+        ep_dir = (SCRIPTS_ROOT / f"episode_logistics_{args.episode}").resolve()
+        if not ep_dir.is_relative_to(SCRIPTS_ROOT):
             print(f"❌ Thư mục tập nằm ngoài phạm vi scripts: {ep_dir}")
             sys.exit(2)
 
