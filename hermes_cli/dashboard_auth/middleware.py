@@ -39,7 +39,7 @@ from hermes_cli.dashboard_auth.cookies import (
     set_session_provider_cookie,
     set_sso_attempt_cookie,
 )
-from hermes_cli.dashboard_auth.public_paths import PUBLIC_API_PATHS
+from hermes_cli.dashboard_auth.public_paths import PUBLIC_API_PATHS, is_public_api_path
 
 _log = logging.getLogger(__name__)
 
@@ -79,15 +79,15 @@ def _matches_gate_prefix(clean_path: str, prefix: str) -> bool:
     return clean_path.startswith(norm_prefix + "/")
 
 
-def _path_is_public(path: str) -> bool:
+def _path_is_public(path: str, method: str = "GET") -> bool:
     """True if ``path`` bypasses the OAuth auth gate.
 
     Two sources of public-ness:
 
     * :data:`PUBLIC_API_PATHS` — the shared ``/api/*`` allowlist that
       the legacy ``_SESSION_TOKEN`` middleware also honours. Matched
-      exactly (no prefix expansion) so adding ``/api/status`` doesn't
-      accidentally expose ``/api/status/secret-extension``.
+      via canonical normalization and method checking so adding
+      ``/api/status`` doesn't accidentally expose ``/api/status/secret-extension``.
     * :data:`_GATE_PUBLIC_PREFIXES` — auth-bootstrap routes and static
       mounts. Segment-prefix-matched so ``/assets/foo.css`` lights up via
       ``/assets/``, while preventing ``/loginadmin`` from matching ``/login``.
@@ -104,7 +104,7 @@ def _path_is_public(path: str) -> bool:
     except Exception:
         return False
 
-    if clean_path in PUBLIC_API_PATHS:
+    if is_public_api_path(clean_path, method):
         return True
     return any(
         _matches_gate_prefix(clean_path, prefix)
@@ -366,7 +366,7 @@ async def gated_auth_middleware(
         return await call_next(request)
 
     path = request.url.path
-    if _path_is_public(path):
+    if _path_is_public(path, request.method):
         return await call_next(request)
 
     # RFC 8252 native-app bearer path (goal: no session cookies). The desktop

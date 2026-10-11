@@ -29,32 +29,114 @@ If a new endpoint doesn't pass all three tests, it should be gated and
 the SPA should bootstrap it after login instead.
 """
 from __future__ import annotations
+from typing import NamedTuple
 
-PUBLIC_API_PATHS: frozenset[str] = frozenset({
-    # Minimal process liveness probe for desktop/backend boot handshakes. It
-    # intentionally avoids gateway config, platform discovery, MCP setup, and
-    # host-local detail so readiness checks cannot spend their budget inside
-    # cold plugin imports.
-    "/api/health",
-    # Liveness probe target. Returns version, gateway state, active
-    # session count, and the dashboard auth-gate shape. No bodies, no
-    # session content, no secrets. Documented as the portal's wildcard
-    # liveness probe in
-    # ``docs/agent-dashboard-public-url-contract.md`` (NAS side).
-    "/api/status",
-    # Read-only config-defaults / schema feeds for the SPA's Config page.
-    "/api/config/defaults",
-    "/api/config/schema",
-    # Read-only model metadata (context windows, etc.) — same shape as
-    # provider catalogs already exposed on the public internet.
-    "/api/model/info",
-    # Read-only theme + plugin manifests for the dashboard skin engine.
-    "/api/dashboard/themes",
-    "/api/dashboard/plugins",
-    # Chronos managed-cron fire webhook (NAS -> agent). NOT cookie-gated: it
-    # carries its own short-lived NAS-minted JWT (purpose=cron_fire), which the
-    # handler verifies as the real auth. Must bypass the dashboard auth gate so
-    # the NAS relay's bearer-only callback reaches the verifier instead of a
-    # 401 no_cookie. The JWT — not this allowlist — is the security boundary.
-    "/api/cron/fire",
-})
+
+class PublicPathSpec(NamedTuple):
+    """Specification and audit contract for an unauthenticated public route."""
+    path: str
+    reason: str
+    owner: str
+    allowed_methods: tuple[str, ...] = ("GET",)
+
+
+PUBLIC_API_PATH_SPECS: tuple[PublicPathSpec, ...] = (
+    PublicPathSpec(
+        path="/api/health",
+        reason="Minimal process liveness probe for desktop/backend boot handshakes",
+        owner="core-infra",
+        allowed_methods=("GET",),
+    ),
+    PublicPathSpec(
+        path="/api/status",
+        reason="Liveness probe target for portal wildcard monitoring",
+        owner="core-infra",
+        allowed_methods=("GET",),
+    ),
+    PublicPathSpec(
+        path="/api/config/defaults",
+        reason="Read-only config defaults feed for unauthenticated SPA setup",
+        owner="frontend-spa",
+        allowed_methods=("GET",),
+    ),
+    PublicPathSpec(
+        path="/api/config/schema",
+        reason="Read-only JSON schema feed for config editor",
+        owner="frontend-spa",
+        allowed_methods=("GET",),
+    ),
+    PublicPathSpec(
+        path="/api/model/info",
+        reason="Read-only model metadata and context window specifications",
+        owner="models-team",
+        allowed_methods=("GET",),
+    ),
+    PublicPathSpec(
+        path="/api/dashboard/themes",
+        reason="Read-only theme manifest for pre-login styling",
+        owner="frontend-spa",
+        allowed_methods=("GET",),
+    ),
+    PublicPathSpec(
+        path="/api/dashboard/plugins",
+        reason="Read-only plugin manifests for client UI bootstrapping",
+        owner="frontend-spa",
+        allowed_methods=("GET",),
+    ),
+    PublicPathSpec(
+        path="/api/cron/fire",
+        reason="Chronos webhook callback; authenticated via independent short-lived JWT token",
+        owner="scheduler",
+        allowed_methods=("POST",),
+    ),
+    PublicPathSpec(
+        path="/api/trae/status",
+        reason="Trae Autopilot read-only telemetry and health status probe",
+        owner="trae-agent",
+        allowed_methods=("GET",),
+    ),
+)
+
+PUBLIC_API_PATHS: frozenset[str] = frozenset(spec.path for spec in PUBLIC_API_PATH_SPECS)
+
+
+def normalize_api_path(path: str) -> str:
+    """Normalize a request path for consistent security boundary evaluation.
+
+    Decodes URL-encoded octets (e.g. %2e%2e) and resolves posix traversal
+    dots, double slashes, and trailing slashes. Fails closed to empty string
+    on any malformed input or decoding error.
+    """
+    if not path or not isinstance(path, str):
+        return ""
+    try:
+        from urllib.parse import unquote
+        import posixpath
+        unquoted = unquote(path)
+        while unquoted.startswith("//"):
+            unquoted = unquoted[1:]
+        cleaned = posixpath.normpath(unquoted).rstrip("/") or "/"
+        if cleaned.startswith("//"):
+            cleaned = "/" + cleaned.lstrip("/")
+        return cleaned
+    except Exception:
+        return ""
+
+
+def is_public_api_path(path: str, method: str = "GET") -> bool:
+    """Check whether a request path and HTTP method match an allowed public route spec.
+
+    Fails closed: only paths explicitly registered in PUBLIC_API_PATH_SPECS with
+    an allowed method return True. Path is normalized before matching to prevent
+    traversal bypasses.
+    """
+    clean = normalize_api_path(path)
+    if not clean:
+        return False
+    norm_method = (method or "GET").upper()
+    for spec in PUBLIC_API_PATH_SPECS:
+        if spec.path == clean:
+            return norm_method in spec.allowed_methods
+    return False
+
+

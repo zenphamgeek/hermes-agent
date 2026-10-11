@@ -409,6 +409,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 from hermes_cli.dashboard_auth.public_paths import (
     PUBLIC_API_PATHS as _PUBLIC_API_PATHS,
+    is_public_api_path as _is_public_api_path,
 )
 
 
@@ -541,6 +542,10 @@ def _is_accepted_host(host_header: str, bound_host: str) -> bool:
     # (requires --insecure per web_server.start_server). No Host-layer
     # defence can protect that mode; rely on operator network controls.
     if bound_host in {"0.0.0.0", "::"}:
+        return True
+
+    # Accept trusted reverse proxy domains (e.g. hma.thapsang.com, *.thapsang.com, *.mojo.vn, LXD bridge)
+    if host_only in {"hma.thapsang.com", "thapsang.com", "10.123.214.1"} or host_only.endswith(".thapsang.com") or host_only.endswith(".mojo.vn"):
         return True
 
     # Loopback bind: accept the loopback names
@@ -678,13 +683,15 @@ async def auth_middleware(request: Request, call_next):
     if getattr(request.app.state, "auth_required", False):
         return await call_next(request)
     path = request.url.path
+    method = request.method
     is_mcp_oauth_callback = path.startswith("/api/mcp/oauth/callback/")
-    if path.startswith("/api/") and path not in _PUBLIC_API_PATHS and not is_mcp_oauth_callback:
-        if not _has_valid_session_token(request) and not _has_valid_query_token(request, path):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Unauthorized"},
-            )
+    if path.startswith("/api/") and not is_mcp_oauth_callback:
+        if not _is_public_api_path(path, method):
+            if not _has_valid_session_token(request) and not _has_valid_query_token(request, path):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Unauthorized"},
+                )
     return await call_next(request)
 
 
@@ -3560,6 +3567,211 @@ async def get_system_stats():
             pass
 
     return info
+
+# ---------------------------------------------------------------------------
+# Trae Autopilot endpoints — Linux autonomous unblocker & status controls.
+# Multi-window aware: actions can target a specific project by name.
+# ---------------------------------------------------------------------------
+
+
+def _get_trae_controller():
+    """Lazy-load TraeCDPController from the trae-controller package."""
+    trae_pkg = Path("/home/zen/workspace/trae-controller")
+    if str(trae_pkg) not in sys.path:
+        sys.path.insert(0, str(trae_pkg))
+    from trae_controller.core import TraeCDPController  # type: ignore
+    return TraeCDPController()
+
+
+@app.get("/api/trae/status")
+async def get_trae_status():
+    """Returns the live state of Trae Autopilot, CDP connection, and per-project status."""
+    import json
+    from pathlib import Path
+    import urllib.request
+
+    state_file = Path.home() / ".hermes/autopilot.json"
+    state = {
+        "enabled": True,
+        "interval_seconds": 600,
+        "status": "idle",
+        "cdp_connected": False,
+        "port": 9339,
+        "last_scan_at": 0,
+        "last_unblock_at": 0,
+        "last_action": "None",
+        "last_error": None,
+        "projects": {},
+    }
+    if state_file.exists():
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                state.update(json.load(f))
+        except Exception:
+            pass
+
+    cdp_ok = False
+    port = state.get("port", 9339)
+    for p in [port, 9339, 9222]:
+        try:
+            req = urllib.request.Request(f"http://localhost:{p}/json/list", headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=0.8) as r:
+                targets = json.loads(r.read().decode("utf-8"))
+            pages = [t for t in targets if t.get("type") == "page" or t.get("webSocketDebuggerUrl")]
+            if pages:
+                cdp_ok = True
+                port = p
+                break
+        except Exception:
+            pass
+
+    state["cdp_connected"] = cdp_ok
+    state["port"] = port
+
+    # Enrich with live per-project status from CDP
+    if cdp_ok:
+        try:
+            controller = _get_trae_controller()
+            live_projects = controller.get_all_projects_status()
+            # Merge live data into persisted project state
+            existing_projects = state.get("projects", {})
+            for proj_name, live_status in live_projects.items():
+                merged = existing_projects.get(proj_name, {})
+                merged.update(live_status)
+                existing_projects[proj_name] = merged
+            state["projects"] = existing_projects
+        except Exception:
+            pass
+
+    return state
+
+
+@app.post("/api/trae/toggle")
+async def toggle_trae_autopilot(request: Request):
+    """Blocked: Hermes must never start the Trae autopilot.
+
+    autopilot.json is owned by the Trae Autopilot Extension (trae-controller);
+    writing it here would override the extension and race its daemon. The
+    extension is the only controller.
+    """
+    return {"ok": True, "enabled": False, "blocked": True,
+            "message": "Hermes autopilot bị vô hiệu hóa; Trae Autopilot Extension là bộ điều khiển duy nhất."}
+
+
+@app.post("/api/trae/unblock")
+async def trigger_trae_unblock(request: Request):
+    """Trigger single-pass unblock on Trae IDE, optionally targeting a specific project."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    project = body.get("project") if body else None
+    if not project:
+        return {"ok": False, "error": "PROJECT_REQUIRED"}
+
+    try:
+        controller = _get_trae_controller()
+        res = controller.scan_and_unblock_all(project=project)
+        return {"ok": bool(res.get("ok", res.get("unblocked", False))), "result": res}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trae/send")
+async def send_trae_chat(request: Request):
+    """Send text to exactly one explicitly selected Trae project."""
+    try:
+        body = await request.json()
+        message = body.get("message", "Tiếp tục tasks")
+        project = body.get("project")
+    except Exception:
+        return {"ok": False, "error": "INVALID_JSON"}
+    if not project:
+        return {"ok": False, "error": "PROJECT_REQUIRED"}
+    if not isinstance(message, str) or not message.strip():
+        return {"ok": False, "error": "MESSAGE_REQUIRED"}
+
+    try:
+        controller = _get_trae_controller()
+        res = controller.inject_text_and_send(message, project=project)
+        return {"ok": bool(res.get("ok", False)), "result": res}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trae/new-task")
+async def trigger_trae_new_task(request: Request):
+    """Trigger New Task (Ctrl+Alt+N) on a specific Trae project window."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    project = body.get("project") if body else None
+    if not project:
+        return {"ok": False, "error": "PROJECT_REQUIRED"}
+
+    try:
+        controller = _get_trae_controller()
+        res = controller.trigger_new_task(project=project)
+        return {"ok": res.get("ok", False), "result": res}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trae/smart-unblock")
+async def trigger_trae_smart_unblock(request: Request):
+    """Context-aware unblock: extract chat context, generate smart prompt, inject & send."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    project = body.get("project") if body else None
+    if not project:
+        return {"ok": False, "error": "PROJECT_REQUIRED"}
+
+    try:
+        controller = _get_trae_controller()
+        res = controller.smart_unblock(project=project)
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/trae/elements")
+async def scan_trae_elements(request: Request):
+    """Scan Trae chat panel for interactive elements (buttons, alerts) for remote clicking."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    project = body.get("project") if body else None
+
+    try:
+        controller = _get_trae_controller()
+        res = controller.scan_interactive_elements(project=project)
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e), "elements": []}
+
+
+@app.post("/api/trae/click")
+async def click_trae_element(request: Request):
+    """Click a specific interactive element by index (from /api/trae/elements scan)."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    index = body.get("index", 0) if body else 0
+    project = body.get("project") if body else None
+    if not project:
+        return {"ok": False, "error": "PROJECT_REQUIRED"}
+
+    try:
+        controller = _get_trae_controller()
+        res = controller.click_element_by_index(index, project=project)
+        return res
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 # ---------------------------------------------------------------------------
