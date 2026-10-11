@@ -2650,3 +2650,77 @@ export interface PluginProvidersPutRequest {
   memory_provider?: string;
   context_engine?: string;
 }
+
+// ── Trae Autopilot Client Endpoints ──────────────────────────────────
+
+export interface TraeProjectStatus {
+  online?: boolean;
+  is_generating?: boolean;
+  active_file?: string;
+  title?: string;
+  page_count?: number;
+  cdp_id?: string;
+  project?: string;
+  port?: number;
+  last_unblock_at?: number;
+  last_smart_prompt?: string;
+  unblock_count?: number;
+}
+
+export interface TraeAutopilotStatus {
+  enabled: boolean;
+  interval_seconds: number;
+  status: string;
+  cdp_connected: boolean;
+  port: number;
+  last_scan_at: number;
+  last_unblock_at: number;
+  last_action: string;
+  last_error: string | null;
+  projects: Record<string, TraeProjectStatus>;
+}
+
+export async function fetchTraeStatus(): Promise<TraeAutopilotStatus> {
+  return fetchJSON<TraeAutopilotStatus>("/api/trae/status");
+}
+
+export async function toggleTraeAutopilot(enabled?: boolean): Promise<{ ok: boolean; enabled: boolean; status: string }> {
+  return fetchJSON<{ ok: boolean; enabled: boolean; status: string }>("/api/trae/toggle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: enabled !== undefined ? JSON.stringify({ enabled }) : "{}",
+  });
+}
+
+export async function triggerTraeUnblock(project?: string): Promise<{ ok: boolean; result?: any; output?: string; error?: string }> {
+  return fetchJSON<{ ok: boolean; result?: any; output?: string; error?: string }>("/api/trae/unblock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: project || undefined }),
+  });
+}
+
+export async function sendTraeMessage(message: string = "Tiếp tục tasks", project?: string): Promise<{ ok: boolean; result?: any; output?: string; error?: string }> {
+  return fetchJSON<{ ok: boolean; result?: any; output?: string; error?: string }>("/api/trae/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, project: project || undefined }),
+  });
+}
+
+export async function triggerTraeNewTask(project?: string): Promise<{ ok: boolean; result?: any; error?: string }> {
+  return fetchJSON<{ ok: boolean; result?: any; error?: string }>("/api/trae/new-task", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: project || undefined }),
+  });
+}
+
+export async function triggerTraeSmartUnblock(project?: string): Promise<{ ok: boolean; project?: string; smart_prompt?: string; error?: string }> {
+  return fetchJSON<{ ok: boolean; project?: string; smart_prompt?: string; error?: string }>("/api/trae/smart-unblock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: project || undefined }),
+  });
+}
+

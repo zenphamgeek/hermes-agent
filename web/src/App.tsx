@@ -64,6 +64,7 @@ import { ConfirmDialog } from "@nous-research/ui/ui/components/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { SidebarFooter } from "@/components/SidebarFooter";
 import { SidebarStatusStrip, gatewayLine } from "@/components/SidebarStatusStrip";
+import { TraeAutopilotWidget } from "@/components/TraeAutopilotWidget";
 import { useBelowBreakpoint } from "@nous-research/ui/hooks/use-below-breakpoint";
 import { useSidebarStatus } from "@/hooks/useSidebarStatus";
 import { AuthWidget } from "@/components/AuthWidget";
@@ -1052,6 +1053,7 @@ function SidebarSystemActions({
 
       <div className={cn(collapsed && "lg:hidden")}>
         <SidebarStatusStrip status={status} />
+        <TraeAutopilotWidget compact />
       </div>
 
       <GatewayDot collapsed={collapsed} status={status} tooltipWarmRef={tooltipWarmRef} />
