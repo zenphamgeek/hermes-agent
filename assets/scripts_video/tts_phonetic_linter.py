@@ -44,12 +44,16 @@ def lint_text(text: str, filename: str = "") -> list[str]:
     if any(sym in text for sym in ["$", "\\frac", "\\sum", "\\min", "\\max", "\\to"]):
         violations.append("Chứa ký tự LaTeX toán học thô trong văn bản thoại TTS!")
 
-    # 3. Normalization & Unmapped English check
+    # 3. Normalization & Unmapped English check (Fail-Closed contract)
     normalized, report = normalize_for_omnivoice(text)
-    unmapped = report.get("unmapped_english", []) if isinstance(report, dict) else []
+    if not isinstance(report, dict):
+        violations.append(f"Lỗi hợp đồng normalize_for_omnivoice: report không phải dict (nhận {type(report).__name__})")
+        unmapped = []
+    else:
+        unmapped = report.get("unmapped_english", [])
     
-    # Filter out approved acronyms that are naturally read in Vietnamese
-    filtered_unmapped = [term for term in unmapped if term.upper() not in APPROVED_ACRONYMS]
+    # Filter out approved acronyms strictly by exact case match
+    filtered_unmapped = [term for term in unmapped if term not in APPROVED_ACRONYMS]
         
     if filtered_unmapped:
         violations.append(f"Phát hiện thuật ngữ tiếng Anh / từ viết tắt trơ trọi chưa qua từ điển: {filtered_unmapped}")
@@ -90,14 +94,26 @@ def main():
     parser.add_argument("--episode", default="tap_01", help="Episode name (e.g. tap_01, tap_03)")
     args = parser.parse_args()
 
-    # CWE-22 Path Traversal Guard: validate episode name format
+    REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+    # CWE-22 Path Traversal & Confinement Guard: validate both --dir and --episode
     if args.dir:
-        ep_dir = Path(args.dir)
+        ep_dir = Path(args.dir).resolve()
+        # Confine directory under repository root
+        if REPO_ROOT not in ep_dir.parents and ep_dir != REPO_ROOT:
+            print(f"❌ Thư mục nằm ngoài phạm vi cho phép (CWE-22 guard): {ep_dir}")
+            sys.exit(2)
+        if not ep_dir.is_dir():
+            print(f"❌ Thư mục không tồn tại hoặc không phải thư mục (CWE-22 guard): {ep_dir}")
+            sys.exit(2)
     else:
-        if not re.fullmatch(r"^[A-Za-z0-9_\-]+$", args.episode):
+        if not re.fullmatch(r"[A-Za-z0-9_\-]+", args.episode):
             print(f"❌ Tên tập không hợp lệ (CWE-22 path traversal guard): {args.episode!r}")
             sys.exit(2)
-        ep_dir = SCRIPTS_DIR / f"episode_logistics_{args.episode}"
+        ep_dir = (SCRIPTS_DIR / f"episode_logistics_{args.episode}").resolve()
+        if SCRIPTS_DIR not in ep_dir.parents and ep_dir != SCRIPTS_DIR:
+            print(f"❌ Thư mục tập nằm ngoài phạm vi scripts: {ep_dir}")
+            sys.exit(2)
 
     print("=" * 75)
     print(f"🎙️  TTS PHONETIC & PRONUNCIATION LINTER: {ep_dir.name}")
