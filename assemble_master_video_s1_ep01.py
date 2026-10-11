@@ -191,12 +191,18 @@ def main():
     v_stream = next(s for s in probe_data["streams"] if s["codec_type"] == "video")
     a_stream = next(s for s in probe_data["streams"] if s["codec_type"] == "audio")
 
-    assert v_stream["width"] == 2560, f"Expected 2560 width, got {v_stream['width']}"
-    assert v_stream["height"] == 1440, f"Expected 1440 height, got {v_stream['height']}"
-    assert v_stream["r_frame_rate"] == "60/1", f"Expected 60fps, got {v_stream['r_frame_rate']}"
-    assert int(a_stream["sample_rate"]) == 48000, f"Expected 48kHz audio, got {a_stream['sample_rate']}"
-    assert a_stream["channels"] == 2, f"Expected Stereo (2ch), got {a_stream['channels']}"
-    assert 580.0 <= final_dur <= 630.0, f"Expected duration ~600-620s (VieNeu V0-Expression), got {final_dur:.2f}s"
+    if v_stream["width"] != 2560:
+        raise ValueError(f"Expected 2560 width, got {v_stream['width']}")
+    if v_stream["height"] != 1440:
+        raise ValueError(f"Expected 1440 height, got {v_stream['height']}")
+    if v_stream["r_frame_rate"] != "60/1":
+        raise ValueError(f"Expected 60fps, got {v_stream['r_frame_rate']}")
+    if int(a_stream["sample_rate"]) != 48000:
+        raise ValueError(f"Expected 48kHz audio, got {a_stream['sample_rate']}")
+    if a_stream["channels"] != 2:
+        raise ValueError(f"Expected Stereo (2ch), got {a_stream['channels']}")
+    if not (580.0 <= final_dur <= 630.0):
+        raise ValueError(f"Expected duration ~600-620s (VieNeu V0-Expression), got {final_dur:.2f}s")
     print(f"   [✓] Resolution: {v_stream['width']}x{v_stream['height']}")
     print(f"   [✓] Frame Rate: {v_stream['r_frame_rate']}")
     print(f"   [✓] Audio: {a_stream['sample_rate']}Hz, {a_stream['channels']}ch Stereo")

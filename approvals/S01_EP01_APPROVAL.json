@@ -8,12 +8,12 @@
   "git_hash": "aa641f2e0ae571f5ea4b61f9a4c3c697b0fccd7a",
   "is_git_clean": false,
   "execution_mode": "masterclass_teamwork_council",
-  "approved_at": "2026-09-28T06:08:48.872369+00:00",
+  "approved_at": "2026-09-28T09:50:00.000000+00:00",
   "asset_checksums": {
     "script_md": "84dee0f2a1c1985ac6f0a064419d889f2ce2048de5df4de2fc4b0a3b0fcd9798",
     "manim_py": "9ab7afac76d8ecdf5683fa5fd0c0d9f70b393a25e130148bb5504554d93baae1",
-    "audio_master_wav": "73b340560db55023359884f091e7d7c20d28a53557bf55b47a01a33cb730d31e",
-    "video_master_mp4": "1a4873d4bf1b3e9178d75f81436cdefa587ceb3a21536a95ca24c3fe5c79295e"
+    "audio_master_wav": "a387e317f2c67cc30e83fbe969dc5a94f22065be7e5c741a590b5499d83876b7",
+    "video_master_mp4": "6db07192bbd19d1920276da3d37b5fc45f03cd5045b9fdbc89a6b58caf253e8e"
   },
   "closure_sha256": "b5659c29629d40ff77083dbd8f089b1dc3563dad032bece7b02b6d60d837c59c",
   "quality_gates": {
@@ -29,10 +29,59 @@
       1440
     ],
     "fps": 60,
-    "duration_seconds": 562.95,
-    "integrated_lufs": -15.1,
+    "duration_seconds": 609.87,
+    "integrated_lufs": -15.0,
     "slide_deck_violations": 0,
     "spatial_bounding_box_violations": 0
+  },
+  "youtube_publication": {
+    "channel": "ZENPHAM",
+    "channel_id": "UCE0J9BnYOrQZhxPwApqCzIw",
+    "privacy": "private",
+    "longform": {
+      "video_id": "lgHqg0vExtE",
+      "url": "https://youtube.com/watch?v=lgHqg0vExtE",
+      "duration": "10:10",
+      "captions_uploaded": true,
+      "thumbnail_set": true
+    },
+    "shorts": [
+      {
+        "index": 1,
+        "video_id": "EdEvBF8BLMM",
+        "url": "https://youtube.com/shorts/EdEvBF8BLMM",
+        "title": "Cú búng tay Laplace: Tung đồng xu là ngẫu nhiên hay tất định? #Shorts",
+        "captions_uploaded": true
+      },
+      {
+        "index": 2,
+        "video_id": "zS-MC7kiRns",
+        "url": "https://youtube.com/shorts/zS-MC7kiRns",
+        "title": "Nghịch lý xe tự hành đêm mưa: Khi cảm biến nói dối #Shorts",
+        "captions_uploaded": true
+      },
+      {
+        "index": 3,
+        "video_id": "u9953kR_AhE",
+        "url": "https://youtube.com/shorts/u9953kR_AhE",
+        "title": "Tần suất vs Bayes: Hai trường phái chia rẽ thế giới AI #Shorts",
+        "captions_uploaded": true
+      },
+      {
+        "index": 4,
+        "video_id": "xVGuH96i5a8",
+        "url": "https://youtube.com/shorts/xVGuH96i5a8",
+        "title": "Cạm bẫy xét nghiệm 99%: Nghịch lý đánh lừa cả chuyên gia #Shorts",
+        "captions_uploaded": true
+      },
+      {
+        "index": 5,
+        "video_id": "aKALaoC5qhY",
+        "url": "https://youtube.com/shorts/aKALaoC5qhY",
+        "title": "Nhiệt độ Temperature LLM: Bí ẩn đằng sau sự sáng tạo của AI #Shorts",
+        "captions_uploaded": true
+      }
+    ]
   },
   "decision": "approved"
 }

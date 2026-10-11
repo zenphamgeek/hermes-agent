@@ -5,10 +5,10 @@
   "episode_id": "S02_EP22",
   "episode_num": 22,
   "title": "Tập 22: Function Calling — Cầu Nối Giữa AI Và Thế Giới Thực",
-  "git_hash": "14b0771861d93e559b8c9c7840fcab6d7337017b",
+  "git_hash": "303c624bfbebcb19b2654e76ea890e5a4229e1d5",
   "is_git_clean": false,
   "execution_mode": "isolated_atomic",
-  "approved_at": "2026-09-27T20:23:32.697973+00:00",
+  "approved_at": "2026-09-27T20:24:24.491136+00:00",
   "asset_checksums": {
     "script_md": "2896bcbf72e10a7c32e8edcc2fdee1e514d1c84a2bde79c76f2d0707d47d137a",
     "manim_py": "1774648e55875d7fda074c2f7b6587022f0c58379bbda5275fa14a5f5e4514ec",

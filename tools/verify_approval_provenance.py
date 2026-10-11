@@ -94,6 +94,17 @@ def audit_approvals(verbose: bool = False) -> tuple[int, int, list[str]]:
         if not git_hash or len(git_hash) != 40:
             errors.append(f"{f.name}: Malformed or missing git_hash: {git_hash}")
 
+        # 3. Optional dirty_tree_addendum cryptographic validation
+        dirty_tree = data.get("dirty_tree_addendum")
+        if dirty_tree:
+            diff_sha = dirty_tree.get("diff_sha256", "")
+            untracked_sha = dirty_tree.get("untracked_files_sha256", "")
+            hex64_re = re.compile(r"^[0-9a-f]{64}$")
+            if not hex64_re.match(diff_sha):
+                errors.append(f"{f.name}: Malformed or missing diff_sha256 in dirty_tree_addendum: {diff_sha}")
+            if not hex64_re.match(untracked_sha):
+                errors.append(f"{f.name}: Malformed or missing untracked_files_sha256 in dirty_tree_addendum: {untracked_sha}")
+
         if is_clean:
             clean_count += 1
 

@@ -169,6 +169,25 @@
     "decision": {
       "type": "string",
       "enum": ["approved", "rejected"]
+    },
+    "dirty_tree_addendum": {
+      "type": "object",
+      "description": "Cryptographic binding for allowed local worktree modifications when is_git_clean is false",
+      "required": ["diff_sha256", "untracked_files_sha256"],
+      "properties": {
+        "diff_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "untracked_files_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "allow_dirty_authorized_by": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
     }
   }
 }

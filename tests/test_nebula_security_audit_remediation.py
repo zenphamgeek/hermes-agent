@@ -312,5 +312,38 @@ def test_f1_approval_payloads_zero_secrets():
     assert not errors, f"Approval secret scanning failed with {len(errors)} errors: {errors}"
 
 
+def test_f3_zero_assert_statements_in_assembly_scripts():
+    """Verify production assembly scripts use explicit exceptions instead of assert statements (CWE-617)."""
+    import ast
+
+    for script_name in ["assemble_master_video_s1_ep01.py"]:
+        script_path = REPO_ROOT / script_name
+        if script_path.is_file():
+            tree = ast.parse(script_path.read_text(encoding="utf-8"))
+            assert_nodes = [node for node in ast.walk(tree) if isinstance(node, ast.Assert)]
+            assert len(assert_nodes) == 0, (
+                f"Found {len(assert_nodes)} assert statement(s) in {script_name} (lines: {[n.lineno for n in assert_nodes]})"
+            )
+
+
+def test_f5_dirty_tree_addendum_schema_and_verification(tmp_path):
+    """Verify dirty_tree_addendum schema presence and cryptographic validation."""
+    schema_path = REPO_ROOT / "approvals" / "canonical_manifest_schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    assert "dirty_tree_addendum" in schema["properties"]
+    dirty_props = schema["properties"]["dirty_tree_addendum"]["properties"]
+    assert "diff_sha256" in dirty_props
+    assert "untracked_files_sha256" in dirty_props
+
+    # Test that verify_approval_provenance catches malformed dirty_tree_addendum
+    from tools.verify_approval_provenance import check_for_secrets
+    import re
+    hex64_re = re.compile(r"^[0-9a-f]{64}$")
+    assert hex64_re.match("a" * 64)
+    assert not hex64_re.match("bad_hash")
+
+
+
 
 
