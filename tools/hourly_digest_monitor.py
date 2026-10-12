@@ -1079,6 +1079,7 @@ class SelfHealingManager:
     _wrapper_circuit_open_until: float = 0.0
     _wrapper_circuit_open_until_mono: float = 0.0
     _wrapper_circuit_reason: Optional[str] = None
+    _ledger_epoch: int = 0
     _circuit_lock: threading.RLock = threading.RLock()
     _flock_depth: int = 0
     _flock_fd: Optional[int] = None
@@ -1167,15 +1168,51 @@ class SelfHealingManager:
             return fn()
 
     @classmethod
+    def _quarantine_corrupt_ledger(cls, target: Path, now: float, reason_key: str, exc: Optional[Exception] = None) -> None:
+        """
+        Quarantines a corrupt or malformed circuit breaker ledger (CWE-20/CWE-754 DoS defense).
+        Atomically renames target to .{name}.corrupt.{ts}.{token} so subsequent reads don't
+        infinitely loop conservative holds.
+        """
+        cls._ledger_epoch += 1
+        token = cls._token_source(4)
+        quarantine_target = target.with_name(f".{target.name}.corrupt.{int(now)}.{token}")
+        quarantined = False
+        try:
+            os.replace(str(target), str(quarantine_target))
+            quarantined = True
+        except OSError:
+            try:
+                target.unlink(missing_ok=True)
+                quarantined = True
+            except OSError:
+                pass
+
+        logger.warning(
+            json.dumps({
+                "event": "circuit_ledger_corrupt",
+                "target": str(target),
+                "quarantined": quarantined,
+                "quarantine_target": str(quarantine_target) if quarantined else None,
+                "error": type(exc).__name__ if exc else reason_key,
+                "hold_s": cls._CORRUPT_FAILSAFE_HOLD_S,
+                "epoch": cls._ledger_epoch,
+                "ts": now,
+            })
+        )
+
+    @classmethod
     def _load_circuit_ledger(cls, path: Optional[Path] = None, now: Optional[float] = None) -> Tuple[bool, float, int, Optional[str]]:
         """
         Loads and validates persistent circuit breaker ledger (CWE-20 / CWE-377 / CWE-754):
         - When file exists but is corrupt, unreadable, non-dict, or type-confused:
-          Fails to a bounded conservative hold (_CORRUPT_FAILSAFE_HOLD_S = 30.0s) to prevent
-          attackers from bypassing active cooldown by intentionally corrupting the ledger (WARN-1).
+          Quarantines the corrupted file (atomic rename to .{name}.corrupt.{ts}.{token}) and
+          applies a one-shot bounded conservative hold (_CORRUPT_FAILSAFE_HOLD_S = 30.0s).
+          This prevents attackers from resetting active cooldowns AND prevents infinite rolling DoS (Finding 1).
         - Clamps circuit_open_until exceeding now + _MAX_CIRCUIT_WINDOW_S to prevent permanent DoS wedging.
         - Sanitizes reason field (CWE-117) to printable characters and max 256 bytes.
         - Rejects NaN, Inf, and non-numeric values via math.isfinite.
+        - Tracks monotonically increasing epoch generation counter.
         - Returns (is_open, circuit_open_until, failures, reason).
         """
         target = Path(path) if path else cls._circuit_state_file
@@ -1188,41 +1225,21 @@ class SelfHealingManager:
             with open(target, "r", encoding="utf-8") as fh:
                 state = json.load(fh)
         except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
-            logger.warning(
-                json.dumps({
-                    "event": "circuit_ledger_corrupt",
-                    "target": str(target),
-                    "error": type(exc).__name__,
-                    "hold_s": cls._CORRUPT_FAILSAFE_HOLD_S,
-                    "ts": now,
-                })
-            )
+            cls._quarantine_corrupt_ledger(target, now, type(exc).__name__, exc=exc)
             return True, now + cls._CORRUPT_FAILSAFE_HOLD_S, cls.CIRCUIT_MAX_FAILURES, f"corrupt_ledger_hold_{type(exc).__name__}"
 
         if not isinstance(state, dict):
-            logger.warning(
-                json.dumps({
-                    "event": "circuit_ledger_type_confusion",
-                    "target": str(target),
-                    "got_type": type(state).__name__,
-                    "hold_s": cls._CORRUPT_FAILSAFE_HOLD_S,
-                    "ts": now,
-                })
-            )
+            cls._quarantine_corrupt_ledger(target, now, "type_confusion_not_dict")
             return True, now + cls._CORRUPT_FAILSAFE_HOLD_S, cls.CIRCUIT_MAX_FAILURES, "type_confusion_hold_not_dict"
 
         raw_open = state.get("circuit_open_until")
         if not isinstance(raw_open, (int, float)) or isinstance(raw_open, bool) or not math.isfinite(raw_open):
-            logger.warning(
-                json.dumps({
-                    "event": "circuit_ledger_invalid_expiry",
-                    "target": str(target),
-                    "raw_open": str(raw_open),
-                    "hold_s": cls._CORRUPT_FAILSAFE_HOLD_S,
-                    "ts": now,
-                })
-            )
+            cls._quarantine_corrupt_ledger(target, now, "invalid_expiry")
             return True, now + cls._CORRUPT_FAILSAFE_HOLD_S, cls.CIRCUIT_MAX_FAILURES, "invalid_expiry_hold"
+
+        ledger_epoch = state.get("epoch", 0)
+        if isinstance(ledger_epoch, int) and ledger_epoch > cls._ledger_epoch:
+            cls._ledger_epoch = ledger_epoch
 
         failures = state.get("failures", cls.CIRCUIT_MAX_FAILURES)
         if not isinstance(failures, int) or isinstance(failures, bool):
@@ -1268,6 +1285,7 @@ class SelfHealingManager:
             cls._wrapper_circuit_open_until = 0.0
             cls._wrapper_circuit_open_until_mono = 0.0
             cls._wrapper_circuit_reason = None
+            cls._ledger_epoch += 1
             if cls._circuit_state_file and cls._circuit_state_file.exists():
                 try:
                     cls._circuit_state_file.unlink()
@@ -1278,6 +1296,7 @@ class SelfHealingManager:
     def _trip_circuit_breaker(cls, reason: str, errno_val: Optional[int] = None) -> None:
         """Trip circuit breaker with persistent ledger (CWE-362 / cron-cadence DoS defense)."""
         with cls._with_ledger_lock():
+            cls._ledger_epoch += 1
             now = time.time()
             now_mono = time.monotonic()
             cls._wrapper_circuit_open_until = now + cls.CIRCUIT_COOLDOWN_SECONDS
@@ -1288,6 +1307,7 @@ class SelfHealingManager:
                 try:
                     cls._circuit_state_file.parent.mkdir(parents=True, exist_ok=True)
                     state = {
+                        "epoch": cls._ledger_epoch,
                         "tripped_at": now,
                         "circuit_open_until": cls._wrapper_circuit_open_until,
                         "failures": cls._wrapper_failures,
@@ -1357,6 +1377,7 @@ class SelfHealingManager:
                 "is_open": is_open,
                 "cooldown_remaining": cooldown_rem,
                 "reason": reason,
+                "epoch": cls._ledger_epoch,
             }
 
     def __init__(
@@ -1594,6 +1615,11 @@ class SelfHealingManager:
                         0.0,
                     )
                 )
+                reason_detail = SelfHealingManager._wrapper_circuit_reason
+                if reason_detail and ("hold" in reason_detail or "corrupt" in reason_detail or "type_confusion" in reason_detail):
+                    raise RuntimeError(
+                        f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after persistent failure: {reason_detail})"
+                    )
                 raise RuntimeError(
                     f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after repeated failures)"
                 )

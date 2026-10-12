@@ -1620,7 +1620,8 @@ def test_circuit_breaker_persists_across_process_restart(tmp_path):
 
     # Inject fatal errno (ENOSPC) on replace of wrapper/manifest
     def failing_replace(src, dst, *args, **kwargs):
-        if "test_circuit_state" in str(dst) or (isinstance(dst, Path) and dst.name == state_file.name):
+        dst_path = Path(dst)
+        if dst_path.resolve().parent == state_file.resolve().parent and dst_path.name.startswith(state_file.name):
             return orig_replace(src, dst, *args, **kwargs)
         raise OSError(errno.ENOSPC, "Persistent disk full error")
 
@@ -1756,6 +1757,10 @@ def test_corrupt_ledger_applies_conservative_hold_and_emits_siem_event(tmp_path,
     assert 0.0 < status["cooldown_remaining"] <= SelfHealingManager._CORRUPT_FAILSAFE_HOLD_S
     assert "corrupt_ledger_hold" in (status["reason"] or "")
 
+    # Poison must be quarantined away from state_file
+    assert not state_file.exists()
+    assert any("corrupt" in p.name for p in tmp_path.iterdir())
+
     # SIEM audit event 'circuit_ledger_corrupt' was logged
     corrupt_events = [
         json.loads(r.message) for r in caplog.records
@@ -1764,6 +1769,7 @@ def test_corrupt_ledger_applies_conservative_hold_and_emits_siem_event(tmp_path,
     assert len(corrupt_events) >= 1
     assert corrupt_events[0]["event"] == "circuit_ledger_corrupt"
     assert corrupt_events[0]["hold_s"] == SelfHealingManager._CORRUPT_FAILSAFE_HOLD_S
+    assert corrupt_events[0]["quarantined"] is True
 
     # ensure_wrapper_script raises RuntimeError during conservative hold
     with pytest.raises(RuntimeError, match="Wrapper reconciliation circuit breaker OPEN.*corrupt_ledger_hold"):
@@ -1821,6 +1827,64 @@ def test_type_confusion_ledger_applies_conservative_hold(tmp_path, caplog):
 
     wp, _ = mgr.ensure_wrapper_script()
     assert wp.exists()
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_persistent_corrupt_ledger_quarantines_and_recovers(tmp_path, caplog):
+    """CWE-20/CWE-754: Repeated corrupt reads must not stack holds indefinitely; file is quarantined after first hold."""
+    state_file = tmp_path / "corrupt.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+    state_file.write_text("{not json")
+
+    s1 = SelfHealingManager.get_circuit_status()
+    assert s1["is_open"] is True
+    # Poison must be quarantined, not left to re-trigger rolling holds
+    assert not state_file.exists()
+    assert any("corrupt" in p.name for p in tmp_path.iterdir())
+
+    # Fast forward past 30s hold (both wall clock and monotonic)
+    # Once hold elapses, absent ledger must fail CLOSED, not re-hold!
+    with patch("time.monotonic", return_value=time.monotonic() + 35.0):
+        with patch("time.time", return_value=time.time() + 35.0):
+            s2 = SelfHealingManager.get_circuit_status()
+            assert s2["is_open"] is False
+            assert s2["cooldown_remaining"] == 0.0
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_ledger_epoch_increments_monotonically(tmp_path):
+    """Epoch Counter Contract: Ledger generation counter increments on trip, reset, and quarantine."""
+    state_file = tmp_path / "epoch_test_ledger.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    e0 = SelfHealingManager.get_circuit_status()["epoch"]
+
+    # Trip breaker bumps epoch
+    SelfHealingManager._trip_circuit_breaker("epoch_test_trip")
+    e1 = SelfHealingManager.get_circuit_status()["epoch"]
+    assert e1 > e0
+
+    # Persisted ledger carries epoch
+    with open(state_file, "r", encoding="utf-8") as fh:
+        saved = json.load(fh)
+    assert saved["epoch"] == e1
+
+    # Reset bumps epoch
+    SelfHealingManager.reset_circuit_breaker()
+    e2 = SelfHealingManager.get_circuit_status()["epoch"]
+    assert e2 > e1
+
+    # Corrupt ledger quarantine bumps epoch
+    state_file.write_text("corrupted_content")
+    SelfHealingManager.get_circuit_status()
+    e3 = SelfHealingManager.get_circuit_status()["epoch"]
+    assert e3 > e2
 
     SelfHealingManager.reset_circuit_breaker()
     SelfHealingManager.set_circuit_state_file(None)
