@@ -2864,7 +2864,24 @@ def test_scan_char_class_structural_boundaries():
     end_idx, closed = _scan_char_class(s_unterm, 0)
     assert closed is False and end_idx == len(s_unterm), f"Expected ({len(s_unterm)}, False), got {(end_idx, closed)}"
 
+    # 7. POSIX-like token [[:alpha:]] (Python re treats '[:' literally, closing at index 9 -> returns 10)
+    end_idx, closed = _scan_char_class(r"[[:alpha:]]", 0)
+    assert closed is True and end_idx == 10, f"Expected (10, True), got {(end_idx, closed)}"
 
+    # 8. Lone ']' passed at non-zero start_idx on non-'[' character -> closes False without crash
+    s_lone = "abc]def"
+    end_idx, closed = _scan_char_class(s_lone, 3)
+    assert closed is False and end_idx == len(s_lone), f"Expected ({len(s_lone)}, False), got {(end_idx, closed)}"
+
+    # 9. start_idx pointing past end of string -> clamped to len(s) without IndexError
+    s_short = "abc"
+    end_idx, closed = _scan_char_class(s_short, 10)
+    assert closed is False and end_idx == len(s_short), f"Expected ({len(s_short)}, False), got {(end_idx, closed)}"
+
+
+# INVARIANT: every pattern below is rejected by `re` only for char-class
+# termination reasons, so `closed == re_accepts` is a valid oracle. Do not
+# add patterns that `re` rejects for unrelated reasons (bad escapes, bad ranges).
 @pytest.mark.parametrize("pattern", [
     r"[]abc]", r"[^]abc]", r"[\]]x", r"[a-z]", r"[^a-z]",
     r"[\\]", r"[][]", r"[-a]", r"[a-]",
@@ -2887,7 +2904,14 @@ def test_scan_char_class_matches_re_engine(pattern):
 
 
 def test_scan_char_class_combinatorial_fuzzed_corpus():
-    """Metamorphic fuzzed corpus: tests 200+ combinatorial character class patterns against re.compile."""
+    """Metamorphic fuzzed corpus: 168 combinatorial character-class patterns
+    (4 prefixes x 14 bodies x 3 suffixes) differentially checked against re.compile.
+
+    Oracle contract:
+      - re accepts                         -> scanner MUST report closed=True
+      - re rejects 'unterminated'          -> scanner MUST report closed=False
+      - other error (bad escape, etc.)     -> case skipped, coverage floor prevents all-skip
+    """
     prefixes = ["[", "[^", "[]", "[^]"]
     bodies = [
         "", "a", "abc", r"\]", r"\\", r"\[", "-", "^", "0-9",
@@ -2895,25 +2919,33 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
     ]
     suffixes = ["]", "", "x]"]
 
+    meaningful_assertions = 0
     for p in prefixes:
         for b in bodies:
             for s in suffixes:
                 pattern = p + b + s
+                err_msg = None
                 try:
                     re.compile(pattern)
-                    re_accepts = True
-                except re.error:
-                    re_accepts = False
+                except re.error as e:
+                    err_msg = str(e)
 
                 _, closed = _scan_char_class(pattern, 0)
-                if re_accepts:
-                    assert closed is True, f"re accepted valid pattern {pattern!r} but scanner reported unclosed"
-                else:
-                    try:
-                        re.compile(pattern)
-                    except re.error as e:
-                        if "unterminated character set" in str(e):
-                            assert closed is False, f"re rejected {pattern!r} as unterminated, but scanner reported closed"
+                if err_msg is None:
+                    assert closed is True, (
+                        f"re accepted valid pattern {pattern!r} but scanner reported unclosed"
+                    )
+                    meaningful_assertions += 1
+                elif "unterminated character set" in err_msg:
+                    assert closed is False, (
+                        f"re rejected {pattern!r} as unterminated, but scanner reported closed"
+                    )
+                    meaningful_assertions += 1
+
+    # Coverage floor: guard against corpus silently degrading or skipping all assertions
+    assert meaningful_assertions >= 120, (
+        f"fuzz corpus produced only {meaningful_assertions} meaningful assertions; oracle degraded"
+    )
 
 
 def test_zero_unanalyzable_patterns_in_production_notifier():
