@@ -3,6 +3,7 @@ Test Suite for Hermes Agent 24/7 Hourly Digest Monitor, Cronjob Clog & Anomaly D
 Entropy Stream Degradation Scanner, Composite Health Calculator, and Self-Healing Engine.
 """
 
+import ast
 import errno
 try:
     import fcntl
@@ -2918,13 +2919,28 @@ class CharClassFuzzTaxonomy:
     Publishes its generator taxonomy and theoretical accept share so the test oracle
     and the pattern generator stay strictly in lockstep (zero hard-coded magic literals).
     """
+    BASELINE_FINGERPRINT = "67a69cdedb96c8ef1655ded2418b25e3b1ee106254791fd5bdd02113bb2e3715"
     BASELINE_ACCEPTED_COUNT = 109
+    BASELINE_ACCEPTED_COUNT_BY_PY = {
+        (3, 11): 109,
+        (3, 12): 109,
+        (3, 13): 109,
+    }
     prefixes = ("[", "[^", "[]", "[^]")
     bodies = (
         "", "a", "abc", r"\]", r"\\", r"\[", "-", "^", "0-9",
         r"a\]b", r"\\\]", r"\\\\", r"\d", r"\w"
     )
     suffixes = ("]", "", "x]")
+
+    @classmethod
+    def structural_fingerprint(cls) -> str:
+        joined = "\n".join(sorted(cls.generate_patterns()))
+        return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def certified_accept_count(cls):
+        return cls.BASELINE_ACCEPTED_COUNT_BY_PY.get(sys.version_info[:2])
 
     @classmethod
     def total_cases(cls) -> int:
@@ -3221,11 +3237,39 @@ def test_oracle_desync_guard_fires_on_taxonomy_mismatch():
 
 
 def test_taxonomy_accept_count_matches_live_engine():
-    """Nebula Cycle 25: Asserts live re engine accept count matches baseline under running CPython."""
-    live_accepted, total = CharClassFuzzTaxonomy.live_accept_split()
-    assert live_accepted == CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT, (
+    """Nebula Cycle 26 (R2 / CWE-758): Asserts live re engine accept count matches certified baseline under running CPython."""
+    baseline = CharClassFuzzTaxonomy.certified_accept_count()
+    if baseline is None:
+        pytest.skip(
+            f"no certified accept-count baseline for CPython "
+            f"{sys.version_info.major}.{sys.version_info.minor}; recertify before trusting oracle"
+        )
+    live_accepted, _ = CharClassFuzzTaxonomy.live_accept_split()
+    assert live_accepted == baseline, (
         f"re-engine accept-count drift under {sys.version.split()[0]}: "
-        f"live={live_accepted} baseline={CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT}"
+        f"live={live_accepted} baseline={baseline}"
+    )
+
+
+def test_taxonomy_structural_fingerprint_is_stable():
+    """Nebula Cycle 26 (R1 / CWE-693): Asserts combinatorial taxonomy SHA256 structural fingerprint is stable."""
+    assert (
+        CharClassFuzzTaxonomy.structural_fingerprint()
+        == CharClassFuzzTaxonomy.BASELINE_FINGERPRINT
+    )
+
+
+def test_count_preserving_mutation_is_caught_by_fingerprint():
+    """Nebula Cycle 26 (R1 / CWE-693): Asserts count-preserving mutation is caught by structural fingerprint."""
+    class SwappedTaxonomy(CharClassFuzzTaxonomy):
+        bodies = CharClassFuzzTaxonomy.bodies[:-1] + ("z",)
+
+    assert SwappedTaxonomy.total_cases() == CharClassFuzzTaxonomy.total_cases()
+    swap_accepted, _ = SwappedTaxonomy.live_accept_split()
+    assert swap_accepted == CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT
+    assert (
+        SwappedTaxonomy.structural_fingerprint()
+        != CharClassFuzzTaxonomy.BASELINE_FINGERPRINT
     )
 
 
@@ -3665,3 +3709,108 @@ def test_empty_or_none_known_secrets_fallback_to_regex(tmp_path):
     assert "superSecretPass" not in redacted
     assert "dbSecret123" not in redacted
     assert "[REDACTED]" in redacted
+
+
+def test_scanner_and_sanitizer_resilience_on_corrupted_payloads(tmp_path):
+    """Nebula Cycle 26 (R3 / CWE-20): Asserts scanner and sanitizers safely handle malformed/corrupted inputs."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    corrupted_payloads = [
+        "foo\x00\x00\x00bar",
+        r"[\\",
+        "[",
+        "[^",
+        r"[a\\",
+        "legit\udce2record",
+        "A" * 10000,
+        "",
+    ]
+
+    for payload in corrupted_payloads:
+        # 1. _scan_char_class completes without crash and returns valid (int, bool)
+        next_idx, closed = _scan_char_class(payload, 0)
+        assert isinstance(next_idx, int), f"_scan_char_class returned non-int index for {payload!r}"
+        assert isinstance(closed, bool), f"_scan_char_class returned non-bool closed for {payload!r}"
+
+        # 2. analyze_redos_vulnerabilities completes without crash and returns list
+        issues = analyze_redos_vulnerabilities(payload)
+        assert isinstance(issues, list), f"analyze_redos_vulnerabilities returned non-list for {payload!r}"
+
+        # 3. HermesTelegramNotifier.redact_secrets and sanitize_error handle all payloads without crashing
+        redacted = notifier.redact_secrets(payload)
+        assert isinstance(redacted, str), f"redact_secrets returned non-str for {payload!r}"
+        sanitized = notifier.sanitize_error(payload)
+        assert isinstance(sanitized, str), f"sanitize_error returned non-str for {payload!r}"
+
+        # Also verify classmethods directly
+        redacted_cls = HermesTelegramNotifier.redact_secrets(payload)
+        assert isinstance(redacted_cls, str)
+        sanitized_cls = HermesTelegramNotifier.sanitize_error(payload)
+        assert isinstance(sanitized_cls, str)
+
+
+def test_production_monitor_ast_sql_and_subprocess_safety():
+    """Nebula Cycle 26 (R5 / CWE-89 & CWE-78): Static AST verification for SQL injection and command injection safety."""
+    repo_root = Path(__file__).resolve().parent.parent
+    monitor_path = repo_root / "tools" / "hourly_digest_monitor.py"
+    assert monitor_path.is_file(), f"Target source file not found: {monitor_path}"
+
+    tree = ast.parse(monitor_path.read_text(encoding="utf-8"), filename=str(monitor_path))
+
+    execute_calls_inspected = 0
+    subprocess_calls_inspected = 0
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        # 1. SQL Injection audit: .execute(...) calls
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "execute":
+            execute_calls_inspected += 1
+            assert node.args, f"Line {node.lineno}: .execute() called without arguments"
+            query_arg = node.args[0]
+            # Must be an ast.Constant string literal (no f-strings, no % formatting, no .format() calls)
+            assert isinstance(query_arg, ast.Constant) and isinstance(query_arg.value, str), (
+                f"Line {node.lineno}: .execute() query must be an ast.Constant string literal, "
+                f"got {type(query_arg).__name__} (CWE-89 SQL injection risk)"
+            )
+            assert not isinstance(query_arg, ast.JoinedStr), (
+                f"Line {node.lineno}: f-string in SQL query (CWE-89)"
+            )
+            assert not (
+                isinstance(query_arg, ast.BinOp) and isinstance(query_arg.op, ast.Mod)
+            ), f"Line {node.lineno}: % operator formatting in SQL query (CWE-89)"
+
+        # 2. Command Injection audit: subprocess.run(...) / subprocess.Popen(...)
+        is_subprocess_call = False
+        if isinstance(node.func, ast.Attribute) and node.func.attr in ("run", "Popen"):
+            if isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess":
+                is_subprocess_call = True
+        elif isinstance(node.func, ast.Name) and node.func.id in ("run", "Popen"):
+            is_subprocess_call = True
+
+        if is_subprocess_call:
+            subprocess_calls_inspected += 1
+            # shell=True keyword argument must NEVER be present
+            for kw in node.keywords:
+                if kw.arg == "shell":
+                    if isinstance(kw.value, ast.Constant):
+                        assert kw.value.value is False, (
+                            f"Line {node.lineno}: subprocess call explicitly enables shell={kw.value.value} (CWE-78)"
+                        )
+                    else:
+                        pytest.fail(f"Line {node.lineno}: non-constant shell argument passed to subprocess (CWE-78)")
+
+            # Command argument must be an ast.List or ast.Name (structured argv array)
+            assert node.args, f"Line {node.lineno}: subprocess called without command argument"
+            cmd_arg = node.args[0]
+            assert isinstance(cmd_arg, (ast.List, ast.Name)), (
+                f"Line {node.lineno}: subprocess command argument must be an ast.List or ast.Name, "
+                f"got {type(cmd_arg).__name__} (CWE-78 command injection risk)"
+            )
+
+    # Sanity checks: ensure we actually inspected calls and didn't trivially pass
+    assert execute_calls_inspected > 0, "Zero .execute() calls found; AST walk failed or file mutated"
+    assert subprocess_calls_inspected > 0, "Zero subprocess calls found; AST walk failed or file mutated"
