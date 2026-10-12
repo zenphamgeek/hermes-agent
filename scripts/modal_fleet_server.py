@@ -30,8 +30,6 @@ import json
 import logging
 import math
 import os
-
-logger = logging.getLogger("modal_fleet_server")
 import re
 import secrets
 import random
@@ -49,6 +47,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
+
+logger = logging.getLogger("modal_fleet_server")
 
 try:
     from scripts import stealth_passive_monitor
@@ -280,67 +280,24 @@ _PROBE_STATE = (
     if ("stealth_passive_monitor" in globals() and stealth_passive_monitor is not None)
     else globals().get("MONITOR_PROBE_STATE")
 )
-if _PROBE_STATE is None:
-    _PROBE_STATE = {}
-
-DEFAULT_FLEET_POLICY_PATH = Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json"
-
-# Explicit degraded state. Consumers MUST check `_degraded` and refuse operations.
-# Do NOT rely on list wildcards: `excluded` is a blocklist and would fail OPEN.
-_POLICY_DENY_ALL: Dict[str, Any] = {
-    "excluded": [],
-    "deploy_blocked": [],
-    "deploy_ok": [],
-    "routing": {},
-    "overdue_invoice": [],
-    "_degraded": True,
-}
-_REQUIRED_KEYS = ("excluded", "deploy_blocked")
-
-
-def _validate_policy(data: Any, target: Path) -> Dict[str, Any]:
-    if not isinstance(data, dict):
-        raise ValueError(f"CRITICAL: fleet policy at '{target}' is not a JSON object.")
-    missing = [k for k in _REQUIRED_KEYS if k not in data]
-    if missing:
-        raise ValueError(f"CRITICAL: fleet policy at '{target}' missing keys: {missing}")
-    for k in _REQUIRED_KEYS:
-        val = data[k]
-        if not isinstance(val, list) or any(not isinstance(x, str) for x in val):
-            raise ValueError(f"CRITICAL: fleet policy '{k}' must be a list[str] at '{target}'.")
-    return data
-
-
-def load_fleet_policy(policy_path: Optional[Path] = None, *, strict: Optional[bool] = None) -> Dict[str, Any]:
-    """Fail-closed policy loader (CWE-862).
-    strict=True  -> raise on missing/invalid policy (hard fail).
-    strict=False -> trip circuit breaker to _POLICY_DENY_ALL (degraded, operations refused).
-    Default from MODAL_FLEET_POLICY_FAILMODE env ('crash' | 'deny_all'), defaulting to 'crash'.
-    """
-    if strict is None:
-        strict = os.environ.get("MODAL_FLEET_POLICY_FAILMODE", "crash").strip().lower() != "deny_all"
-    target = policy_path or DEFAULT_FLEET_POLICY_PATH
+if _PROBE_STATE is None or not _PROBE_STATE:
     try:
-        if not target.exists():
-            raise FileNotFoundError(f"policy file missing at '{target}'")
-        data = json.loads(target.read_text(encoding="utf-8"))
-        return _validate_policy(data, target)
-    except Exception as e:
-        logger.critical("Fleet policy load failed (mode=%s): %s", "strict" if strict else "degraded", e)
-        if strict:
-            raise RuntimeError(f"CRITICAL: fleet policy unusable at '{target}': {e}") from e
-        return dict(_POLICY_DENY_ALL)
+        _PROBE_STATE = load_probe_state()
+    except Exception:
+        _PROBE_STATE = {}
 
-
-def _policy_degraded(policy: Optional[Dict[str, Any]] = None) -> bool:
-    """Returns True if the policy is in a degraded / tripped state."""
-    pol = policy if policy is not None else FLEET_POLICY
-    return bool(pol.get("_degraded"))
-
-
-FLEET_POLICY = load_fleet_policy()
-FLEET_EXCLUDED = set(FLEET_POLICY.get("excluded", []))
-FLEET_DEPLOY_BLOCKED = set(FLEET_POLICY.get("deploy_blocked", []))
+# Standalone dependency-free fleet policy engine (CWE-862 single source of truth)
+from scripts.fleet_policy import (
+    DEFAULT_FLEET_POLICY_PATH,
+    _POLICY_DENY_ALL,
+    _REQUIRED_KEYS,
+    _validate_policy,
+    load_fleet_policy,
+    _policy_degraded,
+    FLEET_POLICY,
+    FLEET_EXCLUDED,
+    FLEET_DEPLOY_BLOCKED,
+)
 
 CANONICAL_20_PROFILES = [
     # Group 1: just.ask.mr.zen@gmail.com (5)

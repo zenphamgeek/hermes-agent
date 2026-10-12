@@ -144,10 +144,10 @@ class ModalBillingSyncEngine:
 
     def _get_configured_profiles(self) -> List[str]:
         """Profiles from ~/.modal.toml minus fleet-excluded workspaces (output/modal_fleet_policy.json)."""
-        from scripts.modal_fleet_server import load_fleet_policy  # single source of truth
+        from scripts.fleet_policy import load_fleet_policy, _policy_degraded  # dependency-free single source of truth
         policy_path = getattr(self, "fleet_policy_path", None) or (Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json")
         policy = load_fleet_policy(policy_path)
-        if policy.get("_degraded"):
+        if _policy_degraded(policy):
             raise RuntimeError("Fleet policy degraded (fail-closed): refusing to probe any profiles.")
         excl = set(policy.get("excluded", []))
         return [p for p in self._get_configured_profiles_raw() if p not in excl]

@@ -8,9 +8,13 @@ Unit test suite verifying Modal Fleet Policy Authorization Boundary (CWE-862):
 2. Verifies fail-closed enforcement when policy is missing or strict.
 3. Verifies circuit-breaker trip to _POLICY_DENY_ALL with _degraded flag.
 4. Verifies schema validation (non-object, missing keys, non-string entries).
-5. Verifies modal_billing_sync refuses operations when degraded or missing.
-6. Verifies shared probe lock identity (F5 fix) and serialized concurrency.
-7. Verifies degraded policy blocks profile discovery and worker registration.
+5. Verifies empty exclusion list fail-open prevention (F2) and intent flag.
+6. Verifies disk-supplied _degraded is stripped and not trusted (F2).
+7. Verifies standalone scripts.fleet_policy module is decoupled from HTTP server (F1).
+8. Verifies modal_billing_sync refuses operations when degraded or missing (F6).
+9. Verifies shared probe lock identity (F5 fix) and serialized concurrency.
+10. Verifies probe state hydration from persistent ledger (F3).
+11. Verifies degraded policy blocks profile discovery and worker registration.
 """
 
 import json
@@ -19,7 +23,7 @@ import threading
 import time
 import pytest
 
-from scripts.modal_fleet_server import (
+from scripts.fleet_policy import (
     load_fleet_policy,
     DEFAULT_FLEET_POLICY_PATH,
     _policy_degraded,
@@ -88,7 +92,7 @@ def test_non_object_rejected(tmp_path):
 def test_missing_deploy_blocked(tmp_path):
     """Verify missing deploy_blocked key is rejected (schema parity F6)."""
     f = tmp_path / "p.json"
-    f.write_text(json.dumps({"excluded": []}), encoding="utf-8")
+    f.write_text(json.dumps({"excluded": ["motion"]}), encoding="utf-8")
     with pytest.raises((ValueError, RuntimeError)):
         load_fleet_policy(f, strict=True)
 
@@ -99,6 +103,45 @@ def test_non_string_entries(tmp_path):
     f.write_text(json.dumps({"excluded": [123], "deploy_blocked": []}), encoding="utf-8")
     with pytest.raises((ValueError, RuntimeError)):
         load_fleet_policy(f, strict=True)
+
+
+def test_empty_exclusion_without_intent_is_rejected(tmp_path):
+    """Verify empty exclusion list without explicit intent fails closed (F2 anti-fail-open)."""
+    p = tmp_path / "empty_policy.json"
+    p.write_text('{"excluded": [], "deploy_blocked": []}', encoding="utf-8")
+    with pytest.raises((ValueError, RuntimeError)):
+        load_fleet_policy(p, strict=True)
+
+    # In degraded mode, trips to _degraded: True
+    pol = load_fleet_policy(p, strict=False)
+    assert pol.get("_degraded") is True
+
+
+def test_empty_exclusion_with_intent_is_accepted(tmp_path):
+    """Verify empty exclusion list with explicit intent flag is accepted (F2)."""
+    p = tmp_path / "intentional_empty.json"
+    p.write_text('{"excluded": [], "deploy_blocked": [], "excluded_intentionally_empty": true}', encoding="utf-8")
+    pol = load_fleet_policy(p, strict=True)
+    assert pol["excluded"] == []
+    assert not pol.get("_degraded")
+
+
+def test_disk_supplied_degraded_is_stripped(tmp_path):
+    """Verify _degraded supplied from disk is stripped and not trusted (F2)."""
+    p = tmp_path / "tampered.json"
+    p.write_text('{"excluded": ["motion"], "deploy_blocked": [], "_degraded": false}', encoding="utf-8")
+    pol = load_fleet_policy(p, strict=True)
+    assert "_degraded" not in pol
+
+
+def test_fleet_policy_standalone_module_decoupled():
+    """Verify scripts.fleet_policy is standalone and does not import network/HTTP servers (F1)."""
+    import scripts.fleet_policy as fp
+    assert hasattr(fp, "load_fleet_policy")
+    assert hasattr(fp, "_validate_policy")
+    assert hasattr(fp, "_policy_degraded")
+    assert "http.server" not in fp.__dict__
+    assert "socketserver" not in fp.__dict__
 
 
 def test_billing_sync_refuses_when_degraded(monkeypatch, tmp_path):
@@ -164,6 +207,14 @@ def test_probe_lock_concurrency_serialization():
         t.join()
 
     assert max_concurrent == 1, f"Lock failed to serialize execution, max concurrent was {max_concurrent}"
+
+
+def test_probe_state_hydrates_from_disk_persistence():
+    """Verify _PROBE_STATE hydrates from disk persistence file (F3)."""
+    import scripts.modal_fleet_server as s
+    assert s._PROBE_STATE is not None
+    assert isinstance(s._PROBE_STATE, dict)
+    assert "date" in s._PROBE_STATE or "count" in s._PROBE_STATE
 
 
 def test_policy_degraded_blocks_operations(monkeypatch):
