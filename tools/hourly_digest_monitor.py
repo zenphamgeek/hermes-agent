@@ -1077,12 +1077,16 @@ class SelfHealingManager:
 
     _wrapper_failures: int = 0
     _wrapper_circuit_open_until: float = 0.0
+    _wrapper_circuit_open_until_mono: float = 0.0
+    _wrapper_circuit_reason: Optional[str] = None
     _circuit_lock: threading.RLock = threading.RLock()
     _flock_depth: int = 0
     _flock_fd: Optional[int] = None
     _circuit_state_file: Optional[Path] = DEFAULT_CIRCUIT_STATE_FILE
     CIRCUIT_COOLDOWN_SECONDS: float = 300.0  # 5 minutes
     _MAX_CIRCUIT_WINDOW_S: float = 15.0 * 60.0  # 15 minutes max window (CWE-20/377 DoS defense)
+    _CORRUPT_FAILSAFE_HOLD_S: float = 30.0  # 30 seconds conservative hold on corrupt ledger (CWE-20/754 defense)
+    _warned_no_fcntl: bool = False
     CIRCUIT_MAX_FAILURES: int = 3
     TEMP_MAX_RETRIES: int = 5
 
@@ -1100,7 +1104,17 @@ class SelfHealingManager:
         """
         with cls._circuit_lock:
             need_flock_close = False
-            if cls._flock_depth == 0 and fcntl is not None and cls._circuit_state_file:
+            if fcntl is None:
+                if not cls._warned_no_fcntl:
+                    logger.warning(
+                        json.dumps({
+                            "event": "flock_unavailable",
+                            "warning": "fcntl module unavailable on platform; cross-process ledger advisory flock is disabled (relying on atomic temp+replace and in-process RLock)",
+                            "ts": time.time(),
+                        })
+                    )
+                    cls._warned_no_fcntl = True
+            elif cls._flock_depth == 0 and cls._circuit_state_file:
                 lock_path = cls._circuit_state_file.parent / f"{cls._circuit_state_file.name}.lock"
                 try:
                     cls._circuit_state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1155,9 +1169,13 @@ class SelfHealingManager:
     @classmethod
     def _load_circuit_ledger(cls, path: Optional[Path] = None, now: Optional[float] = None) -> Tuple[bool, float, int, Optional[str]]:
         """
-        Loads and validates persistent circuit breaker ledger (CWE-20 / CWE-377):
-        - Fails safe CLOSED on missing file, JSONDecodeError, OSError, non-dict payloads, or invalid types.
+        Loads and validates persistent circuit breaker ledger (CWE-20 / CWE-377 / CWE-754):
+        - When file exists but is corrupt, unreadable, non-dict, or type-confused:
+          Fails to a bounded conservative hold (_CORRUPT_FAILSAFE_HOLD_S = 30.0s) to prevent
+          attackers from bypassing active cooldown by intentionally corrupting the ledger (WARN-1).
         - Clamps circuit_open_until exceeding now + _MAX_CIRCUIT_WINDOW_S to prevent permanent DoS wedging.
+        - Sanitizes reason field (CWE-117) to printable characters and max 256 bytes.
+        - Rejects NaN, Inf, and non-numeric values via math.isfinite.
         - Returns (is_open, circuit_open_until, failures, reason).
         """
         target = Path(path) if path else cls._circuit_state_file
@@ -1170,17 +1188,41 @@ class SelfHealingManager:
             with open(target, "r", encoding="utf-8") as fh:
                 state = json.load(fh)
         except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
-            logger.warning("Circuit ledger corrupt or unreadable (%s), failing safe CLOSED: %s", target, exc)
-            return False, 0.0, 0, None
+            logger.warning(
+                json.dumps({
+                    "event": "circuit_ledger_corrupt",
+                    "target": str(target),
+                    "error": type(exc).__name__,
+                    "hold_s": cls._CORRUPT_FAILSAFE_HOLD_S,
+                    "ts": now,
+                })
+            )
+            return True, now + cls._CORRUPT_FAILSAFE_HOLD_S, cls.CIRCUIT_MAX_FAILURES, f"corrupt_ledger_hold_{type(exc).__name__}"
 
         if not isinstance(state, dict):
-            logger.warning("Circuit ledger payload not a dictionary (got %s), failing safe CLOSED: %s", type(state), target)
-            return False, 0.0, 0, None
+            logger.warning(
+                json.dumps({
+                    "event": "circuit_ledger_type_confusion",
+                    "target": str(target),
+                    "got_type": type(state).__name__,
+                    "hold_s": cls._CORRUPT_FAILSAFE_HOLD_S,
+                    "ts": now,
+                })
+            )
+            return True, now + cls._CORRUPT_FAILSAFE_HOLD_S, cls.CIRCUIT_MAX_FAILURES, "type_confusion_hold_not_dict"
 
         raw_open = state.get("circuit_open_until")
         if not isinstance(raw_open, (int, float)) or isinstance(raw_open, bool) or not math.isfinite(raw_open):
-            logger.warning("Circuit ledger circuit_open_until invalid/non-numeric (%r), failing safe CLOSED: %s", raw_open, target)
-            return False, 0.0, 0, None
+            logger.warning(
+                json.dumps({
+                    "event": "circuit_ledger_invalid_expiry",
+                    "target": str(target),
+                    "raw_open": str(raw_open),
+                    "hold_s": cls._CORRUPT_FAILSAFE_HOLD_S,
+                    "ts": now,
+                })
+            )
+            return True, now + cls._CORRUPT_FAILSAFE_HOLD_S, cls.CIRCUIT_MAX_FAILURES, "invalid_expiry_hold"
 
         failures = state.get("failures", cls.CIRCUIT_MAX_FAILURES)
         if not isinstance(failures, int) or isinstance(failures, bool):
@@ -1203,9 +1245,12 @@ class SelfHealingManager:
         else:
             cooldown = raw_open
 
+        # Sanitize reason field (CWE-117)
+        raw_reason = str(state.get("reason", "unknown"))[:256]
+        clean_reason = "".join(ch for ch in raw_reason if ch.isprintable()) or "unknown"
+
         if now < cooldown:
-            reason = str(state.get("reason", "unknown"))
-            return True, cooldown, failures, reason
+            return True, cooldown, failures, clean_reason
 
         return False, 0.0, failures, None
 
@@ -1221,6 +1266,8 @@ class SelfHealingManager:
         with cls._with_ledger_lock():
             cls._wrapper_failures = 0
             cls._wrapper_circuit_open_until = 0.0
+            cls._wrapper_circuit_open_until_mono = 0.0
+            cls._wrapper_circuit_reason = None
             if cls._circuit_state_file and cls._circuit_state_file.exists():
                 try:
                     cls._circuit_state_file.unlink()
@@ -1232,7 +1279,11 @@ class SelfHealingManager:
         """Trip circuit breaker with persistent ledger (CWE-362 / cron-cadence DoS defense)."""
         with cls._with_ledger_lock():
             now = time.time()
+            now_mono = time.monotonic()
             cls._wrapper_circuit_open_until = now + cls.CIRCUIT_COOLDOWN_SECONDS
+            cls._wrapper_circuit_open_until_mono = now_mono + cls.CIRCUIT_COOLDOWN_SECONDS
+            clean_reason = "".join(ch for ch in str(reason)[:256] if ch.isprintable()) or "unknown"
+            cls._wrapper_circuit_reason = clean_reason
             if cls._circuit_state_file:
                 try:
                     cls._circuit_state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1241,12 +1292,15 @@ class SelfHealingManager:
                         "circuit_open_until": cls._wrapper_circuit_open_until,
                         "failures": cls._wrapper_failures,
                         "errno": errno_val,
-                        "reason": reason,
+                        "reason": clean_reason,
                     }
+                    # Atomic publish: temp file + os.replace to prevent partial-write corruption
+                    token = cls._token_source(8)
+                    tmp_state_file = cls._circuit_state_file.parent / f".{cls._circuit_state_file.name}.tmp.{token}"
                     o_nofollow = getattr(os, "O_NOFOLLOW", 0) or 0
                     o_cloexec = getattr(os, "O_CLOEXEC", 0) or 0
-                    write_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | o_nofollow | o_cloexec
-                    fd = os.open(str(cls._circuit_state_file), write_flags, 0o600)
+                    write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | o_nofollow | o_cloexec
+                    fd = os.open(str(tmp_state_file), write_flags, 0o600)
                     try:
                         try:
                             os.fchmod(fd, 0o600)
@@ -1257,31 +1311,51 @@ class SelfHealingManager:
                         os.fsync(fd)
                     finally:
                         os.close(fd)
-                except OSError:
-                    pass
+                    os.replace(str(tmp_state_file), str(cls._circuit_state_file))
+                except OSError as exc:
+                    logger.warning("Could not persist circuit breaker ledger: %s", exc)
 
     @classmethod
     def get_circuit_status(cls) -> Dict[str, Any]:
         """Thread-safe snapshot of circuit breaker status (checking memory and persistent ledger)."""
         with cls._with_ledger_lock():
             now = time.time()
-            is_open = now < cls._wrapper_circuit_open_until
-            reason = None
+            now_mono = time.monotonic()
+            is_open_mono = (
+                cls._wrapper_circuit_open_until_mono > 0.0
+                and now_mono < cls._wrapper_circuit_open_until_mono
+            )
+            is_open_wall = (now < cls._wrapper_circuit_open_until)
+            is_open = is_open_mono or is_open_wall
+            reason = cls._wrapper_circuit_reason if is_open else None
 
             # Check persistent ledger
             if cls._circuit_state_file:
                 l_open, l_cooldown, l_failures, l_reason = cls._load_circuit_ledger(cls._circuit_state_file, now=now)
                 if l_open:
                     cls._wrapper_circuit_open_until = l_cooldown
+                    cls._wrapper_circuit_open_until_mono = now_mono + max(0.0, l_cooldown - now)
                     cls._wrapper_failures = l_failures
+                    cls._wrapper_circuit_reason = l_reason
                     is_open = True
                     reason = l_reason
+
+            cooldown_rem = 0.0
+            if is_open:
+                if cls._wrapper_circuit_open_until_mono > 0.0:
+                    cooldown_rem = max(
+                        cls._wrapper_circuit_open_until_mono - now_mono,
+                        cls._wrapper_circuit_open_until - now,
+                        0.0,
+                    )
+                else:
+                    cooldown_rem = max(0.0, cls._wrapper_circuit_open_until - now)
 
             return {
                 "failures": cls._wrapper_failures,
                 "circuit_open_until": cls._wrapper_circuit_open_until,
                 "is_open": is_open,
-                "cooldown_remaining": max(0.0, cls._wrapper_circuit_open_until - now),
+                "cooldown_remaining": cooldown_rem,
                 "reason": reason,
             }
 
@@ -1490,12 +1564,8 @@ class SelfHealingManager:
             )
 
         now = time.time()
+        now_mono = time.monotonic()
         with SelfHealingManager._with_ledger_lock():
-            if now < SelfHealingManager._wrapper_circuit_open_until:
-                remaining = int(SelfHealingManager._wrapper_circuit_open_until - now)
-                raise RuntimeError(
-                    f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after repeated failures)"
-                )
             if SelfHealingManager._circuit_state_file:
                 l_open, l_cooldown, l_failures, l_reason = SelfHealingManager._load_circuit_ledger(
                     SelfHealingManager._circuit_state_file,
@@ -1503,11 +1573,30 @@ class SelfHealingManager:
                 )
                 if l_open:
                     SelfHealingManager._wrapper_circuit_open_until = l_cooldown
+                    SelfHealingManager._wrapper_circuit_open_until_mono = now_mono + max(0.0, l_cooldown - now)
                     SelfHealingManager._wrapper_failures = l_failures
-                    remaining = int(l_cooldown - now)
+                    SelfHealingManager._wrapper_circuit_reason = l_reason
+                    remaining = int(max(0.0, l_cooldown - now))
                     raise RuntimeError(
                         f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after persistent failure: {l_reason or 'unknown'})"
                     )
+
+            is_open_mono = (
+                SelfHealingManager._wrapper_circuit_open_until_mono > 0.0
+                and now_mono < SelfHealingManager._wrapper_circuit_open_until_mono
+            )
+            is_open_wall = (now < SelfHealingManager._wrapper_circuit_open_until)
+            if is_open_mono or is_open_wall:
+                remaining = int(
+                    max(
+                        SelfHealingManager._wrapper_circuit_open_until_mono - now_mono,
+                        SelfHealingManager._wrapper_circuit_open_until - now,
+                        0.0,
+                    )
+                )
+                raise RuntimeError(
+                    f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after repeated failures)"
+                )
 
         try:
             dir_fd = self._resolve_scripts_dir_fd()
@@ -1671,6 +1760,7 @@ class SelfHealingManager:
                 with SelfHealingManager._with_ledger_lock():
                     SelfHealingManager._wrapper_failures = 0
                     SelfHealingManager._wrapper_circuit_open_until = 0.0
+                    SelfHealingManager._wrapper_circuit_open_until_mono = 0.0
                     if SelfHealingManager._circuit_state_file and SelfHealingManager._circuit_state_file.exists():
                         try:
                             SelfHealingManager._circuit_state_file.unlink()

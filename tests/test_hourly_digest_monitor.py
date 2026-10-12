@@ -1616,8 +1616,12 @@ def test_circuit_breaker_persists_across_process_restart(tmp_path):
         scripts_dir=scripts_dir,
     )
 
-    # Inject fatal errno (ENOSPC) on replace
-    def failing_replace(*args, **kwargs):
+    orig_replace = os.replace
+
+    # Inject fatal errno (ENOSPC) on replace of wrapper/manifest
+    def failing_replace(src, dst, *args, **kwargs):
+        if "test_circuit_state" in str(dst) or (isinstance(dst, Path) and dst.name == state_file.name):
+            return orig_replace(src, dst, *args, **kwargs)
         raise OSError(errno.ENOSPC, "Persistent disk full error")
 
     with patch("os.replace", side_effect=failing_replace):
@@ -1636,6 +1640,8 @@ def test_circuit_breaker_persists_across_process_restart(tmp_path):
     with SelfHealingManager._circuit_lock:
         SelfHealingManager._wrapper_failures = 0
         SelfHealingManager._wrapper_circuit_open_until = 0.0
+        SelfHealingManager._wrapper_circuit_open_until_mono = 0.0
+        SelfHealingManager._wrapper_circuit_reason = None
 
     new_mgr = SelfHealingManager(
         jobs_path=tmp_path / "jobs.json",
@@ -1724,8 +1730,8 @@ def test_poisoned_ledger_clamps_window_and_logs_siem_event(tmp_path, caplog):
     SelfHealingManager.set_circuit_state_file(None)
 
 
-def test_corrupt_ledger_fails_safe_closed_and_logs_warning(tmp_path, caplog):
-    """CWE-20 / CWE-377: Corrupt/truncated JSON in persistent ledger fails safe CLOSED so self-heal can proceed."""
+def test_corrupt_ledger_applies_conservative_hold_and_emits_siem_event(tmp_path, caplog):
+    """CWE-20 / CWE-754: Corrupt/truncated JSON in persistent ledger triggers bounded conservative hold (30s) and emits SIEM event."""
     import logging
     state_file = tmp_path / "corrupt_ledger.json"
     SelfHealingManager.set_circuit_state_file(state_file)
@@ -1745,23 +1751,40 @@ def test_corrupt_ledger_fails_safe_closed_and_logs_warning(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         status = SelfHealingManager.get_circuit_status()
 
-    # Breaker must fail safe CLOSED
-    assert status["is_open"] is False
-    assert status["cooldown_remaining"] == 0.0
+    # Breaker must apply conservative hold (is_open is True)
+    assert status["is_open"] is True
+    assert 0.0 < status["cooldown_remaining"] <= SelfHealingManager._CORRUPT_FAILSAFE_HOLD_S
+    assert "corrupt_ledger_hold" in (status["reason"] or "")
 
-    # Self-heal / ensure_wrapper_script proceeds without getting blocked
-    wp, digest = mgr.ensure_wrapper_script()
+    # SIEM audit event 'circuit_ledger_corrupt' was logged
+    corrupt_events = [
+        json.loads(r.message) for r in caplog.records
+        if "circuit_ledger_corrupt" in r.message
+    ]
+    assert len(corrupt_events) >= 1
+    assert corrupt_events[0]["event"] == "circuit_ledger_corrupt"
+    assert corrupt_events[0]["hold_s"] == SelfHealingManager._CORRUPT_FAILSAFE_HOLD_S
+
+    # ensure_wrapper_script raises RuntimeError during conservative hold
+    with pytest.raises(RuntimeError, match="Wrapper reconciliation circuit breaker OPEN.*corrupt_ledger_hold"):
+        mgr.ensure_wrapper_script()
+
+    # Explicit reset_circuit_breaker clears ledger and unblocks self-healing
+    SelfHealingManager.reset_circuit_breaker()
+    assert not state_file.exists()
+    status_after_reset = SelfHealingManager.get_circuit_status()
+    assert status_after_reset["is_open"] is False
+    assert status_after_reset["cooldown_remaining"] == 0.0
+
+    wp, _ = mgr.ensure_wrapper_script()
     assert wp.exists()
-
-    # Log was recorded
-    assert any("Circuit ledger corrupt or unreadable" in r.message for r in caplog.records)
 
     SelfHealingManager.reset_circuit_breaker()
     SelfHealingManager.set_circuit_state_file(None)
 
 
-def test_type_confusion_ledger_fails_safe_closed(tmp_path, caplog):
-    """CWE-20 / CWE-377: Type confusion payloads (non-dict, strings, bools, NaN) fail safe CLOSED."""
+def test_type_confusion_ledger_applies_conservative_hold(tmp_path, caplog):
+    """CWE-20 / CWE-754: Type confusion payloads (non-dict, strings, bools, NaN, Inf) apply bounded conservative hold."""
     state_file = tmp_path / "type_confused_ledger.json"
     SelfHealingManager.set_circuit_state_file(state_file)
 
@@ -1778,17 +1801,133 @@ def test_type_confusion_ledger_fails_safe_closed(tmp_path, caplog):
         {"circuit_open_until": "soon", "failures": 3},
         {"circuit_open_until": True, "failures": 3},
         {"circuit_open_until": None, "failures": 3},
+        {"circuit_open_until": float("nan"), "failures": 3},
+        {"circuit_open_until": float("inf"), "failures": 3},
+        {"circuit_open_until": -float("inf"), "failures": 3},
     ]
 
     for payload in bad_payloads:
-        SelfHealingManager.reset_circuit_breaker()
         state_file.write_text(json.dumps(payload), encoding="utf-8")
         status = SelfHealingManager.get_circuit_status()
-        assert status["is_open"] is False, f"Failed safe CLOSED check for {payload}"
+        assert status["is_open"] is True, f"Failed conservative hold check for {payload}"
+        assert 0.0 < status["cooldown_remaining"] <= SelfHealingManager._CORRUPT_FAILSAFE_HOLD_S
+        assert "hold" in (status["reason"] or "")
 
-    # Verify self-healing is not locked out
+    # Reset clears hold and allows self-healing to proceed
+    SelfHealingManager.reset_circuit_breaker()
+    assert not state_file.exists()
+    status_after_reset = SelfHealingManager.get_circuit_status()
+    assert status_after_reset["is_open"] is False
+
     wp, _ = mgr.ensure_wrapper_script()
     assert wp.exists()
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_monotonic_clock_anchoring_prevents_forward_wall_clock_bypass(tmp_path):
+    """CWE-367 / CWE-1244: Forward wall-clock jumps cannot collapse in-process cooldown window."""
+    SelfHealingManager.reset_circuit_breaker()
+    state_file = tmp_path / "monotonic_test_ledger.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+
+    scripts_dir = tmp_path / "scripts_mono_test"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    # Trip breaker
+    SelfHealingManager._trip_circuit_breaker("test_monotonic_trip")
+    initial_status = SelfHealingManager.get_circuit_status()
+    assert initial_status["is_open"] is True
+    assert initial_status["cooldown_remaining"] > 0.0
+
+    # Simulate an attacker or NTP sync jumping wall clock forward by 10,000 seconds
+    wall_now = time.time()
+    with patch("time.time", return_value=wall_now + 10000.0):
+        # Monotonic time is NOT patched, so in-process monotonic cooldown is still active!
+        status_after_clock_jump = SelfHealingManager.get_circuit_status()
+        assert status_after_clock_jump["is_open"] is True, "Circuit collapsed despite monotonic anchor!"
+        assert status_after_clock_jump["cooldown_remaining"] > 0.0
+
+        with pytest.raises(RuntimeError, match="Wrapper reconciliation circuit breaker OPEN"):
+            mgr.ensure_wrapper_script()
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_no_fcntl_logs_warning_and_uses_atomic_replace(tmp_path, caplog, monkeypatch):
+    """CWE-362: When fcntl is None, single structured warning is logged, and ledger is published via atomic replace."""
+    import logging
+    state_file = tmp_path / "no_fcntl_ledger.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager._warned_no_fcntl = False
+
+    # Monkeypatch fcntl in module
+    import tools.hourly_digest_monitor as hdm
+    monkeypatch.setattr(hdm, "fcntl", None)
+
+    with caplog.at_level(logging.WARNING):
+        SelfHealingManager._trip_circuit_breaker("test_no_fcntl_trip")
+
+    # Verify single structured warning 'flock_unavailable' was logged
+    flock_warns = [
+        json.loads(r.message) for r in caplog.records
+        if "flock_unavailable" in r.message
+    ]
+    assert len(flock_warns) == 1
+    assert flock_warns[0]["event"] == "flock_unavailable"
+
+    # Trip again; verify _warned_no_fcntl prevents duplicate warning spam
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        SelfHealingManager._trip_circuit_breaker("test_no_fcntl_second_trip")
+    assert not any("flock_unavailable" in r.message for r in caplog.records)
+
+    # Verify state file was written atomically and can be read
+    assert state_file.exists()
+    status = SelfHealingManager.get_circuit_status()
+    assert status["is_open"] is True
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_reason_sanitization_strips_control_characters_and_bounds_length(tmp_path):
+    """CWE-117: Persisted reason field is bounded to 256 chars and stripped of non-printable characters."""
+    state_file = tmp_path / "sanitize_reason_ledger.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    # Injected reason with ANSI escape code, control chars, newlines, and 500 characters
+    malicious_reason = "\x1b[31;1mCRITICAL_INJECTION\x00\r\n\x08" + "B" * 500
+
+    SelfHealingManager._trip_circuit_breaker(malicious_reason)
+
+    assert state_file.exists()
+    with open(state_file, "r", encoding="utf-8") as fh:
+        saved_state = json.load(fh)
+
+    clean_reason = saved_state["reason"]
+    # 1. Bounded to at most 256 characters
+    assert len(clean_reason) <= 256
+    # 2. Only printable characters allowed
+    assert all(ch.isprintable() for ch in clean_reason)
+    assert "\x00" not in clean_reason
+    assert "\r" not in clean_reason
+    assert "\n" not in clean_reason
+    assert "\x1b" not in clean_reason
+    assert "CRITICAL_INJECTION" in clean_reason
+
+    # 3. Reading status also preserves clean reason
+    status = SelfHealingManager.get_circuit_status()
+    assert status["reason"] == clean_reason
 
     SelfHealingManager.reset_circuit_breaker()
     SelfHealingManager.set_circuit_state_file(None)
