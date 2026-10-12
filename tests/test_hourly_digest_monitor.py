@@ -2222,6 +2222,71 @@ def test_epoch_monotonicity_persists_across_process_restart(tmp_path):
     SelfHealingManager.set_circuit_state_file(None)
 
 
+def test_html_entity_escaping_prevents_telegram_parse_errors(tmp_path):
+    """CWE-116: User-controlled and error strings in Telegram alerts are escaped with html.escape."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    # Injected strings with HTML tags, ampersands, quotes, and brackets
+    malicious_scan = {
+        "overall_health_score": 30,
+        "severity": "CRITICAL",
+        "cron": {
+            "cron_health_score": 10,
+            "clogged_jobs": [
+                {
+                    "job_name": "job<script>alert(1)</script>&foo",
+                    "consecutive_failures": 5,
+                    "last_error": "SyntaxError: <unknown> & unescaped 'quotes' \"here\"",
+                }
+            ],
+            "drift_skipped_jobs": [
+                {
+                    "job_name": "drift<style>body{display:none}</style>&bar",
+                    "model_snapshot": "snapshot&v=1<test>",
+                }
+            ],
+            "auth_failed_jobs": [
+                {
+                    "job_name": "auth&job<img src=x onerror=alert(2)>",
+                    "last_error": "Token expired & invalid_grant <details>",
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": True, "age_seconds": 150.0},
+        },
+        "entropy": {
+            "entropy_health_score": 20,
+            "streams": [
+                {
+                    "name": "Stock News & Feeds <inject>",
+                    "status": "CRITICAL",
+                    "hours_since_crawl": 99.0,
+                    "articles_24h": 0,
+                    "unique_symbols": 0,
+                }
+            ],
+        },
+    }
+
+    alert_html = notifier.format_urgent_alert(malicious_scan)
+    # Raw unescaped dangerous tags must NOT be present
+    assert "<script>" not in alert_html
+    assert "</script>" not in alert_html
+    assert "<style>" not in alert_html
+    assert "<img" not in alert_html
+    assert "<inject>" not in alert_html
+    # Escaped tags must be present
+    assert "&lt;script&gt;" in alert_html
+    assert "&amp;foo" in alert_html
+    assert "&amp; invalid_grant" in alert_html
+
+    digest_html = notifier.format_hourly_digest(malicious_scan)
+    assert "<inject>" not in digest_html
+    assert "&lt;inject&gt;" in digest_html
+
+
+
 
 
 

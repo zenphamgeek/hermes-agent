@@ -30,6 +30,7 @@ try:
 except ImportError:
     fcntl = None
 import hashlib
+import html
 import json
 import logging
 import math
@@ -943,9 +944,10 @@ class HermesTelegramNotifier:
         if clogged:
             lines.append(f"⛔ <b>Clogged Cron Jobs ({len(clogged)}):</b>")
             for c in clogged:
-                err = (c.get("last_error") or "").replace("<", "&lt;").replace(">", "&gt;")[:120]
+                job_name = html.escape(str(c.get("job_name", "")))
+                err = html.escape(str(c.get("last_error") or ""))[:120]
                 lines.append(
-                    f"• <code>{c.get('job_name')}</code>: {c.get('consecutive_failures')} fails. "
+                    f"• <code>{job_name}</code>: {c.get('consecutive_failures')} fails. "
                     f"<i>{err}</i>"
                 )
             lines.append("")
@@ -953,8 +955,10 @@ class HermesTelegramNotifier:
         if drifted:
             lines.append(f"⚠️ <b>Drift-Skipped Cron Jobs ({len(drifted)}):</b>")
             for d in drifted:
+                job_name = html.escape(str(d.get("job_name", "")))
+                snap = html.escape(str(d.get("model_snapshot", "")))
                 lines.append(
-                    f"• <code>{d.get('job_name')}</code>: snapshot={d.get('model_snapshot')} "
+                    f"• <code>{job_name}</code>: snapshot={snap} "
                     f"(unpinned, silent-skip)"
                 )
             lines.append("")
@@ -962,8 +966,9 @@ class HermesTelegramNotifier:
         if auth_failed:
             lines.append(f"🔑 <b>Authentication Failures ({len(auth_failed)}):</b>")
             for a in auth_failed:
-                err = (a.get("last_error") or "").replace("<", "&lt;").replace(">", "&gt;")[:100]
-                lines.append(f"• <code>{a.get('job_name')}</code>: <i>{err}</i>")
+                job_name = html.escape(str(a.get("job_name", "")))
+                err = html.escape(str(a.get("last_error") or ""))[:100]
+                lines.append(f"• <code>{job_name}</code>: <i>{err}</i>")
             lines.append("")
 
         if ticker.get("is_stale"):
@@ -973,8 +978,8 @@ class HermesTelegramNotifier:
         if stalled_streams:
             lines.append(f"🌪️ <b>Degraded / Stalled Entropy Streams ({len(stalled_streams)}):</b>")
             for s in stalled_streams:
-                st = s.get("status")
-                name = s.get("name")
+                st = html.escape(str(s.get("status", "")))
+                name = html.escape(str(s.get("name", "")))
                 if "Stock" in name:
                     lines.append(f"• <b>{name}:</b> {st} ({s.get('hours_since_crawl')}h since crawl)")
                 elif "Legal" in name:
@@ -1029,22 +1034,25 @@ class HermesTelegramNotifier:
 
         streams = entropy.get("streams", [])
         for idx, s in enumerate(streams, 1):
-            st = s.get("status", "UNKNOWN")
-            emoji = status_emojis.get(st, "⚪")
-            name = s.get("name")
-            if "Stock" in name:
+            raw_st = s.get("status", "UNKNOWN")
+            emoji = status_emojis.get(raw_st, "⚪")
+            st = html.escape(str(raw_st))
+            raw_name = str(s.get("name", ""))
+            name = html.escape(raw_name)
+            if "Stock" in raw_name:
                 detail = f"{s.get('hours_since_crawl')}h ago, {s.get('articles_24h')} art/24h, {s.get('unique_symbols')} sym"
-            elif "Legal" in name:
+            elif "Legal" in raw_name:
                 detail = f"{s.get('hours_since_crawl')}h ago, {s.get('total_documents')} docs"
-            elif "Media" in name:
+            elif "Media" in raw_name:
                 detail = f"{s.get('completed_videos')}/24 vids, {s.get('completed_photos')}/24 photos, lag: {s.get('current_hour_lag')}h"
-            elif "Median" in name:
+            elif "Median" in raw_name:
                 detail = f"{s.get('minutes_since_sync')}m ago, {s.get('checks_count')} chks, exit: {s.get('exit_code')}"
-            elif "Fleet" in name:
+            elif "Fleet" in raw_name:
                 detail = f"{s.get('active_nodes')}/{s.get('total_nodes')} nodes, Clef {s.get('consensus_score')}%, SLA: {'PASS' if s.get('sla_passed') else 'FAIL'}"
             else:
                 detail = ""
-            lines.append(f"{idx}️⃣ <b>{name}:</b> {emoji} <b>{st}</b> ({detail})")
+            detail_escaped = html.escape(detail)
+            lines.append(f"{idx}️⃣ <b>{name}:</b> {emoji} <b>{st}</b> ({detail_escaped})")
 
         lines.append("")
         lines.append("⚙️ <b>Cron Subsystem Diagnostics:</b>")
@@ -1889,6 +1897,7 @@ class SelfHealingManager:
                     SelfHealingManager._wrapper_failures = 0
                     SelfHealingManager._wrapper_circuit_open_until = 0.0
                     SelfHealingManager._wrapper_circuit_open_until_mono = 0.0
+                    SelfHealingManager._wrapper_circuit_reason = None
                     if SelfHealingManager._circuit_state_file and SelfHealingManager._circuit_state_file.exists():
                         try:
                             SelfHealingManager._circuit_state_file.unlink()
