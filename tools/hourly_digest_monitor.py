@@ -1087,6 +1087,7 @@ class SelfHealingManager:
     CIRCUIT_COOLDOWN_SECONDS: float = 300.0  # 5 minutes
     _MAX_CIRCUIT_WINDOW_S: float = 15.0 * 60.0  # 15 minutes max window (CWE-20/377 DoS defense)
     _CORRUPT_FAILSAFE_HOLD_S: float = 30.0  # 30 seconds conservative hold on corrupt ledger (CWE-20/754 defense)
+    _MAX_QUARANTINE_ARTIFACTS: int = 5  # Bound quarantine set to prevent disk/inode exhaustion (CWE-400)
     _warned_no_fcntl: bool = False
     CIRCUIT_MAX_FAILURES: int = 3
     TEMP_MAX_RETRIES: int = 5
@@ -1095,6 +1096,53 @@ class SelfHealingManager:
     def _token_source(cls, nbytes: int = 16) -> str:
         """Cryptographically secure pseudorandom token generator (CSPRNG, CWE-330)."""
         return secrets.token_hex(nbytes)
+
+    @classmethod
+    def _epoch_marker_file(cls) -> Optional[Path]:
+        """Returns path to persistent epoch marker file."""
+        if cls._circuit_state_file:
+            return cls._circuit_state_file.parent / f".{cls._circuit_state_file.name}.epoch"
+        return None
+
+    @classmethod
+    def _sync_epoch_to_disk(cls) -> None:
+        """Persists generation counter epoch to disk (atomic replace, mode 0o600)."""
+        epoch_path = cls._epoch_marker_file()
+        if not epoch_path:
+            return
+        try:
+            epoch_path.parent.mkdir(parents=True, exist_ok=True)
+            token = cls._token_source(6)
+            tmp_epoch = epoch_path.parent / f".{epoch_path.name}.tmp.{token}"
+            o_nofollow = getattr(os, "O_NOFOLLOW", 0) or 0
+            o_cloexec = getattr(os, "O_CLOEXEC", 0) or 0
+            write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | o_nofollow | o_cloexec
+            fd = os.open(str(tmp_epoch), write_flags, 0o600)
+            try:
+                try:
+                    os.fchmod(fd, 0o600)
+                except OSError:
+                    pass
+                os.write(fd, str(cls._ledger_epoch).encode("utf-8"))
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            os.replace(str(tmp_epoch), str(epoch_path))
+        except OSError:
+            pass
+
+    @classmethod
+    def _load_epoch_from_disk(cls) -> None:
+        """Loads generation counter epoch from disk if marker exists."""
+        epoch_path = cls._epoch_marker_file()
+        if epoch_path and epoch_path.exists():
+            try:
+                with open(epoch_path, "r", encoding="utf-8") as fh:
+                    val = int(fh.read().strip())
+                    if val > cls._ledger_epoch:
+                        cls._ledger_epoch = val
+            except (ValueError, OSError):
+                pass
 
     @classmethod
     @contextmanager
@@ -1170,17 +1218,40 @@ class SelfHealingManager:
     @classmethod
     def _quarantine_corrupt_ledger(cls, target: Path, now: float, reason_key: str, exc: Optional[Exception] = None) -> None:
         """
-        Quarantines a corrupt or malformed circuit breaker ledger (CWE-20/CWE-754 DoS defense).
-        Atomically renames target to .{name}.corrupt.{ts}.{token} so subsequent reads don't
-        infinitely loop conservative holds.
+        Quarantines a corrupt or malformed circuit breaker ledger (CWE-20/CWE-754/CWE-400 DoS defense).
+        - Content-addressed via SHA-256: collapses repeated identical corruptions to a single artifact.
+        - Ring buffer eviction bounded by _MAX_QUARANTINE_ARTIFACTS to prevent disk/inode exhaustion.
+        - Atomically renames target to .{name}.corrupt.{digest} so subsequent reads don't infinitely loop holds.
         """
         cls._ledger_epoch += 1
-        token = cls._token_source(4)
-        quarantine_target = target.with_name(f".{target.name}.corrupt.{int(now)}.{token}")
+        cls._sync_epoch_to_disk()
         quarantined = False
+        deduplicated = False
+        quarantine_target = None
+
+        poison_bytes = b""
+        if target.exists():
+            try:
+                poison_bytes = target.read_bytes()
+            except OSError:
+                poison_bytes = str(now).encode("utf-8")
+
+        digest = hashlib.sha256(poison_bytes).hexdigest()[:32]
+        quarantine_target = target.with_name(f".{target.name}.corrupt.{digest}")
+
         try:
-            os.replace(str(target), str(quarantine_target))
-            quarantined = True
+            if quarantine_target.exists():
+                # Identical poison content already quarantined: dedup and unlink
+                target.unlink(missing_ok=True)
+                quarantined = True
+                deduplicated = True
+            else:
+                os.replace(str(target), str(quarantine_target))
+                try:
+                    os.chmod(quarantine_target, 0o600)
+                except OSError:
+                    pass
+                quarantined = True
         except OSError:
             try:
                 target.unlink(missing_ok=True)
@@ -1188,11 +1259,39 @@ class SelfHealingManager:
             except OSError:
                 pass
 
+        # Ring buffer eviction: bound total quarantine artifacts to _MAX_QUARANTINE_ARTIFACTS
+        try:
+            parent = target.parent
+            prefix = f".{target.name}.corrupt."
+            artifacts = [
+                p for p in parent.iterdir()
+                if p.is_file() and p.name.startswith(prefix)
+            ]
+            if len(artifacts) > cls._MAX_QUARANTINE_ARTIFACTS:
+                artifacts.sort(key=lambda p: (p.stat().st_mtime, p.name))
+                to_evict = artifacts[:-cls._MAX_QUARANTINE_ARTIFACTS]
+                for old_art in to_evict:
+                    try:
+                        old_art.unlink(missing_ok=True)
+                        logger.info(
+                            json.dumps({
+                                "event": "quarantine_evicted",
+                                "evicted": str(old_art),
+                                "max_artifacts": cls._MAX_QUARANTINE_ARTIFACTS,
+                                "ts": now,
+                            })
+                        )
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+
         logger.warning(
             json.dumps({
                 "event": "circuit_ledger_corrupt",
                 "target": str(target),
                 "quarantined": quarantined,
+                "deduplicated": deduplicated,
                 "quarantine_target": str(quarantine_target) if quarantined else None,
                 "error": type(exc).__name__ if exc else reason_key,
                 "hold_s": cls._CORRUPT_FAILSAFE_HOLD_S,
@@ -1276,6 +1375,7 @@ class SelfHealingManager:
         """Override persistent circuit breaker ledger path (for test isolation)."""
         with cls._with_ledger_lock():
             cls._circuit_state_file = Path(path) if path else None
+            cls._load_epoch_from_disk()
 
     @classmethod
     def reset_circuit_breaker(cls) -> None:
@@ -1286,6 +1386,7 @@ class SelfHealingManager:
             cls._wrapper_circuit_open_until_mono = 0.0
             cls._wrapper_circuit_reason = None
             cls._ledger_epoch += 1
+            cls._sync_epoch_to_disk()
             if cls._circuit_state_file and cls._circuit_state_file.exists():
                 try:
                     cls._circuit_state_file.unlink()
@@ -1297,6 +1398,7 @@ class SelfHealingManager:
         """Trip circuit breaker with persistent ledger (CWE-362 / cron-cadence DoS defense)."""
         with cls._with_ledger_lock():
             cls._ledger_epoch += 1
+            cls._sync_epoch_to_disk()
             now = time.time()
             now_mono = time.monotonic()
             cls._wrapper_circuit_open_until = now + cls.CIRCUIT_COOLDOWN_SECONDS

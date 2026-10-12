@@ -8,6 +8,7 @@ try:
     import fcntl
 except ImportError:
     fcntl = None
+import hashlib
 import json
 import os
 import re
@@ -1621,7 +1622,9 @@ def test_circuit_breaker_persists_across_process_restart(tmp_path):
     # Inject fatal errno (ENOSPC) on replace of wrapper/manifest
     def failing_replace(src, dst, *args, **kwargs):
         dst_path = Path(dst)
-        if dst_path.resolve().parent == state_file.resolve().parent and dst_path.name.startswith(state_file.name):
+        if dst_path.resolve().parent == state_file.resolve().parent and (
+            dst_path.name.startswith(state_file.name) or dst_path.name.startswith(f".{state_file.name}")
+        ):
             return orig_replace(src, dst, *args, **kwargs)
         raise OSError(errno.ENOSPC, "Persistent disk full error")
 
@@ -2107,6 +2110,117 @@ def test_wrapper_render_shell_escaping_with_metacharacters(tmp_path):
         text=True,
     )
     assert res.returncode == 0, f"Bash syntax check failed: {res.stderr}\nWrapper:\n{wrapper_content}"
+
+
+def test_repeated_corruption_bounds_quarantine_artifacts(tmp_path, caplog):
+    """CWE-400: Ring buffer eviction caps total quarantine artifacts to _MAX_QUARANTINE_ARTIFACTS to prevent inode exhaustion."""
+    import logging
+    state_file = tmp_path / "repeated_corrupt.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    max_artifacts = SelfHealingManager._MAX_QUARANTINE_ARTIFACTS  # 5
+    num_corruptions = max_artifacts + 5  # 10 distinct payloads
+
+    with caplog.at_level(logging.INFO):
+        for i in range(num_corruptions):
+            # Write unique poison bytes so each has a unique sha256
+            state_file.write_text(f"unique_poison_payload_{i}_{time.time()}", encoding="utf-8")
+            SelfHealingManager.get_circuit_status()
+
+    # Verify that total quarantine artifacts on disk <= _MAX_QUARANTINE_ARTIFACTS
+    prefix = f".{state_file.name}.corrupt."
+    quarantine_files = [p for p in tmp_path.iterdir() if p.name.startswith(prefix)]
+    assert len(quarantine_files) <= max_artifacts
+    assert len(quarantine_files) == max_artifacts
+
+    # Verify that SIEM 'quarantine_evicted' was logged
+    evicted_events = [
+        json.loads(r.message) for r in caplog.records
+        if "quarantine_evicted" in r.message
+    ]
+    assert len(evicted_events) >= 5
+    assert evicted_events[0]["event"] == "quarantine_evicted"
+    assert evicted_events[0]["max_artifacts"] == max_artifacts
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_identical_corrupt_content_deduplicates_quarantine_artifacts(tmp_path, caplog):
+    """CWE-400 / Content-Addressing: Repeated identical poison bytes collapse to a single deduplicated artifact."""
+    import logging
+    state_file = tmp_path / "dedup_corrupt.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    identical_poison = "{not valid json payload identical"
+
+    with caplog.at_level(logging.WARNING):
+        for _ in range(5):
+            state_file.write_text(identical_poison, encoding="utf-8")
+            SelfHealingManager.get_circuit_status()
+
+    # Exactly 1 quarantine file created with that sha256 digest
+    prefix = f".{state_file.name}.corrupt."
+    quarantine_files = [p for p in tmp_path.iterdir() if p.name.startswith(prefix)]
+    assert len(quarantine_files) == 1
+
+    digest = hashlib.sha256(identical_poison.encode("utf-8")).hexdigest()[:32]
+    expected_name = f".{state_file.name}.corrupt.{digest}"
+    assert quarantine_files[0].name == expected_name
+
+    # Check SIEM logs for deduplicated events
+    corrupt_events = [
+        json.loads(r.message) for r in caplog.records
+        if "circuit_ledger_corrupt" in r.message
+    ]
+    assert len(corrupt_events) == 5
+    # First is not deduplicated, remaining 4 are deduplicated
+    assert corrupt_events[0]["deduplicated"] is False
+    assert corrupt_events[0]["quarantined"] is True
+    for ev in corrupt_events[1:]:
+        assert ev["deduplicated"] is True
+        assert ev["quarantined"] is True
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_epoch_monotonicity_persists_across_process_restart(tmp_path):
+    """Epoch Monotonicity Across Restarts: In-memory resets or process restart reload epoch from .epoch marker file."""
+    state_file = tmp_path / "restart_epoch_ledger.json"
+    epoch_file = tmp_path / f".{state_file.name}.epoch"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    # Trip breaker
+    SelfHealingManager._trip_circuit_breaker("restart_test_trip_1")
+    e1 = SelfHealingManager.get_circuit_status()["epoch"]
+    assert epoch_file.exists()
+    assert int(epoch_file.read_text(encoding="utf-8").strip()) == e1
+
+    # Simulate process restart: wipe in-memory variables
+    SelfHealingManager._ledger_epoch = 0
+    SelfHealingManager._wrapper_circuit_open_until = 0.0
+    SelfHealingManager._wrapper_circuit_open_until_mono = 0.0
+    SelfHealingManager._wrapper_circuit_reason = None
+    SelfHealingManager._circuit_state_file = None
+
+    # Re-initialize with same state_file -> should load epoch from marker
+    SelfHealingManager.set_circuit_state_file(state_file)
+    status_reloaded = SelfHealingManager.get_circuit_status()
+    assert status_reloaded["epoch"] >= e1
+
+    # Next trip must increment beyond e1, not restart at 1
+    SelfHealingManager._trip_circuit_breaker("restart_test_trip_2")
+    e2 = SelfHealingManager.get_circuit_status()["epoch"]
+    assert e2 > e1
+    assert int(epoch_file.read_text(encoding="utf-8").strip()) == e2
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
 
 
 
