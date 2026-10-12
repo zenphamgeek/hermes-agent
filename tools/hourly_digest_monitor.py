@@ -45,8 +45,16 @@ from typing import Any, Dict, List, Optional, Tuple
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("hourly_digest_monitor")
 
-# Default paths
-HERMES_HOME = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+def _safe_hermes_home() -> Path:
+    env_h = os.environ.get("HERMES_HOME")
+    if env_h:
+        return Path(env_h)
+    try:
+        return Path.home() / ".hermes"
+    except Exception:
+        return Path(os.environ.get("HOME", "/tmp")) / ".hermes"
+
+HERMES_HOME = _safe_hermes_home()
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 DEFAULT_EXECUTIONS_DB = HERMES_HOME / "cron" / "executions.db"
@@ -1065,7 +1073,11 @@ class SelfHealingManager:
         """
         repo_dir_q = shlex.quote(str(self.repo_dir))
         python_bin_q = shlex.quote(str(self.python_bin))
-        local_bin_q = shlex.quote(str(Path.home() / ".local" / "bin"))
+        try:
+            local_bin_path = str(Path.home() / ".local" / "bin")
+        except Exception:
+            local_bin_path = str(Path(os.environ.get("HOME", "/tmp")) / ".local" / "bin")
+        local_bin_q = shlex.quote(local_bin_path)
 
         wrapper_content = (
             "#!/usr/bin/env bash\n"
@@ -1086,6 +1098,30 @@ class SelfHealingManager:
         - If stale, missing, or mismatched, atomically replaces with mode 0o700 via tempfile + os.replace.
         - Returns (wrapper_script_path, content_sha256).
         """
+        # Ancestor-path symlink validation (CWE-427): refuse any intermediate parent
+        # that is a symlink. NOTE: is_symlink() is lstat-based: catches both live and
+        # dangling symlinks. Dropping .exists() prevents dangling-symlink bypass.
+        try:
+            _home = Path.home()
+        except Exception:
+            _home = None
+
+        _root = Path(self.scripts_dir.anchor) if self.scripts_dir.anchor else Path("/")
+        for parent in self.scripts_dir.parents:
+            if parent == _root or (_home is not None and parent == _home):
+                break
+            if parent.is_symlink():
+                logger.error(
+                    json.dumps({
+                        "event": "scripts_dir_symlink_refused",
+                        "component": str(parent),
+                        "scripts_dir": str(self.scripts_dir),
+                        "euid": os.getuid(),
+                        "ts": time.time(),
+                    })
+                )
+                raise RuntimeError(f"scripts_dir ancestor is a symlink, refusing: {parent}")
+
         self.scripts_dir.mkdir(parents=True, exist_ok=True)
         if not hasattr(os, "O_NOFOLLOW"):
             raise RuntimeError("O_NOFOLLOW unavailable on this platform; refusing to proceed with unprotected scripts_dir open")
@@ -1099,6 +1135,15 @@ class SelfHealingManager:
         try:
             dir_fd = os.open(str(self.scripts_dir), open_flags)
         except OSError as exc:
+            logger.error(
+                json.dumps({
+                    "event": "scripts_dir_symlink_refused",
+                    "component": str(self.scripts_dir),
+                    "scripts_dir": str(self.scripts_dir),
+                    "euid": os.getuid(),
+                    "ts": time.time(),
+                })
+            )
             raise RuntimeError(f"scripts_dir open refused (symlink or non-dir): {self.scripts_dir}: {exc}")
 
         try:

@@ -729,6 +729,24 @@ def test_wrapper_symlinked_scripts_dir_refused(tmp_path):
         manager.ensure_wrapper_script()
 
 
+def test_scripts_dir_parent_symlink_refused(tmp_path):
+    """Verify ensure_wrapper_script refuses to write if an ancestor directory is a symlink (CWE-427)."""
+    decoy_parent = tmp_path / "decoy_parent"
+    decoy_parent.mkdir(parents=True, exist_ok=True)
+    symlink_parent = tmp_path / "symlink_parent"
+    symlink_parent.symlink_to(decoy_parent, target_is_directory=True)
+    nested_scripts_dir = symlink_parent / "nested_scripts"
+
+    manager = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=nested_scripts_dir,
+    )
+
+    with pytest.raises(RuntimeError, match="scripts_dir ancestor is a symlink, refusing"):
+        manager.ensure_wrapper_script()
+
+
 def test_wrapper_write_anchored_to_validated_dir(tmp_path):
     """Verify ensure_wrapper_script writes relative to dir_fd using openat/renameat semantics."""
     scripts_dir = tmp_path / "scripts"
@@ -792,5 +810,94 @@ def test_wrapper_reconciliation_in_self_heal_drift_skips(tmp_path):
     # Wrapper must be created by self-heal
     assert wrapper.exists()
     assert (wrapper.stat().st_mode & 0o777) == 0o700
+
+
+def test_scripts_dir_dangling_symlink_ancestor_refused(tmp_path):
+    """CWE-427 / A1: a DANGLING symlink ancestor must be refused (prevents fail-open bypass)."""
+    link = tmp_path / "dangling"
+    link.symlink_to(tmp_path / "does_not_exist", target_is_directory=True)
+    nested = link / "nested_scripts"
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=nested,
+    )
+    with pytest.raises(RuntimeError, match="symlink, refusing"):
+        mgr.ensure_wrapper_script()
+
+
+def test_scripts_dir_home_unset_does_not_crash(tmp_path, monkeypatch):
+    """A3: HOME unset and Path.home() raising (cron/systemd) must not crash wrapper generation."""
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("USERPROFILE", raising=False)
+
+    def mock_home():
+        raise RuntimeError("No home directory entry found in environment or passwd")
+
+    monkeypatch.setattr(Path, "home", staticmethod(mock_home))
+
+    scripts_dir = tmp_path / "scripts"
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+    # Must complete the real write path, not raise RuntimeError from home resolution.
+    wrapper_path, sha = mgr.ensure_wrapper_script()
+    assert wrapper_path.exists()
+    assert len(sha) == 64
+
+
+def test_scripts_dir_mid_path_symlink_refused(tmp_path):
+    """Deep ancestor (not immediate parent) symlink must be refused."""
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "mid"
+    link.symlink_to(real, target_is_directory=True)
+    nested = link / "a" / "b" / "scripts"
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=nested,
+    )
+    with pytest.raises(RuntimeError, match="symlink, refusing"):
+        mgr.ensure_wrapper_script()
+
+
+def test_scripts_dir_symlink_refusal_emits_structured_audit_event(tmp_path, caplog):
+    """Verify symlink refusal emits structured JSON audit event for SIEM/observability."""
+    import logging
+    decoy_parent = tmp_path / "decoy_parent"
+    decoy_parent.mkdir(parents=True, exist_ok=True)
+    symlink_parent = tmp_path / "symlink_parent"
+    symlink_parent.symlink_to(decoy_parent, target_is_directory=True)
+    nested_scripts_dir = symlink_parent / "nested_scripts"
+
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=nested_scripts_dir,
+    )
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(RuntimeError, match="scripts_dir ancestor is a symlink, refusing"):
+            mgr.ensure_wrapper_script()
+
+    # Verify structured audit event exists in log records
+    found_event = False
+    for record in caplog.records:
+        try:
+            data = json.loads(record.message)
+            if data.get("event") == "scripts_dir_symlink_refused":
+                assert data.get("component") == str(symlink_parent)
+                assert data.get("scripts_dir") == str(nested_scripts_dir)
+                assert "euid" in data
+                assert "ts" in data
+                found_event = True
+                break
+        except (json.JSONDecodeError, TypeError):
+            continue
+    assert found_event, "Structured audit log event 'scripts_dir_symlink_refused' was not emitted!"
+
 
 
