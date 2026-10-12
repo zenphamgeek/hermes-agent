@@ -1054,6 +1054,17 @@ class HermesTelegramNotifier:
 class SelfHealingManager:
     """Automates resolution of drift skips and initiates recovery cycles for stalled streams."""
 
+    _wrapper_failures: int = 0
+    _wrapper_circuit_open_until: float = 0.0
+    CIRCUIT_COOLDOWN_SECONDS: float = 300.0  # 5 minutes
+    CIRCUIT_MAX_FAILURES: int = 3
+
+    @classmethod
+    def reset_circuit_breaker(cls) -> None:
+        """Reset circuit breaker counters and cooldown."""
+        cls._wrapper_failures = 0
+        cls._wrapper_circuit_open_until = 0.0
+
     def __init__(
         self,
         jobs_path: Path = DEFAULT_JOBS_JSON,
@@ -1162,113 +1173,133 @@ class SelfHealingManager:
         - Content-addressed SHA-256 verification and companion .manifest generation for runtime invocation lock.
         - Returns (wrapper_script_path, content_sha256).
         """
-        dir_fd = self._resolve_scripts_dir_fd()
+        now = time.time()
+        if now < self._wrapper_circuit_open_until:
+            remaining = int(self._wrapper_circuit_open_until - now)
+            raise RuntimeError(
+                f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after repeated failures)"
+            )
+
         try:
-            st_dir = os.fstat(dir_fd)
-            if st_dir.st_uid != os.geteuid():
-                raise PermissionError(f"scripts_dir not owned by current user (euid {os.geteuid()}, owner {st_dir.st_uid}): {self.scripts_dir}")
-            if st_dir.st_mode & 0o022:
-                try:
-                    if hasattr(os, "fchmod"):
-                        os.fchmod(dir_fd, 0o700)
-                    else:
-                        os.chmod(self.scripts_dir, 0o700)
-                except OSError as exc:
-                    raise RuntimeError(f"failed to harden scripts_dir perms, refusing: {self.scripts_dir}: {exc}")
-                if os.fstat(dir_fd).st_mode & 0o022:
-                    raise RuntimeError(f"scripts_dir still group/world-writable after chmod: {self.scripts_dir}")
-
-            wrapper_name = "hermes_hourly_digest.sh"
-            wrapper_content, digest = self.render_wrapper_content()
-            data = wrapper_content.encode("utf-8")
-
-            needs_write = True
+            dir_fd = self._resolve_scripts_dir_fd()
             try:
-                check_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-                file_fd = os.open(wrapper_name, check_flags, dir_fd=dir_fd)
-                try:
-                    st = os.fstat(file_fd)
-                    owned_by_us = (st.st_uid == os.geteuid())
-                    with open(file_fd, "r", encoding="utf-8", closefd=False) as fh:
-                        existing_content = fh.read()
-                    content_matches = (existing_content == wrapper_content)
-                    needs_write = not (owned_by_us and content_matches)
-                finally:
-                    os.close(file_fd)
-            except OSError:
+                st_dir = os.fstat(dir_fd)
+                if st_dir.st_uid != os.geteuid():
+                    raise PermissionError(f"scripts_dir not owned by current user (euid {os.geteuid()}, owner {st_dir.st_uid}): {self.scripts_dir}")
+                if st_dir.st_mode & 0o022:
+                    try:
+                        if hasattr(os, "fchmod"):
+                            os.fchmod(dir_fd, 0o700)
+                        else:
+                            os.chmod(self.scripts_dir, 0o700)
+                    except OSError as exc:
+                        raise RuntimeError(f"failed to harden scripts_dir perms, refusing: {self.scripts_dir}: {exc}")
+                    if os.fstat(dir_fd).st_mode & 0o022:
+                        raise RuntimeError(f"scripts_dir still group/world-writable after chmod: {self.scripts_dir}")
+
+                wrapper_name = "hermes_hourly_digest.sh"
+                wrapper_content, digest = self.render_wrapper_content()
+                data = wrapper_content.encode("utf-8")
+
                 needs_write = True
-
-            write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-
-            if needs_write:
-                tmp_name = f".{wrapper_name}.tmp.{os.getpid()}_{time.time_ns()}"
-                tmp_fd = os.open(tmp_name, write_flags, 0o600, dir_fd=dir_fd)
                 try:
-                    os.write(tmp_fd, data)
+                    check_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+                    file_fd = os.open(wrapper_name, check_flags, dir_fd=dir_fd)
                     try:
-                        os.fchmod(tmp_fd, 0o700)
-                    except OSError:
-                        pass
-                    os.fsync(tmp_fd)
-                finally:
-                    os.close(tmp_fd)
+                        st = os.fstat(file_fd)
+                        owned_by_us = (st.st_uid == os.geteuid())
+                        with open(file_fd, "r", encoding="utf-8", closefd=False) as fh:
+                            existing_content = fh.read()
+                        content_matches = (existing_content == wrapper_content)
+                        needs_write = not (owned_by_us and content_matches)
+                    finally:
+                        os.close(file_fd)
+                except OSError:
+                    needs_write = True
 
-                try:
-                    os.replace(tmp_name, wrapper_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+
+                if needs_write:
+                    tmp_name = f".{wrapper_name}.tmp.{os.getpid()}_{time.time_ns()}"
+                    tmp_fd = os.open(tmp_name, write_flags, 0o600, dir_fd=dir_fd)
                     try:
-                        os.fsync(dir_fd)
-                    except OSError:
-                        pass
-                except Exception as exc:
+                        os.write(tmp_fd, data)
+                        try:
+                            os.fchmod(tmp_fd, 0o700)
+                        except OSError:
+                            pass
+                        os.fsync(tmp_fd)
+                    finally:
+                        os.close(tmp_fd)
+
                     try:
-                        os.unlink(tmp_name, dir_fd=dir_fd)
-                    except OSError:
-                        pass
-                    logger.error("wrapper self-heal failed for %s: %s", wrapper_name, exc)
-                    raise
+                        os.replace(tmp_name, wrapper_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                        try:
+                            os.fsync(dir_fd)
+                        except OSError:
+                            pass
+                    except Exception as exc:
+                        try:
+                            os.unlink(tmp_name, dir_fd=dir_fd)
+                        except OSError:
+                            pass
+                        logger.error("wrapper self-heal failed for %s: %s", wrapper_name, exc)
+                        raise
 
-            # A6: Companion manifest file (.hermes_hourly_digest.sh.manifest) for invocation verification
-            manifest_name = f".{wrapper_name}.manifest"
-            manifest_content = f"{digest}  {wrapper_name}\n"
-            manifest_data = manifest_content.encode("utf-8")
+                # A6: Companion manifest file (.hermes_hourly_digest.sh.manifest) for invocation verification
+                manifest_name = f".{wrapper_name}.manifest"
+                manifest_content = f"{digest}  {wrapper_name}\n"
+                manifest_data = manifest_content.encode("utf-8")
 
-            needs_manifest_write = True
-            try:
-                check_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-                m_fd = os.open(manifest_name, check_flags, dir_fd=dir_fd)
-                try:
-                    with open(m_fd, "r", encoding="utf-8", closefd=False) as fh:
-                        existing_m = fh.read()
-                    needs_manifest_write = (existing_m != manifest_content)
-                finally:
-                    os.close(m_fd)
-            except OSError:
                 needs_manifest_write = True
-
-            if needs_manifest_write:
-                tmp_m = f".{manifest_name}.tmp.{os.getpid()}_{time.time_ns()}"
-                tmp_m_fd = os.open(tmp_m, write_flags, 0o600, dir_fd=dir_fd)
                 try:
-                    os.write(tmp_m_fd, manifest_data)
-                    os.fsync(tmp_m_fd)
-                finally:
-                    os.close(tmp_m_fd)
-                try:
-                    os.replace(tmp_m, manifest_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                    check_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+                    m_fd = os.open(manifest_name, check_flags, dir_fd=dir_fd)
                     try:
-                        os.fsync(dir_fd)
-                    except OSError:
-                        pass
-                except Exception:
-                    try:
-                        os.unlink(tmp_m, dir_fd=dir_fd)
-                    except OSError:
-                        pass
+                        with open(m_fd, "r", encoding="utf-8", closefd=False) as fh:
+                            existing_m = fh.read()
+                        needs_manifest_write = (existing_m != manifest_content)
+                    finally:
+                        os.close(m_fd)
+                except OSError:
+                    needs_manifest_write = True
 
-            wrapper_script = self.scripts_dir / wrapper_name
-            return wrapper_script, digest
-        finally:
-            os.close(dir_fd)
+                if needs_manifest_write:
+                    tmp_m = f".{manifest_name}.tmp.{os.getpid()}_{time.time_ns()}"
+                    tmp_m_fd = os.open(tmp_m, write_flags, 0o600, dir_fd=dir_fd)
+                    try:
+                        os.write(tmp_m_fd, manifest_data)
+                        os.fsync(tmp_m_fd)
+                    finally:
+                        os.close(tmp_m_fd)
+                    try:
+                        os.replace(tmp_m, manifest_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                        try:
+                            os.fsync(dir_fd)
+                        except OSError:
+                            pass
+                    except Exception:
+                        try:
+                            os.unlink(tmp_m, dir_fd=dir_fd)
+                        except OSError:
+                            pass
+
+                SelfHealingManager._wrapper_failures = 0
+                SelfHealingManager._wrapper_circuit_open_until = 0.0
+                wrapper_script = self.scripts_dir / wrapper_name
+                return wrapper_script, digest
+            finally:
+                os.close(dir_fd)
+        except Exception:
+            SelfHealingManager._wrapper_failures += 1
+            if SelfHealingManager._wrapper_failures >= SelfHealingManager.CIRCUIT_MAX_FAILURES:
+                SelfHealingManager._wrapper_circuit_open_until = time.time() + SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS
+                logger.warning(
+                    "Wrapper reconciliation circuit breaker TRIPPED (cooldown %ds) after %d failures",
+                    int(SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS),
+                    SelfHealingManager._wrapper_failures,
+                )
+            raise
 
     def self_heal_drift_skips(self) -> List[Dict[str, Any]]:
         """

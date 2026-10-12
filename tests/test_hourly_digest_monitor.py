@@ -924,7 +924,8 @@ def test_home_fallback_target_is_safe(tmp_path, monkeypatch):
 
 
 def test_wrapper_temp_is_exclusive_and_nofollow(tmp_path):
-    """B3 / A3: Temp creation must use O_CREAT | O_EXCL to prevent hijacking pre-planted files."""
+    """B3 / A3: Temp creation must use O_CREAT | O_EXCL | O_NOFOLLOW in the real implementation."""
+    SelfHealingManager.reset_circuit_breaker()
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     mgr = SelfHealingManager(
@@ -933,25 +934,50 @@ def test_wrapper_temp_is_exclusive_and_nofollow(tmp_path):
         scripts_dir=scripts_dir,
     )
 
-    # First write creates the script and manifest
-    wp, digest = mgr.ensure_wrapper_script()
+    opened_flags = []
+    orig_open = os.open
+
+    def spy_open(path, flags, *args, **kwargs):
+        opened_flags.append((path, flags))
+        return orig_open(path, flags, *args, **kwargs)
+
+    with patch("os.open", side_effect=spy_open):
+        wp, digest = mgr.ensure_wrapper_script()
+
     assert wp.exists()
 
-    # Pre-plant a collision at a mocked temp pattern and verify O_CREAT | O_EXCL behavior
-    # Direct test: os.open with O_CREAT | O_EXCL on an existing path raises FileExistsError
-    dir_fd = os.open(str(scripts_dir), os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        planted = "preplanted_test.tmp"
-        p_fd = os.open(planted, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=dir_fd)
-        os.close(p_fd)
+    # Find the temp file open in opened_flags:
+    temp_opens = [
+        (path, flags) for (path, flags) in opened_flags
+        if isinstance(path, str) and path.startswith(".hermes_hourly_digest.sh.tmp.")
+    ]
+    assert len(temp_opens) == 1, f"Expected 1 temp file open, got {temp_opens}"
+    _, flags = temp_opens[0]
+    assert flags & os.O_CREAT != 0, "O_CREAT flag missing"
+    assert flags & os.O_EXCL != 0, "O_EXCL flag missing (vulnerable to pre-planted symlink/file hijacking!)"
+    assert flags & getattr(os, "O_NOFOLLOW", 0) != 0, "O_NOFOLLOW flag missing"
+
+    # Collision test: pre-plant the exact temp file and verify ensure_wrapper_script fails closed
+    mock_pid = 88888
+    mock_ns = 987654321
+    fixed_tmp_name = f".hermes_hourly_digest.sh.tmp.{mock_pid}_{mock_ns}"
+    planted_file = scripts_dir / fixed_tmp_name
+    planted_file.write_text("PRE_PLANTED_COLLISION_DATA", encoding="utf-8")
+
+    # Invalidate cache by removing target script
+    wp.unlink()
+
+    with patch("os.getpid", return_value=mock_pid), patch("time.time_ns", return_value=mock_ns):
         with pytest.raises(FileExistsError):
-            os.open(planted, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=dir_fd)
-    finally:
-        os.close(dir_fd)
+            mgr.ensure_wrapper_script()
+
+    # Pre-planted collision file must be untampered
+    assert planted_file.read_text(encoding="utf-8") == "PRE_PLANTED_COLLISION_DATA"
 
 
 def test_scripts_dir_mode_and_ownership_hardening(tmp_path):
     """B4 / A4: scripts_dir with permissive mode (0o777) must be hardened to 0o700."""
+    SelfHealingManager.reset_circuit_breaker()
     permissive_dir = tmp_path / "permissive_scripts"
     permissive_dir.mkdir(mode=0o777, parents=True, exist_ok=True)
     os.chmod(permissive_dir, 0o777)
@@ -969,8 +995,38 @@ def test_scripts_dir_mode_and_ownership_hardening(tmp_path):
     assert (st.st_mode & 0o077) == 0
 
 
+def test_scripts_dir_alien_ownership_refused(tmp_path):
+    """B4 / A4: scripts_dir owned by another UID must be refused with PermissionError, not chmodded."""
+    SelfHealingManager.reset_circuit_breaker()
+    scripts_dir = tmp_path / "alien_scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    orig_fstat = os.fstat
+
+    def alien_fstat(fd):
+        real_st = orig_fstat(fd)
+        class FakeStat:
+            pass
+        st = FakeStat()
+        for attr in ("st_mode", "st_ino", "st_dev", "st_nlink", "st_gid", "st_size", "st_atime", "st_mtime", "st_ctime"):
+            setattr(st, attr, getattr(real_st, attr, 0))
+        st.st_uid = os.geteuid() + 1000  # Alien UID
+        return st
+
+    with patch("os.fstat", side_effect=alien_fstat):
+        with pytest.raises(PermissionError, match="scripts_dir not owned by current user"):
+            mgr.ensure_wrapper_script()
+
+
 def test_audit_event_resists_log_injection(tmp_path, caplog):
     """B5 / A5: Component name containing newlines and forged JSON must be escaped cleanly by json.dumps."""
+    SelfHealingManager.reset_circuit_breaker()
     import logging
     real_dir = tmp_path / "real_target"
     real_dir.mkdir(parents=True, exist_ok=True)
@@ -988,18 +1044,27 @@ def test_audit_event_resists_log_injection(tmp_path, caplog):
         with pytest.raises(RuntimeError, match="symlink, refusing"):
             mgr.ensure_wrapper_script()
 
-    # Verify that log messages contain strictly valid single JSON records
+    refused_records = []
     for record in caplog.records:
-        if "scripts_dir_symlink_refused" in record.message:
+        try:
             parsed = json.loads(record.message)
-            assert parsed["event"] == "scripts_dir_symlink_refused"
-            # The newline and injection string must be safely contained inside the component property
-            assert "forged_fake_pass" in parsed["component"]
-            assert "\n" in parsed["component"]
+            if parsed.get("event") == "scripts_dir_symlink_refused":
+                refused_records.append(parsed)
+            # DOWNSTREAM SIEM AUDIT GUARD: prove that no record has the forged event
+            assert parsed.get("event") != "forged_fake_pass", "SIEM forgery detected: inner JSON escaped into top-level event!"
+        except json.JSONDecodeError:
+            pytest.fail(f"Log message is not valid JSON: {record.message}")
+
+    assert len(refused_records) == 1
+    rec = refused_records[0]
+    assert rec["event"] == "scripts_dir_symlink_refused"
+    assert "forged_fake_pass" in rec["component"]
+    assert "\n" in rec["component"]
 
 
 def test_wrapper_manifest_pinned_execution(tmp_path):
     """A6 / Manifest-Pinned Execution: Bash wrapper validates companion manifest before executing."""
+    SelfHealingManager.reset_circuit_breaker()
     scripts_dir = tmp_path / "scripts"
     mgr = SelfHealingManager(
         jobs_path=tmp_path / "jobs.json",
@@ -1025,6 +1090,50 @@ def test_wrapper_manifest_pinned_execution(tmp_path):
 
     res_tampered = subprocess.run(["sha256sum", "-c", str(manifest_file), "--status"], cwd=scripts_dir)
     assert res_tampered.returncode != 0
+
+
+def test_wrapper_failure_cleans_up_temp_and_trips_circuit_breaker(tmp_path):
+    """Counterfactual outage test: failure during rename unlinks temp file and trips circuit breaker after 3 attempts."""
+    SelfHealingManager.reset_circuit_breaker()
+    import errno
+    scripts_dir = tmp_path / "scripts_enospc"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    # Inject ENOSPC on os.replace
+    orig_replace = os.replace
+
+    def enospc_replace(src, dst, *args, **kwargs):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    with patch("os.replace", side_effect=enospc_replace):
+        # Attempt 1: fails with ENOSPC
+        with pytest.raises(OSError, match="No space left on device"):
+            mgr.ensure_wrapper_script()
+        # Verify no orphaned temp files left in scripts_dir
+        temp_files_1 = [f.name for f in scripts_dir.iterdir() if f.name.startswith(".hermes_hourly_digest.sh.tmp.")]
+        assert len(temp_files_1) == 0, f"Orphaned temp files left behind after failure: {temp_files_1}"
+
+        # Attempt 2: fails with ENOSPC
+        with pytest.raises(OSError, match="No space left on device"):
+            mgr.ensure_wrapper_script()
+
+        # Attempt 3: fails with ENOSPC -> trips circuit breaker
+        with pytest.raises(OSError, match="No space left on device"):
+            mgr.ensure_wrapper_script()
+
+    # Attempt 4 (circuit breaker open): refuses immediately without attempting filesystem I/O
+    with pytest.raises(RuntimeError, match="Wrapper reconciliation circuit breaker OPEN"):
+        mgr.ensure_wrapper_script()
+
+    # Reset circuit breaker restores normal operation
+    SelfHealingManager.reset_circuit_breaker()
+    wp, _ = mgr.ensure_wrapper_script()
+    assert wp.exists()
 
 
 
