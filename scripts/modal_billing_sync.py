@@ -125,11 +125,13 @@ class ModalBillingSyncEngine:
         headroom_file: Optional[Path] = None,
         cache_ttl_seconds: int = 1800,
         modal_config_path: Optional[Path] = None,
+        fleet_policy_path: Optional[Path] = None,
     ) -> None:
         self.ledger_file = Path(ledger_file) if ledger_file else PRIMARY_LEDGER_PATH
         self.headroom_file = Path(headroom_file) if headroom_file else PRIMARY_HEADROOM_PATH
         self.cache_ttl = int(cache_ttl_seconds)
         self.modal_config_path = Path(modal_config_path) if modal_config_path else _find_modal_config_file()
+        self.fleet_policy_path = Path(fleet_policy_path) if fleet_policy_path else None
 
         self._lock = threading.Lock()
         self._last_sync_timestamp: float = 0.0
@@ -142,21 +144,12 @@ class ModalBillingSyncEngine:
 
     def _get_configured_profiles(self) -> List[str]:
         """Profiles from ~/.modal.toml minus fleet-excluded workspaces (output/modal_fleet_policy.json)."""
-        policy_path = Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json"
-        if not policy_path.exists():
-            raise RuntimeError(
-                f"CRITICAL: Modal fleet policy missing at {policy_path}. "
-                "Refusing to probe profiles with empty exclusion list (fail-closed guard)."
-            )
-        try:
-            import json as _j
-            policy_data = _j.loads(policy_path.read_text(encoding="utf-8"))
-            if not isinstance(policy_data, dict) or "excluded" not in policy_data:
-                raise ValueError(f"Missing 'excluded' key in fleet policy: {policy_path}")
-            excl = set(policy_data.get("excluded", []))
-        except Exception as e:
-            logger.error("Failed loading fleet policy: %s", e)
-            raise
+        from scripts.modal_fleet_server import load_fleet_policy  # single source of truth
+        policy_path = getattr(self, "fleet_policy_path", None) or (Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json")
+        policy = load_fleet_policy(policy_path)
+        if policy.get("_degraded"):
+            raise RuntimeError("Fleet policy degraded (fail-closed): refusing to probe any profiles.")
+        excl = set(policy.get("excluded", []))
         return [p for p in self._get_configured_profiles_raw() if p not in excl]
 
 

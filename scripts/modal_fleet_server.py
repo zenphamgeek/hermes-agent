@@ -27,8 +27,11 @@ import http.server
 from http.cookies import SimpleCookie
 import io
 import json
+import logging
 import math
 import os
+
+logger = logging.getLogger("modal_fleet_server")
 import re
 import secrets
 import random
@@ -267,36 +270,72 @@ CACHE_TTL_SECONDS = 180.0
 _PARSED_TEMPLATE_CACHE: Dict[str, Tuple[float, Dict[str, Any], str]] = {}
 
 # Daily Probe Limiter with Disk Persistence & Passive Telemetry (Hard constraint: <= 5 live probes per day across fleet)
-_PROBE_LOCK = getattr(stealth_passive_monitor, "_PROBE_LOCK", threading.Lock()) if "stealth_passive_monitor" in globals() and stealth_passive_monitor is not None else getattr(globals(), "MONITOR_PROBE_LOCK", threading.Lock())
-_PROBE_STATE = getattr(stealth_passive_monitor, "_PROBE_STATE", {}) if "stealth_passive_monitor" in globals() and stealth_passive_monitor is not None else getattr(globals(), "MONITOR_PROBE_STATE", {})
+_PROBE_LOCK = (
+    getattr(stealth_passive_monitor, "_PROBE_LOCK", None)
+    if ("stealth_passive_monitor" in globals() and stealth_passive_monitor is not None)
+    else globals().get("MONITOR_PROBE_LOCK")
+) or threading.Lock()
+_PROBE_STATE = (
+    getattr(stealth_passive_monitor, "_PROBE_STATE", None)
+    if ("stealth_passive_monitor" in globals() and stealth_passive_monitor is not None)
+    else globals().get("MONITOR_PROBE_STATE")
+)
+if _PROBE_STATE is None:
+    _PROBE_STATE = {}
 
 DEFAULT_FLEET_POLICY_PATH = Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json"
 
+# Explicit degraded state. Consumers MUST check `_degraded` and refuse operations.
+# Do NOT rely on list wildcards: `excluded` is a blocklist and would fail OPEN.
+_POLICY_DENY_ALL: Dict[str, Any] = {
+    "excluded": [],
+    "deploy_blocked": [],
+    "deploy_ok": [],
+    "routing": {},
+    "overdue_invoice": [],
+    "_degraded": True,
+}
+_REQUIRED_KEYS = ("excluded", "deploy_blocked")
 
-def load_fleet_policy(policy_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Policy: excluded workspaces, deploy-blocked (no payment method), routing orders.
-    Enforces fail-closed validation: missing or invalid policy raises RuntimeError
-    to prevent permissive allow-all defaults (CWE-862 guard).
-    """
-    target = policy_path or DEFAULT_FLEET_POLICY_PATH
-    if not target.exists():
-        raise RuntimeError(
-            f"CRITICAL: Modal fleet policy file missing at '{target}'. "
-            "Refusing to operate with permissive default allow-all (CWE-862 fail-closed guard)."
-        )
-    try:
-        data = json.loads(target.read_text(encoding="utf-8"))
-    except Exception as e:
-        raise ValueError(f"CRITICAL: Failed parsing Modal fleet policy JSON at '{target}': {e}") from e
 
+def _validate_policy(data: Any, target: Path) -> Dict[str, Any]:
     if not isinstance(data, dict):
-        raise ValueError(f"CRITICAL: Modal fleet policy at '{target}' is not a JSON object.")
-    if "excluded" not in data or "deploy_blocked" not in data:
-        raise ValueError(
-            f"CRITICAL: Modal fleet policy at '{target}' missing mandatory 'excluded' or 'deploy_blocked' schema keys."
-        )
+        raise ValueError(f"CRITICAL: fleet policy at '{target}' is not a JSON object.")
+    missing = [k for k in _REQUIRED_KEYS if k not in data]
+    if missing:
+        raise ValueError(f"CRITICAL: fleet policy at '{target}' missing keys: {missing}")
+    for k in _REQUIRED_KEYS:
+        val = data[k]
+        if not isinstance(val, list) or any(not isinstance(x, str) for x in val):
+            raise ValueError(f"CRITICAL: fleet policy '{k}' must be a list[str] at '{target}'.")
     return data
 
+
+def load_fleet_policy(policy_path: Optional[Path] = None, *, strict: Optional[bool] = None) -> Dict[str, Any]:
+    """Fail-closed policy loader (CWE-862).
+    strict=True  -> raise on missing/invalid policy (hard fail).
+    strict=False -> trip circuit breaker to _POLICY_DENY_ALL (degraded, operations refused).
+    Default from MODAL_FLEET_POLICY_FAILMODE env ('crash' | 'deny_all'), defaulting to 'crash'.
+    """
+    if strict is None:
+        strict = os.environ.get("MODAL_FLEET_POLICY_FAILMODE", "crash").strip().lower() != "deny_all"
+    target = policy_path or DEFAULT_FLEET_POLICY_PATH
+    try:
+        if not target.exists():
+            raise FileNotFoundError(f"policy file missing at '{target}'")
+        data = json.loads(target.read_text(encoding="utf-8"))
+        return _validate_policy(data, target)
+    except Exception as e:
+        logger.critical("Fleet policy load failed (mode=%s): %s", "strict" if strict else "degraded", e)
+        if strict:
+            raise RuntimeError(f"CRITICAL: fleet policy unusable at '{target}': {e}") from e
+        return dict(_POLICY_DENY_ALL)
+
+
+def _policy_degraded(policy: Optional[Dict[str, Any]] = None) -> bool:
+    """Returns True if the policy is in a degraded / tripped state."""
+    pol = policy if policy is not None else FLEET_POLICY
+    return bool(pol.get("_degraded"))
 
 
 FLEET_POLICY = load_fleet_policy()
@@ -387,6 +426,11 @@ def register_hotplug_worker(spec: Dict[str, Any]) -> Dict[str, Any]:
 
     worker_id = spec["worker_id"].strip()
     workspace = spec["workspace"].strip()
+
+    if _policy_degraded(FLEET_POLICY):
+        raise RuntimeError("Fleet policy degraded (circuit open): refusing all deploy/worker operations.")
+    if workspace in FLEET_DEPLOY_BLOCKED:
+        raise ValueError(f"Workspace '{workspace}' is deploy-blocked by fleet policy.")
 
     # Validate workspace is in canonical list or modal.toml
     if workspace not in CANONICAL_20_PROFILES:
@@ -2099,6 +2143,9 @@ def get_single_template_detail(template_id: str) -> Dict[str, Any]:
 
 def get_toml_profiles() -> List[str]:
     """Reads all profiles from ~/.modal.toml."""
+    if _policy_degraded(FLEET_POLICY):
+        logger.error("Fleet policy degraded (circuit open): refusing all profile discovery.")
+        return []
     profiles = []
     if TOML_PATH.exists():
         for line in TOML_PATH.read_text().splitlines():
@@ -3518,7 +3565,7 @@ def _load_canonical_inventory() -> List[Dict[str, Any]]:
         for ws, acc, tier in workspaces_meta
     ]
 
-CANONICAL_20_INVENTORY = [e for e in _load_canonical_inventory() if e["workspace"] not in FLEET_EXCLUDED]
+CANONICAL_20_INVENTORY = [] if _policy_degraded(FLEET_POLICY) else [e for e in _load_canonical_inventory() if e["workspace"] not in FLEET_EXCLUDED]
 
 
 class InFlightRequestTracker:
@@ -4039,6 +4086,8 @@ class SentinelUsageLimitAuditor:
 
     def audit_fleet_usage_limits(self) -> Dict[str, Any]:
         with self._lock:
+            if _policy_degraded(FLEET_POLICY):
+                raise RuntimeError("Fleet policy degraded (circuit open): refusing all deploy/probe operations.")
             now = time.time()
             iso_now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
