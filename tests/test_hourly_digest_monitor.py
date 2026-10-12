@@ -12,6 +12,7 @@ import hashlib
 import html
 import itertools
 import json
+import math
 import os
 import re
 import secrets
@@ -2955,12 +2956,13 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
                 else:
                     unclassified_errors.append((pattern, err_msg))
 
-    # Floors are proportional to corpus cardinality so the oracle adapts if the
-    # corpus grows, while strictly failing if the corpus shrinks or degrades.
+    # Floors are proportional to corpus cardinality and clamped from below
+    # with the empirical baseline (80/45) so switching to proportional math
+    # never regresses baseline sensitivity via truncation.
     total_cases = len(prefixes) * len(bodies) * len(suffixes)
     assert total_cases >= 168, f"corpus shrank to {total_cases}; oracle coverage lost"
-    accept_floor = int(total_cases * 0.47)
-    unterminated_floor = int(total_cases * 0.26)
+    accept_floor = max(80, math.ceil(total_cases * 0.47))
+    unterminated_floor = max(45, math.ceil(total_cases * 0.26))
 
     assert accept_assertions >= accept_floor, (
         f"accept-branch produced only {accept_assertions} assertions (floor {accept_floor}); corpus degraded"
@@ -2968,6 +2970,14 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
     assert unterminated_assertions >= unterminated_floor, (
         f"unterminated-branch produced only {unterminated_assertions} assertions (floor {unterminated_floor}); "
         "re error wording may have changed and neutered the oracle"
+    )
+    # Ratio-band guard: prevent corpus gaming or distribution skew that could mask a dead branch
+    analyzable = accept_assertions + unterminated_assertions
+    assert analyzable > 0, "no analyzable patterns; corpus fully degraded"
+    accept_ratio = accept_assertions / analyzable
+    assert 0.55 <= accept_ratio <= 0.80, (
+        f"accept/unterminated mix drifted to {accept_ratio:.2f}; "
+        "corpus distribution changed and may be masking a dead branch"
     )
     # Catch version-drift case explicitly instead of letting it vanish silently
     assert not unclassified_errors, (
