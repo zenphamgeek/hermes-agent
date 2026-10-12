@@ -270,12 +270,33 @@ _PARSED_TEMPLATE_CACHE: Dict[str, Tuple[float, Dict[str, Any], str]] = {}
 _PROBE_LOCK = getattr(stealth_passive_monitor, "_PROBE_LOCK", threading.Lock()) if "stealth_passive_monitor" in globals() and stealth_passive_monitor is not None else getattr(globals(), "MONITOR_PROBE_LOCK", threading.Lock())
 _PROBE_STATE = getattr(stealth_passive_monitor, "_PROBE_STATE", {}) if "stealth_passive_monitor" in globals() and stealth_passive_monitor is not None else getattr(globals(), "MONITOR_PROBE_STATE", {})
 
-def load_fleet_policy() -> Dict[str, Any]:
-    """Policy: excluded workspaces, deploy-blocked (no payment method), routing orders."""
+DEFAULT_FLEET_POLICY_PATH = Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json"
+
+
+def load_fleet_policy(policy_path: Optional[Path] = None) -> Dict[str, Any]:
+    """Policy: excluded workspaces, deploy-blocked (no payment method), routing orders.
+    Enforces fail-closed validation: missing or invalid policy raises RuntimeError
+    to prevent permissive allow-all defaults (CWE-862 guard).
+    """
+    target = policy_path or DEFAULT_FLEET_POLICY_PATH
+    if not target.exists():
+        raise RuntimeError(
+            f"CRITICAL: Modal fleet policy file missing at '{target}'. "
+            "Refusing to operate with permissive default allow-all (CWE-862 fail-closed guard)."
+        )
     try:
-        return json.loads((Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json").read_text())
-    except Exception:
-        return {"excluded": [], "deploy_blocked": [], "routing": {}}
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise ValueError(f"CRITICAL: Failed parsing Modal fleet policy JSON at '{target}': {e}") from e
+
+    if not isinstance(data, dict):
+        raise ValueError(f"CRITICAL: Modal fleet policy at '{target}' is not a JSON object.")
+    if "excluded" not in data or "deploy_blocked" not in data:
+        raise ValueError(
+            f"CRITICAL: Modal fleet policy at '{target}' missing mandatory 'excluded' or 'deploy_blocked' schema keys."
+        )
+    return data
+
 
 
 FLEET_POLICY = load_fleet_policy()

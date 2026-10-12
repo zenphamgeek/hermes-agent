@@ -142,12 +142,23 @@ class ModalBillingSyncEngine:
 
     def _get_configured_profiles(self) -> List[str]:
         """Profiles from ~/.modal.toml minus fleet-excluded workspaces (output/modal_fleet_policy.json)."""
+        policy_path = Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json"
+        if not policy_path.exists():
+            raise RuntimeError(
+                f"CRITICAL: Modal fleet policy missing at {policy_path}. "
+                "Refusing to probe profiles with empty exclusion list (fail-closed guard)."
+            )
         try:
             import json as _j
-            excl = set(_j.loads((Path(__file__).resolve().parent.parent / "output" / "modal_fleet_policy.json").read_text()).get("excluded", []))
-        except Exception:
-            excl = set()
+            policy_data = _j.loads(policy_path.read_text(encoding="utf-8"))
+            if not isinstance(policy_data, dict) or "excluded" not in policy_data:
+                raise ValueError(f"Missing 'excluded' key in fleet policy: {policy_path}")
+            excl = set(policy_data.get("excluded", []))
+        except Exception as e:
+            logger.error("Failed loading fleet policy: %s", e)
+            raise
         return [p for p in self._get_configured_profiles_raw() if p not in excl]
+
 
     def _get_configured_profiles_raw(self) -> List[str]:
         """Parses active workspace profiles from ~/.modal.toml."""
