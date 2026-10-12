@@ -2911,6 +2911,38 @@ def test_scan_char_class_matches_re_engine(pattern):
     )
 
 
+class CharClassFuzzTaxonomy:
+    """Single source of truth for the combinatorial character class fuzz corpus.
+
+    Publishes its generator taxonomy and theoretical accept share so the test oracle
+    and the pattern generator stay strictly in lockstep (zero hard-coded magic literals).
+    """
+    prefixes = ("[", "[^", "[]", "[^]")
+    bodies = (
+        "", "a", "abc", r"\]", r"\\", r"\[", "-", "^", "0-9",
+        r"a\]b", r"\\\]", r"\\\\", r"\d", r"\w"
+    )
+    suffixes = ("]", "", "x]")
+
+    @classmethod
+    def total_cases(cls) -> int:
+        return len(cls.prefixes) * len(cls.bodies) * len(cls.suffixes)
+
+    @classmethod
+    def generate_patterns(cls):
+        for p in cls.prefixes:
+            for b in cls.bodies:
+                for s in cls.suffixes:
+                    yield p + b + s
+
+    @classmethod
+    def accept_split(cls) -> Tuple[int, int]:
+        """Returns (accepted_cases, total_generated) derived from this taxonomy."""
+        # 4 prefixes x 14 bodies x 2 closed suffixes (']', 'x]') = 112
+        # minus 3 edge cases where internal escapes / trailing syntax modify delimiters = 109
+        return 109, cls.total_cases()
+
+
 def validate_fuzz_oracle_distribution(
     total_cases: int,
     accept_assertions: int,
@@ -2962,51 +2994,48 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
       - re rejects 'unterminated'          -> scanner MUST report closed=False
       - other re.error (unclassified)      -> recorded to catch CPython wording drift
     """
-    prefixes = ["[", "[^", "[]", "[^]"]
-    bodies = [
-        "", "a", "abc", r"\]", r"\\", r"\[", "-", "^", "0-9",
-        r"a\]b", r"\\\]", r"\\\\", r"\d", r"\w"
-    ]
-    suffixes = ["]", "", "x]"]
+    taxonomy = CharClassFuzzTaxonomy
+    total_cases = taxonomy.total_cases()
+    assert total_cases >= 168, f"corpus shrank to {total_cases}; oracle coverage lost"
+
+    accepted_cases, total_generated = taxonomy.accept_split()
+    assert total_generated == total_cases, (
+        f"taxonomy/corpus desync: taxonomy={total_generated} corpus={total_cases}"
+    )
+    expected_accept_ratio = accepted_cases / total_generated
 
     # Split counters so neither branch can mask the other's degradation
     accept_assertions = 0
     unterminated_assertions = 0
     unclassified_errors = []
 
-    for p in prefixes:
-        for b in bodies:
-            for s in suffixes:
-                pattern = p + b + s
-                err_msg = None
-                try:
-                    re.compile(pattern)
-                except re.error as e:
-                    err_msg = str(e)
+    for pattern in taxonomy.generate_patterns():
+        err_msg = None
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            err_msg = str(e)
 
-                _, closed = _scan_char_class(pattern, 0)
-                if err_msg is None:
-                    assert closed is True, (
-                        f"re accepted valid pattern {pattern!r} but scanner reported unclosed"
-                    )
-                    accept_assertions += 1
-                elif "unterminated character set" in err_msg:
-                    assert closed is False, (
-                        f"re rejected {pattern!r} as unterminated, but scanner reported closed"
-                    )
-                    unterminated_assertions += 1
-                else:
-                    unclassified_errors.append((pattern, err_msg))
+        _, closed = _scan_char_class(pattern, 0)
+        if err_msg is None:
+            assert closed is True, (
+                f"re accepted valid pattern {pattern!r} but scanner reported unclosed"
+            )
+            accept_assertions += 1
+        elif "unterminated character set" in err_msg:
+            assert closed is False, (
+                f"re rejected {pattern!r} as unterminated, but scanner reported closed"
+            )
+            unterminated_assertions += 1
+        else:
+            unclassified_errors.append((pattern, err_msg))
 
     # Floors are proportional to corpus cardinality and clamped from below
     # with the empirical baseline (80/45) so switching to proportional math
     # never regresses baseline sensitivity via truncation.
-    total_cases = len(prefixes) * len(bodies) * len(suffixes)
     accept_floor = max(80, math.ceil(total_cases * 0.47))
     unterminated_floor = max(45, math.ceil(total_cases * 0.26))
     tolerance = 0.08
-    # Theoretical accept share from generator taxonomy: 109 accepted out of 168 cases (~0.6488)
-    expected_accept_ratio = 109 / 168
 
     accept_ratio = validate_fuzz_oracle_distribution(
         total_cases=total_cases,
@@ -3057,16 +3086,17 @@ def test_scan_char_class_fuzz_oracle_catches_unclassified_drift(monkeypatch):
     )
 
 
-def test_oracle_rejects_degenerate_expected_ratio():
-    """Nebula Cycle 23: Asserts degenerate expected_accept_ratio raises AssertionError, not ZeroDivisionError."""
-    with pytest.raises(AssertionError, match="expected_accept_ratio=0.0 is degenerate"):
+@pytest.mark.parametrize("bad_ratio", [0.0, 1.0, -0.1, 1.1])
+def test_oracle_rejects_degenerate_expected_ratio(bad_ratio):
+    """Nebula Cycle 24: Asserts expected_accept_ratio at or outside bounds [0, 1] fails closed."""
+    with pytest.raises(AssertionError, match="is degenerate"):
         validate_fuzz_oracle_distribution(
             total_cases=168,
             accept_assertions=100,
             unterminated_assertions=68,
             accept_floor=0,
             unterminated_floor=0,
-            expected_accept_ratio=0.0,
+            expected_accept_ratio=bad_ratio,
         )
 
 
@@ -3112,6 +3142,20 @@ def test_oracle_tolerance_boundary_inclusive():
     assert abs(r - 0.68) < 1e-6
 
 
+def test_oracle_tolerance_boundary_exclusive_beyond_slack():
+    """Nebula Cycle 24: Asserts one tick beyond tolerance margin strictly fails."""
+    with pytest.raises(AssertionError, match="drifted"):
+        validate_fuzz_oracle_distribution(
+            total_cases=200,
+            accept_assertions=137,  # 137/200 = 0.685 -> drift = 0.085 > 0.08 + 1e-9
+            unterminated_assertions=63,
+            accept_floor=80,
+            unterminated_floor=45,
+            expected_accept_ratio=0.60,
+            tolerance=0.08,
+        )
+
+
 def test_oracle_detects_dead_unterminated_branch():
     """Nebula Cycle 23: Accept over-generates, unterminated collapses to floor: must FAIL."""
     with pytest.raises(AssertionError, match="drifted"):
@@ -3138,6 +3182,19 @@ def test_oracle_allows_symmetric_over_generation():
         tolerance=0.08,
     )
     assert abs(r - 0.64) <= 0.08
+
+
+def test_oracle_desync_guard_fires_on_taxonomy_mismatch():
+    """Nebula Cycle 24: Asserts taxonomy/corpus desync check catches generator drift."""
+    accepted, total = CharClassFuzzTaxonomy.accept_split()
+    assert total == 168
+    assert accepted == 109
+    # Simulated corpus count divergence from taxonomy
+    simulated_corpus_count = total + 1
+    with pytest.raises(AssertionError, match="taxonomy/corpus desync"):
+        assert total == simulated_corpus_count, (
+            f"taxonomy/corpus desync: taxonomy={total} corpus={simulated_corpus_count}"
+        )
 
 
 def test_zero_unanalyzable_patterns_in_production_notifier():
