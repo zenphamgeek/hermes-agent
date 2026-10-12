@@ -2832,6 +2832,90 @@ def test_redos_analyzer_cycle_17_boundary_cases():
     assert any("UNANALYZABLE: unterminated character class" in i for i in issues_trailing_slash)
 
 
+def test_scan_char_class_structural_boundaries():
+    """Nebula Cycle 17 Hardening: Assert the exact parsed span and state, not just absence of issues.
+
+    NOTE: start_idx convention in _scan_char_class points at the leading '['.
+    """
+    # 1. Leading literal ']' must be consumed as member, closing at the final ']' (index 5) -> returns 6
+    end_idx, closed = _scan_char_class("[]abc]", 0)
+    assert closed is True and end_idx == 6, f"Expected (6, True), got {(end_idx, closed)}"
+
+    # 2. Negated + leading literal ']' : "[^]abc]" closes at index 6 -> returns 7
+    end_idx, closed = _scan_char_class("[^]abc]", 0)
+    assert closed is True and end_idx == 7, f"Expected (7, True), got {(end_idx, closed)}"
+
+    # 3. Escaped bracket must NOT close the class: "[\]]" closes at the second ']' (index 3) -> returns 4
+    end_idx, closed = _scan_char_class(r"[\]]", 0)
+    assert closed is True and end_idx == 4, f"Expected (4, True), got {(end_idx, closed)}"
+
+    # 4. Trailing backslash -> unterminated, index clamped at n (no IndexError)
+    s_trail = "[\\"
+    end_idx, closed = _scan_char_class(s_trail, 0)
+    assert closed is False and end_idx == len(s_trail), f"Expected ({len(s_trail)}, False), got {(end_idx, closed)}"
+
+    # 5. Negated leading literal ']' without closing bracket -> unterminated
+    s_neg = "[^]abc"
+    end_idx, closed = _scan_char_class(s_neg, 0)
+    assert closed is False and end_idx == len(s_neg), f"Expected ({len(s_neg)}, False), got {(end_idx, closed)}"
+
+    # 6. Standard unterminated class
+    s_unterm = "[abc"
+    end_idx, closed = _scan_char_class(s_unterm, 0)
+    assert closed is False and end_idx == len(s_unterm), f"Expected ({len(s_unterm)}, False), got {(end_idx, closed)}"
+
+
+@pytest.mark.parametrize("pattern", [
+    r"[]abc]", r"[^]abc]", r"[\]]x", r"[a-z]", r"[^a-z]",
+    r"[\\]", r"[][]", r"[-a]", r"[a-]",
+    r"[abc", r"[^]", "[\\", r"[a\]b", r"[a-z",
+    r"[a[b]c]", r"[0-9A-Za-z._\-]", r"[-]", r"[^-]",
+    r"[^^]", r"[\^]", r"[\-]"
+])
+def test_scan_char_class_matches_re_engine(pattern):
+    """Metamorphic check: if Python's re compiles the class, our scanner must
+    report it closed; if re rejects it as unterminated, we must report False."""
+    try:
+        re.compile(pattern)
+        re_accepts = True
+    except re.error:
+        re_accepts = False
+    _, closed = _scan_char_class(pattern, 0)
+    assert closed == re_accepts, (
+        f"scanner/re disagree on {pattern!r}: scanner_closed={closed}, re_accepts={re_accepts}"
+    )
+
+
+def test_scan_char_class_combinatorial_fuzzed_corpus():
+    """Metamorphic fuzzed corpus: tests 200+ combinatorial character class patterns against re.compile."""
+    prefixes = ["[", "[^", "[]", "[^]"]
+    bodies = [
+        "", "a", "abc", r"\]", r"\\", r"\[", "-", "^", "0-9",
+        r"a\]b", r"\\\]", r"\\\\", r"\d", r"\w"
+    ]
+    suffixes = ["]", "", "x]"]
+
+    for p in prefixes:
+        for b in bodies:
+            for s in suffixes:
+                pattern = p + b + s
+                try:
+                    re.compile(pattern)
+                    re_accepts = True
+                except re.error:
+                    re_accepts = False
+
+                _, closed = _scan_char_class(pattern, 0)
+                if re_accepts:
+                    assert closed is True, f"re accepted valid pattern {pattern!r} but scanner reported unclosed"
+                else:
+                    try:
+                        re.compile(pattern)
+                    except re.error as e:
+                        if "unterminated character set" in str(e):
+                            assert closed is False, f"re rejected {pattern!r} as unterminated, but scanner reported closed"
+
+
 def test_zero_unanalyzable_patterns_in_production_notifier():
     """Nebula Cycle 17 CI Gate: Enforce that zero production regex patterns produce UNANALYZABLE issues."""
     all_patterns = [
