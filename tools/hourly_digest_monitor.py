@@ -1087,17 +1087,35 @@ class SelfHealingManager:
         - Returns (wrapper_script_path, content_sha256).
         """
         self.scripts_dir.mkdir(parents=True, exist_ok=True)
-        if self.scripts_dir.is_symlink():
-            raise RuntimeError(f"scripts_dir is a symlink, refusing: {self.scripts_dir}")
-        st_dir = self.scripts_dir.stat()
-        if st_dir.st_uid != os.getuid():
-            raise PermissionError(f"scripts_dir not owned by current user: {self.scripts_dir}")
+        # File-descriptor anchored security verification (defeats TOCTOU symlink swap)
         try:
-            os.chmod(self.scripts_dir, 0o700)
-            if self.scripts_dir.stat().st_mode & 0o022:
-                os.chmod(self.scripts_dir, 0o700)
-        except OSError:
-            pass
+            open_flags = os.O_RDONLY
+            if hasattr(os, "O_DIRECTORY"):
+                open_flags |= os.O_DIRECTORY
+            if hasattr(os, "O_NOFOLLOW"):
+                open_flags |= os.O_NOFOLLOW
+            if hasattr(os, "O_CLOEXEC"):
+                open_flags |= os.O_CLOEXEC
+            dir_fd = os.open(str(self.scripts_dir), open_flags)
+        except OSError as exc:
+            raise RuntimeError(f"scripts_dir open refused (symlink or non-dir): {self.scripts_dir}: {exc}")
+
+        try:
+            st_dir = os.fstat(dir_fd)
+            if st_dir.st_uid != os.getuid():
+                raise PermissionError(f"scripts_dir not owned by current user: {self.scripts_dir}")
+            if st_dir.st_mode & 0o022:
+                try:
+                    if hasattr(os, "fchmod"):
+                        os.fchmod(dir_fd, 0o700)
+                    else:
+                        os.chmod(self.scripts_dir, 0o700)
+                except OSError as exc:
+                    raise RuntimeError(f"failed to harden scripts_dir perms, refusing: {self.scripts_dir}: {exc}")
+                if os.fstat(dir_fd).st_mode & 0o022:
+                    raise RuntimeError(f"scripts_dir still group/world-writable after chmod: {self.scripts_dir}")
+        finally:
+            os.close(dir_fd)
 
         wrapper_script = self.scripts_dir / "hermes_hourly_digest.sh"
         wrapper_content, digest = self.render_wrapper_content()

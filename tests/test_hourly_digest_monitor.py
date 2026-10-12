@@ -725,7 +725,7 @@ def test_wrapper_symlinked_scripts_dir_refused(tmp_path):
         scripts_dir=symlink_dir,
     )
 
-    with pytest.raises(RuntimeError, match="scripts_dir is a symlink, refusing"):
+    with pytest.raises(RuntimeError, match="scripts_dir open refused"):
         manager.ensure_wrapper_script()
 
 
