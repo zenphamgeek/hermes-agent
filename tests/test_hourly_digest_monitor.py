@@ -2601,7 +2601,10 @@ def _scan_char_class(s: str, start_idx: int) -> Tuple[int, bool]:
     while idx < n:
         ch = s[idx]
         if ch == "\\":
-            idx += 2  # consume backslash and escaped character
+            # Consume backslash and escaped character. If backslash is the final character
+            # (e.g. "[\\"), idx advances past n (idx = n + 1); the while loop cleanly terminates
+            # without IndexError, and (n, False) is safely returned indicating unterminated class.
+            idx += 2
             continue
         if ch == "]":
             return idx + 1, True
@@ -2804,6 +2807,48 @@ def test_redos_analyzer_flags_unterminated_character_class():
 
     issues2 = analyze_redos_vulnerabilities(r"[^]")
     assert any("UNANALYZABLE: unterminated character class" in issue for issue in issues2)
+
+
+def test_redos_analyzer_cycle_17_boundary_cases():
+    """Nebula Cycle 17: Boundary verification for literal brackets, negated brackets, and trailing backslashes."""
+    # 1. Negated + leading literal ']' without closing bracket -> unterminated class
+    issues_neg_literal = analyze_redos_vulnerabilities(r"[^]abc")
+    assert any("UNANALYZABLE: unterminated character class" in i for i in issues_neg_literal)
+
+    # 2. Negated + leading literal ']' WITH closing bracket -> valid, clean parsing
+    issues_neg_literal_closed = analyze_redos_vulnerabilities(r"([^]abc])")
+    assert not issues_neg_literal_closed
+
+    # 3. Leading literal ']' WITH closing bracket -> valid, clean parsing
+    issues_literal_closed = analyze_redos_vulnerabilities(r"([]abc])")
+    assert not issues_literal_closed
+
+    # 4. Escaped bracket followed by unescaped closing delimiter -> parses safely without premature closing
+    issues_escaped_bracket = analyze_redos_vulnerabilities(r"[\]]x")
+    assert not issues_escaped_bracket
+
+    # 5. Trailing backslash inside character class -> terminates safely and reports unterminated class
+    issues_trailing_slash = analyze_redos_vulnerabilities("[\\")
+    assert any("UNANALYZABLE: unterminated character class" in i for i in issues_trailing_slash)
+
+
+def test_zero_unanalyzable_patterns_in_production_notifier():
+    """Nebula Cycle 17 CI Gate: Enforce that zero production regex patterns produce UNANALYZABLE issues."""
+    all_patterns = [
+        *HermesTelegramNotifier._SECRET_PATTERNS,
+        HermesTelegramNotifier._URL_CRED_PATTERN,
+        HermesTelegramNotifier._QUERY_PARAM_PATTERN,
+        HermesTelegramNotifier._BASIC_AUTH_PATTERN,
+        HermesTelegramNotifier._KV_SECRET_PATTERN,
+        HermesTelegramNotifier._PEM_KEY_PATTERN,
+    ]
+    for pat in all_patterns:
+        issues = analyze_redos_vulnerabilities(pat.pattern)
+        unanalyzable_issues = [i for i in issues if "UNANALYZABLE" in i]
+        assert not unanalyzable_issues, (
+            f"Production pattern '{pat.pattern}' yielded UNANALYZABLE issues: {unanalyzable_issues}"
+        )
+        assert not issues, f"Production pattern '{pat.pattern}' failed static analysis: {issues}"
 
 
 def test_constant_factor_blowup_is_bounded(tmp_path):
