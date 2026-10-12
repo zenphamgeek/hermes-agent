@@ -63,6 +63,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_EXECUTIONS_DB = HERMES_HOME / "cron" / "executions.db"
 DEFAULT_JOBS_JSON = HERMES_HOME / "cron" / "jobs.json"
 DEFAULT_TICKER_HEARTBEAT = HERMES_HOME / "cron" / "ticker_heartbeat"
+DEFAULT_CIRCUIT_STATE_FILE = HERMES_HOME / "cron" / ".circuit_breaker.json"
 
 DEFAULT_STOCK_DB = HERMES_HOME / "stock_news_memory.sqlite"
 DEFAULT_LEGAL_DIR = REPO_ROOT / "output_legal_docs"
@@ -1071,31 +1072,82 @@ class SelfHealingManager:
     _wrapper_failures: int = 0
     _wrapper_circuit_open_until: float = 0.0
     _circuit_lock: threading.Lock = threading.Lock()
+    _circuit_state_file: Optional[Path] = DEFAULT_CIRCUIT_STATE_FILE
     CIRCUIT_COOLDOWN_SECONDS: float = 300.0  # 5 minutes
     CIRCUIT_MAX_FAILURES: int = 3
     TEMP_MAX_RETRIES: int = 5
 
     @classmethod
     def _token_source(cls, nbytes: int = 16) -> str:
+        """Cryptographically secure pseudorandom token generator (CSPRNG, CWE-330)."""
         return secrets.token_hex(nbytes)
 
     @classmethod
+    def set_circuit_state_file(cls, path: Optional[Path]) -> None:
+        """Override persistent circuit breaker ledger path (for test isolation)."""
+        with cls._circuit_lock:
+            cls._circuit_state_file = Path(path) if path else None
+
+    @classmethod
     def reset_circuit_breaker(cls) -> None:
-        """Reset circuit breaker counters and cooldown."""
+        """Reset circuit breaker counters and cooldown (both in-memory and persistent ledger)."""
         with cls._circuit_lock:
             cls._wrapper_failures = 0
             cls._wrapper_circuit_open_until = 0.0
+            if cls._circuit_state_file and cls._circuit_state_file.exists():
+                try:
+                    cls._circuit_state_file.unlink()
+                except OSError:
+                    pass
+
+    @classmethod
+    def _trip_circuit_breaker(cls, reason: str, errno_val: Optional[int] = None) -> None:
+        """Trip circuit breaker with persistent ledger (CWE-362 / cron-cadence DoS defense)."""
+        now = time.time()
+        cls._wrapper_circuit_open_until = now + cls.CIRCUIT_COOLDOWN_SECONDS
+        if cls._circuit_state_file:
+            try:
+                cls._circuit_state_file.parent.mkdir(parents=True, exist_ok=True)
+                state = {
+                    "tripped_at": now,
+                    "circuit_open_until": cls._wrapper_circuit_open_until,
+                    "failures": cls._wrapper_failures,
+                    "errno": errno_val,
+                    "reason": reason,
+                }
+                with open(cls._circuit_state_file, "w", encoding="utf-8") as fh:
+                    json.dump(state, fh)
+            except OSError:
+                pass
 
     @classmethod
     def get_circuit_status(cls) -> Dict[str, Any]:
-        """Thread-safe snapshot of circuit breaker status."""
+        """Thread-safe snapshot of circuit breaker status (checking memory and persistent ledger)."""
         with cls._circuit_lock:
             now = time.time()
+            is_open = now < cls._wrapper_circuit_open_until
+            reason = None
+
+            # Check persistent ledger if memory appears closed
+            if not is_open and cls._circuit_state_file and cls._circuit_state_file.exists():
+                try:
+                    with open(cls._circuit_state_file, "r", encoding="utf-8") as fh:
+                        state = json.load(fh)
+                    cooldown = state.get("circuit_open_until", 0.0)
+                    if now < cooldown:
+                        cls._wrapper_circuit_open_until = cooldown
+                        cls._wrapper_failures = state.get("failures", cls.CIRCUIT_MAX_FAILURES)
+                        is_open = True
+                        reason = state.get("reason")
+                except (json.JSONDecodeError, OSError):
+                    pass
+
             return {
                 "failures": cls._wrapper_failures,
                 "circuit_open_until": cls._wrapper_circuit_open_until,
-                "is_open": now < cls._wrapper_circuit_open_until,
+                "is_open": is_open,
                 "cooldown_remaining": max(0.0, cls._wrapper_circuit_open_until - now),
+                "reason": reason,
             }
 
     def __init__(
@@ -1303,6 +1355,20 @@ class SelfHealingManager:
                 raise RuntimeError(
                     f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after repeated failures)"
                 )
+            if SelfHealingManager._circuit_state_file and SelfHealingManager._circuit_state_file.exists():
+                try:
+                    with open(SelfHealingManager._circuit_state_file, "r", encoding="utf-8") as fh:
+                        state = json.load(fh)
+                    cooldown = state.get("circuit_open_until", 0.0)
+                    if now < cooldown:
+                        SelfHealingManager._wrapper_circuit_open_until = cooldown
+                        SelfHealingManager._wrapper_failures = state.get("failures", SelfHealingManager.CIRCUIT_MAX_FAILURES)
+                        remaining = int(cooldown - now)
+                        raise RuntimeError(
+                            f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after persistent failure: {state.get('reason', 'unknown')})"
+                        )
+                except (json.JSONDecodeError, OSError):
+                    pass
 
         o_nofollow = getattr(os, "O_NOFOLLOW", None)
         if not o_nofollow:
@@ -1353,6 +1419,15 @@ class SelfHealingManager:
                         with open(file_fd, "r", encoding="utf-8", closefd=False) as fh:
                             existing_content = fh.read()
                         content_matches = (existing_content == wrapper_content)
+                        if not content_matches:
+                            logger.warning(
+                                json.dumps({
+                                    "event": "wrapper_tamper_detected",
+                                    "wrapper_name": wrapper_name,
+                                    "action": "republish_authoritative",
+                                    "ts": time.time(),
+                                })
+                            )
                         needs_write = not (owned_by_us and content_matches)
                     finally:
                         os.close(file_fd)
@@ -1448,21 +1523,29 @@ class SelfHealingManager:
                 with SelfHealingManager._circuit_lock:
                     SelfHealingManager._wrapper_failures = 0
                     SelfHealingManager._wrapper_circuit_open_until = 0.0
+                    if SelfHealingManager._circuit_state_file and SelfHealingManager._circuit_state_file.exists():
+                        try:
+                            SelfHealingManager._circuit_state_file.unlink()
+                        except OSError:
+                            pass
                 wrapper_script = self.scripts_dir / wrapper_name
                 return wrapper_script, digest
             finally:
                 os.close(dir_fd)
-        except Exception:
+        except Exception as exc:
             with SelfHealingManager._circuit_lock:
                 SelfHealingManager._wrapper_failures += 1
                 if SelfHealingManager._wrapper_failures >= SelfHealingManager.CIRCUIT_MAX_FAILURES:
                     now = time.time()
                     if SelfHealingManager._wrapper_circuit_open_until <= now:
-                        SelfHealingManager._wrapper_circuit_open_until = now + SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS
+                        reason = f"{type(exc).__name__}: {exc}"
+                        exc_errno = getattr(exc, "errno", None)
+                        SelfHealingManager._trip_circuit_breaker(reason=reason, errno_val=exc_errno)
                         logger.warning(
-                            "Wrapper reconciliation circuit breaker TRIPPED (cooldown %ds) after %d failures",
+                            "Wrapper reconciliation circuit breaker TRIPPED (cooldown %ds, persistent ledger saved) after %d failures: %s",
                             int(SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS),
                             SelfHealingManager._wrapper_failures,
+                            exc,
                         )
             raise
 

