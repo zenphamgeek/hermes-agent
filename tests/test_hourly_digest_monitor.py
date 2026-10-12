@@ -5,6 +5,8 @@ Entropy Stream Degradation Scanner, Composite Health Calculator, and Self-Healin
 
 import json
 import os
+import re
+import secrets
 import shlex
 import sqlite3
 import subprocess
@@ -952,27 +954,116 @@ def test_wrapper_temp_is_exclusive_and_nofollow(tmp_path):
         if isinstance(path, str) and path.startswith(".hermes_hourly_digest.sh.tmp.")
     ]
     assert len(temp_opens) == 1, f"Expected 1 temp file open, got {temp_opens}"
-    _, flags = temp_opens[0]
+    temp_path, flags = temp_opens[0]
+    # Cryptographic unpredictability: 128-bit hex token (32 hex characters)
+    assert re.match(r"^\.hermes_hourly_digest\.sh\.tmp\.[0-9a-f]{32}$", temp_path), f"Temp path {temp_path} is not cryptographic token_hex(16)"
     assert flags & os.O_CREAT != 0, "O_CREAT flag missing"
     assert flags & os.O_EXCL != 0, "O_EXCL flag missing (vulnerable to pre-planted symlink/file hijacking!)"
     assert flags & getattr(os, "O_NOFOLLOW", 0) != 0, "O_NOFOLLOW flag missing"
 
-    # Collision test: pre-plant the exact temp file and verify ensure_wrapper_script fails closed
-    mock_pid = 88888
-    mock_ns = 987654321
-    fixed_tmp_name = f".hermes_hourly_digest.sh.tmp.{mock_pid}_{mock_ns}"
-    planted_file = scripts_dir / fixed_tmp_name
+
+def test_wrapper_temp_collision_retry_defends_against_dos(tmp_path, caplog):
+    """B1 / B2: Cryptographic unpredictability and bounded retries defeat pre-planted collision DoS."""
+    SelfHealingManager.reset_circuit_breaker()
+    import logging
+    scripts_dir = tmp_path / "scripts_dos_test"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    planted_token = "a" * 32
+    fresh_token = "b" * 32
+    planted_file = scripts_dir / f".hermes_hourly_digest.sh.tmp.{planted_token}"
     planted_file.write_text("PRE_PLANTED_COLLISION_DATA", encoding="utf-8")
 
-    # Invalidate cache by removing target script
-    wp.unlink()
+    # First attempt draws colliding token, second attempt draws fresh token
+    tokens = [planted_token, fresh_token, "c" * 32, "d" * 32]
 
-    with patch("os.getpid", return_value=mock_pid), patch("time.time_ns", return_value=mock_ns):
-        with pytest.raises(FileExistsError):
-            mgr.ensure_wrapper_script()
+    with caplog.at_level(logging.WARNING):
+        with patch("secrets.token_hex", side_effect=tokens):
+            wp, digest = mgr.ensure_wrapper_script()
 
-    # Pre-planted collision file must be untampered
+    # Self-healing succeeded despite the pre-planted collision!
+    assert wp.exists()
     assert planted_file.read_text(encoding="utf-8") == "PRE_PLANTED_COLLISION_DATA"
+
+    # SIEM telemetry verified: caught collision and retried
+    retry_records = [
+        json.loads(r.message) for r in caplog.records
+        if "temp_collision_retry" in r.message
+    ]
+    assert len(retry_records) >= 1
+    assert retry_records[0]["event"] == "temp_collision_retry"
+    assert retry_records[0]["attempt"] == 1
+
+
+def test_wrapper_temp_exhaustion_fails_closed_and_emits_siem_event(tmp_path, caplog):
+    """B1 / B2: Persistent collisions fail closed after max_retries with SIEM audit log."""
+    SelfHealingManager.reset_circuit_breaker()
+    import logging
+    scripts_dir = tmp_path / "scripts_exhaust_test"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    # Force continuous collision by returning a fixed token
+    colliding_token = "f" * 32
+    planted_file = scripts_dir / f".hermes_hourly_digest.sh.tmp.{colliding_token}"
+    planted_file.write_text("PRE_PLANTED_WALL", encoding="utf-8")
+
+    with caplog.at_level(logging.ERROR):
+        with patch("secrets.token_hex", return_value=colliding_token):
+            with pytest.raises(FileExistsError):
+                mgr.ensure_wrapper_script()
+
+    # Pre-planted file was never overwritten
+    assert planted_file.read_text(encoding="utf-8") == "PRE_PLANTED_WALL"
+
+    # Verified SIEM audit record
+    exhaust_records = [
+        json.loads(r.message) for r in caplog.records
+        if "temp_create_exhausted" in r.message
+    ]
+    assert len(exhaust_records) == 1
+    assert exhaust_records[0]["event"] == "temp_create_exhausted"
+    assert exhaust_records[0]["max_retries"] == SelfHealingManager.TEMP_MAX_RETRIES
+
+
+def test_circuit_breaker_thread_safety():
+    """B3 / CWE-362: Circuit breaker state mutation is serialized across concurrent threads."""
+    import concurrent.futures
+    SelfHealingManager.reset_circuit_breaker()
+
+    status = SelfHealingManager.get_circuit_status()
+    assert status["failures"] == 0
+    assert not status["is_open"]
+
+    def trip_breaker():
+        with SelfHealingManager._circuit_lock:
+            SelfHealingManager._wrapper_failures += 1
+            if SelfHealingManager._wrapper_failures >= SelfHealingManager.CIRCUIT_MAX_FAILURES:
+                SelfHealingManager._wrapper_circuit_open_until = time.time() + SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(trip_breaker) for _ in range(10)]
+        concurrent.futures.wait(futures)
+
+    status_after = SelfHealingManager.get_circuit_status()
+    assert status_after["failures"] == 10
+    assert status_after["is_open"] is True
+
+    SelfHealingManager.reset_circuit_breaker()
+    status_reset = SelfHealingManager.get_circuit_status()
+    assert status_reset["failures"] == 0
+    assert status_reset["is_open"] is False
 
 
 def test_scripts_dir_mode_and_ownership_hardening(tmp_path):

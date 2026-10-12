@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shlex
 import sqlite3
 import ssl
@@ -36,6 +37,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -1056,14 +1058,29 @@ class SelfHealingManager:
 
     _wrapper_failures: int = 0
     _wrapper_circuit_open_until: float = 0.0
+    _circuit_lock: threading.Lock = threading.Lock()
     CIRCUIT_COOLDOWN_SECONDS: float = 300.0  # 5 minutes
     CIRCUIT_MAX_FAILURES: int = 3
+    TEMP_MAX_RETRIES: int = 5
 
     @classmethod
     def reset_circuit_breaker(cls) -> None:
         """Reset circuit breaker counters and cooldown."""
-        cls._wrapper_failures = 0
-        cls._wrapper_circuit_open_until = 0.0
+        with cls._circuit_lock:
+            cls._wrapper_failures = 0
+            cls._wrapper_circuit_open_until = 0.0
+
+    @classmethod
+    def get_circuit_status(cls) -> Dict[str, Any]:
+        """Thread-safe snapshot of circuit breaker status."""
+        with cls._circuit_lock:
+            now = time.time()
+            return {
+                "failures": cls._wrapper_failures,
+                "circuit_open_until": cls._wrapper_circuit_open_until,
+                "is_open": now < cls._wrapper_circuit_open_until,
+                "cooldown_remaining": max(0.0, cls._wrapper_circuit_open_until - now),
+            }
 
     def __init__(
         self,
@@ -1164,21 +1181,83 @@ class SelfHealingManager:
             os.close(root_fd)
             raise
 
+    def _create_exclusive_temp(
+        self, dir_fd: int, base_name: str, data: bytes, is_executable: bool = False
+    ) -> str:
+        """
+        Creates an unpredictable, exclusive temporary file (CWE-340 / CWE-377 / CWE-494)
+        with 128-bit cryptographic randomness (secrets.token_hex(16)).
+        Retries up to TEMP_MAX_RETRIES on FileExistsError to defend against pre-plant DoS.
+        Writes data, fchmods to 0o700 if is_executable else 0o600, fsyncs, and closes fd.
+        Returns the relative temporary file name.
+        """
+        write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        mode = 0o600
+        target_mode = 0o700 if is_executable else 0o600
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(self.TEMP_MAX_RETRIES):
+            token = secrets.token_hex(16)
+            tmp_name = f".{base_name}.tmp.{token}"
+            try:
+                tmp_fd = os.open(tmp_name, write_flags, mode, dir_fd=dir_fd)
+            except FileExistsError as exc:
+                last_exc = exc
+                logger.warning(
+                    json.dumps({
+                        "event": "temp_collision_retry",
+                        "base_name": base_name,
+                        "tmp_name": tmp_name,
+                        "attempt": attempt + 1,
+                        "max_retries": self.TEMP_MAX_RETRIES,
+                        "ts": time.time(),
+                    })
+                )
+                continue
+
+            # Successfully created and opened exclusive temp fd
+            try:
+                os.write(tmp_fd, data)
+                if target_mode != mode:
+                    try:
+                        os.fchmod(tmp_fd, target_mode)
+                    except OSError:
+                        pass
+                os.fsync(tmp_fd)
+            finally:
+                os.close(tmp_fd)
+            return tmp_name
+
+        # All retries exhausted -> fail closed with structured SIEM audit log
+        logger.error(
+            json.dumps({
+                "event": "temp_create_exhausted",
+                "base_name": base_name,
+                "max_retries": self.TEMP_MAX_RETRIES,
+                "ts": time.time(),
+            })
+        )
+        if last_exc:
+            raise last_exc
+        raise RuntimeError(f"Failed creating exclusive temp file for {base_name} after {self.TEMP_MAX_RETRIES} attempts")
+
     def ensure_wrapper_script(self) -> Tuple[Path, str]:
         """
-        Authoritative wrapper creation & reconciliation (CWE-427 / CWE-367 / CWE-78 / CWE-494):
+        Authoritative wrapper creation & reconciliation (CWE-427 / CWE-367 / CWE-78 / CWE-494 / CWE-362):
         - Component-by-component O_NOFOLLOW directory resolution eliminates TOCTOU races.
         - Verifies ownership (st_uid == os.geteuid()) and directory permissions (mode & 0o022 == 0).
-        - Hardens temp creation with O_CREAT | O_EXCL | O_NOFOLLOW at mode 0o600, then fchmod 0o700.
+        - Hardens temp creation with unpredictable secrets.token_hex(16) and bounded retries against DoS.
         - Content-addressed SHA-256 verification and companion .manifest generation for runtime invocation lock.
+        - Thread-safe circuit breaker preventing cascading failure storms under outages.
         - Returns (wrapper_script_path, content_sha256).
         """
         now = time.time()
-        if now < self._wrapper_circuit_open_until:
-            remaining = int(self._wrapper_circuit_open_until - now)
-            raise RuntimeError(
-                f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after repeated failures)"
-            )
+        with SelfHealingManager._circuit_lock:
+            if now < SelfHealingManager._wrapper_circuit_open_until:
+                remaining = int(SelfHealingManager._wrapper_circuit_open_until - now)
+                raise RuntimeError(
+                    f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after repeated failures)"
+                )
 
         try:
             dir_fd = self._resolve_scripts_dir_fd()
@@ -1187,6 +1266,15 @@ class SelfHealingManager:
                 if st_dir.st_uid != os.geteuid():
                     raise PermissionError(f"scripts_dir not owned by current user (euid {os.geteuid()}, owner {st_dir.st_uid}): {self.scripts_dir}")
                 if st_dir.st_mode & 0o022:
+                    logger.info(
+                        json.dumps({
+                            "event": "scripts_dir_mode_hardened",
+                            "scripts_dir": str(self.scripts_dir),
+                            "orig_mode": oct(st_dir.st_mode),
+                            "target_mode": oct(0o700),
+                            "ts": time.time(),
+                        })
+                    )
                     try:
                         if hasattr(os, "fchmod"):
                             os.fchmod(dir_fd, 0o700)
@@ -1217,21 +1305,13 @@ class SelfHealingManager:
                 except OSError:
                     needs_write = True
 
-                write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-
                 if needs_write:
-                    tmp_name = f".{wrapper_name}.tmp.{os.getpid()}_{time.time_ns()}"
-                    tmp_fd = os.open(tmp_name, write_flags, 0o600, dir_fd=dir_fd)
-                    try:
-                        os.write(tmp_fd, data)
-                        try:
-                            os.fchmod(tmp_fd, 0o700)
-                        except OSError:
-                            pass
-                        os.fsync(tmp_fd)
-                    finally:
-                        os.close(tmp_fd)
-
+                    tmp_name = self._create_exclusive_temp(
+                        dir_fd=dir_fd,
+                        base_name=wrapper_name,
+                        data=data,
+                        is_executable=True,
+                    )
                     try:
                         os.replace(tmp_name, wrapper_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
                         try:
@@ -1265,13 +1345,12 @@ class SelfHealingManager:
                     needs_manifest_write = True
 
                 if needs_manifest_write:
-                    tmp_m = f".{manifest_name}.tmp.{os.getpid()}_{time.time_ns()}"
-                    tmp_m_fd = os.open(tmp_m, write_flags, 0o600, dir_fd=dir_fd)
-                    try:
-                        os.write(tmp_m_fd, manifest_data)
-                        os.fsync(tmp_m_fd)
-                    finally:
-                        os.close(tmp_m_fd)
+                    tmp_m = self._create_exclusive_temp(
+                        dir_fd=dir_fd,
+                        base_name=manifest_name,
+                        data=manifest_data,
+                        is_executable=False,
+                    )
                     try:
                         os.replace(tmp_m, manifest_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
                         try:
@@ -1284,21 +1363,23 @@ class SelfHealingManager:
                         except OSError:
                             pass
 
-                SelfHealingManager._wrapper_failures = 0
-                SelfHealingManager._wrapper_circuit_open_until = 0.0
+                with SelfHealingManager._circuit_lock:
+                    SelfHealingManager._wrapper_failures = 0
+                    SelfHealingManager._wrapper_circuit_open_until = 0.0
                 wrapper_script = self.scripts_dir / wrapper_name
                 return wrapper_script, digest
             finally:
                 os.close(dir_fd)
         except Exception:
-            SelfHealingManager._wrapper_failures += 1
-            if SelfHealingManager._wrapper_failures >= SelfHealingManager.CIRCUIT_MAX_FAILURES:
-                SelfHealingManager._wrapper_circuit_open_until = time.time() + SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS
-                logger.warning(
-                    "Wrapper reconciliation circuit breaker TRIPPED (cooldown %ds) after %d failures",
-                    int(SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS),
-                    SelfHealingManager._wrapper_failures,
-                )
+            with SelfHealingManager._circuit_lock:
+                SelfHealingManager._wrapper_failures += 1
+                if SelfHealingManager._wrapper_failures >= SelfHealingManager.CIRCUIT_MAX_FAILURES:
+                    SelfHealingManager._wrapper_circuit_open_until = time.time() + SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS
+                    logger.warning(
+                        "Wrapper reconciliation circuit breaker TRIPPED (cooldown %ds) after %d failures",
+                        int(SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS),
+                        SelfHealingManager._wrapper_failures,
+                    )
             raise
 
     def self_heal_drift_skips(self) -> List[Dict[str, Any]]:
