@@ -1154,6 +1154,88 @@ class SelfHealingManager:
 
         return results
 
+    def install_hourly_cron(self) -> Dict[str, Any]:
+        """Register the 24/7 hourly digest monitor in Hermes Cron."""
+        if not self.jobs_path.exists():
+            return {"status": "error", "error": "jobs.json not found"}
+
+        try:
+            with open(self.jobs_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            job_id = "job_hermes_hourly_digest"
+            jobs_list = [j for j in data.get("jobs", []) if j.get("id") != job_id]
+
+            script_path = self.repo_dir / "tools" / "hourly_digest_monitor.py"
+            cmd = f"{self.python_bin} {script_path} --notify --self-heal"
+
+            digest_job = {
+                "id": job_id,
+                "name": "hermes-hourly-digest-and-entropy-monitor",
+                "prompt": "",
+                "skills": [],
+                "skill": None,
+                "model": "codex",
+                "provider": "custom",
+                "provider_snapshot": "custom",
+                "model_snapshot": "codex",
+                "base_url": None,
+                "script": None,
+                "command": cmd,
+                "no_agent": True,
+                "schedule": {
+                    "kind": "cron",
+                    "expr": "0 * * * *",
+                    "display": "0 * * * * (Hourly 24/7 Digest & Anomaly Monitor)",
+                },
+                "schedule_display": "0 * * * *",
+                "repeat": {"times": None, "completed": 0},
+                "enabled": True,
+                "state": "scheduled",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "next_run_at": datetime.now(timezone.utc).isoformat(),
+                "last_status": "ok",
+                "drift_alerted": False,
+            }
+
+            jobs_list.append(digest_job)
+            data["jobs"] = jobs_list
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+            tmp_path = self.jobs_path.with_suffix(".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            tmp_path.replace(self.jobs_path)
+
+            return {"status": "installed", "job_id": job_id, "command": cmd}
+        except Exception as e:
+            logger.error("Failed installing hourly digest cron: %s", e)
+            return {"status": "error", "error": str(e)}
+
+    def uninstall_hourly_cron(self) -> Dict[str, Any]:
+        """Remove the 24/7 hourly digest monitor from Hermes Cron."""
+        if not self.jobs_path.exists():
+            return {"status": "error", "error": "jobs.json not found"}
+
+        try:
+            with open(self.jobs_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            job_id = "job_hermes_hourly_digest"
+            jobs_list = [j for j in data.get("jobs", []) if j.get("id") != job_id]
+            data["jobs"] = jobs_list
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+            tmp_path = self.jobs_path.with_suffix(".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            tmp_path.replace(self.jobs_path)
+
+            return {"status": "uninstalled", "job_id": job_id}
+        except Exception as e:
+            logger.error("Failed uninstalling hourly digest cron: %s", e)
+            return {"status": "error", "error": str(e)}
+
 
 # ==============================================================================
 # Main Orchestrator & CLI
@@ -1209,14 +1291,26 @@ def main():
     parser.add_argument("--alert-only", action="store_true", help="Send Telegram alert only if CRITICAL anomalies exist")
     parser.add_argument("--self-heal", action="store_true", help="Run automated self-healing for drift-skips")
     parser.add_argument("--recover-stream", type=str, help="Trigger on-demand recovery for a stalled entropy stream")
+    parser.add_argument("--install-cron", action="store_true", help="Register 24/7 hourly digest monitor in Hermes Cron")
+    parser.add_argument("--uninstall-cron", action="store_true", help="Remove 24/7 hourly digest monitor from Hermes Cron")
     args = parser.parse_args()
+
+    notifier = HermesTelegramNotifier()
+    healer = SelfHealingManager()
+
+    if args.install_cron:
+        res = healer.install_hourly_cron()
+        print(f"[+] Install hourly cron result: {res}")
+        return
+
+    if args.uninstall_cron:
+        res = healer.uninstall_hourly_cron()
+        print(f"[+] Uninstall hourly cron result: {res}")
+        return
 
     # Default action if no flags provided: scan
     if not (args.scan or args.notify or args.alert_only or args.self_heal or args.recover_stream):
         args.scan = True
-
-    notifier = HermesTelegramNotifier()
-    healer = SelfHealingManager()
 
     if args.self_heal:
         print("[*] Initiating Self-Healing for Drift-Skipped Cron Jobs...")

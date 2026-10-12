@@ -642,3 +642,31 @@ def test_self_healing_manager_drift_skips(tmp_path):
     assert job1["drift_alerted"] is False
     assert job1["last_error"] is None
     assert job1["last_status"] == "scheduled"
+
+
+def test_self_healing_manager_install_uninstall_cron(tmp_path):
+    """Verify install_hourly_cron and uninstall_hourly_cron modify jobs.json properly."""
+    jobs_file = tmp_path / "jobs.json"
+    with open(jobs_file, "w", encoding="utf-8") as f:
+        json.dump({"jobs": []}, f, indent=2)
+
+    manager = SelfHealingManager(jobs_path=jobs_file, repo_dir=tmp_path)
+    res_inst = manager.install_hourly_cron()
+    assert res_inst["status"] == "installed"
+    assert res_inst["job_id"] == "job_hermes_hourly_digest"
+
+    with open(jobs_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    assert len(data["jobs"]) == 1
+    assert data["jobs"][0]["id"] == "job_hermes_hourly_digest"
+    assert data["jobs"][0]["no_agent"] is True
+    assert data["jobs"][0]["schedule"]["expr"] == "0 * * * *"
+
+    # Now uninstall
+    res_uninst = manager.uninstall_hourly_cron()
+    assert res_uninst["status"] == "uninstalled"
+
+    with open(jobs_file, "r", encoding="utf-8") as f:
+        data2 = json.load(f)
+    assert len(data2["jobs"]) == 0
+
