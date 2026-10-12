@@ -2971,13 +2971,26 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
         f"unterminated-branch produced only {unterminated_assertions} assertions (floor {unterminated_floor}); "
         "re error wording may have changed and neutered the oracle"
     )
-    # Ratio-band guard: prevent corpus gaming or distribution skew that could mask a dead branch
+    # Anchor the band to the generator floors, not to magic constants. The expected
+    # accept share is derived from how the corpus floors are built, so rebalancing
+    # the prefix/body/suffix sets moves the band with it instead of causing a false
+    # failure or silently admitting a dead branch.
     analyzable = accept_assertions + unterminated_assertions
     assert analyzable > 0, "no analyzable patterns; corpus fully degraded"
+    expected_accept_ratio = accept_floor / (accept_floor + unterminated_floor)
+    tolerance = 0.08
     accept_ratio = accept_assertions / analyzable
-    assert 0.55 <= accept_ratio <= 0.80, (
-        f"accept/unterminated mix drifted to {accept_ratio:.2f}; "
+    assert abs(accept_ratio - expected_accept_ratio) <= tolerance, (
+        f"accept/unterminated mix drifted to {accept_ratio:.2f} "
+        f"(expected {expected_accept_ratio:.2f} ± {tolerance}); "
         "corpus distribution changed and may be masking a dead branch"
+    )
+    # Coverage audit trail for CI log retention
+    print(
+        f"\n[fuzz_oracle] total_cases={total_cases} analyzable={analyzable} "
+        f"accept={accept_assertions} (floor {accept_floor}) "
+        f"unterminated={unterminated_assertions} (floor {unterminated_floor}) "
+        f"accept_ratio={accept_ratio:.4f} expected={expected_accept_ratio:.4f}±{tolerance}"
     )
     # Catch version-drift case explicitly instead of letting it vanish silently
     assert not unclassified_errors, (
