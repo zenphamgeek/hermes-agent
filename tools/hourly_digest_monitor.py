@@ -1135,14 +1135,21 @@ class SelfHealingManager:
     def _resolve_scripts_dir_fd(self) -> int:
         """
         Creates or opens scripts_dir component-by-component, anchored to each parent's
-        fd with O_NOFOLLOW | O_DIRECTORY (CWE-367 / CWE-427).
+        fd with O_NOFOLLOW | O_DIRECTORY (CWE-367 / CWE-427 / CWE-59).
         Refusal originates directly from ELOOP/ENOTDIR on O_NOFOLLOW without prior lstat.
+        Fails closed with RuntimeError if O_NOFOLLOW is unsupported on platform.
         Caller owns the returned fd and must os.close() it.
         """
+        o_nofollow = getattr(os, "O_NOFOLLOW", None)
+        if o_nofollow is None:
+            raise RuntimeError(
+                "O_NOFOLLOW unavailable on this platform; refusing to resolve scripts_dir without symlink protection (CWE-59 fail-closed)"
+            )
+
         d = Path(os.path.abspath(str(self.scripts_dir)))
         root = d.anchor or "/"
         cloexec = getattr(os, "O_CLOEXEC", 0)
-        open_flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0) | cloexec
+        open_flags = os.O_RDONLY | os.O_DIRECTORY | o_nofollow | cloexec
 
         root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | cloexec)
         cur_fd = root_fd
@@ -1185,13 +1192,21 @@ class SelfHealingManager:
         self, dir_fd: int, base_name: str, data: bytes, is_executable: bool = False
     ) -> str:
         """
-        Creates an unpredictable, exclusive temporary file (CWE-340 / CWE-377 / CWE-494)
+        Creates an unpredictable, exclusive temporary file (CWE-340 / CWE-377 / CWE-494 / CWE-59)
         with 128-bit cryptographic randomness (secrets.token_hex(16)).
-        Retries up to TEMP_MAX_RETRIES on FileExistsError to defend against pre-plant DoS.
+        Fails closed if O_NOFOLLOW is unavailable.
+        Retries up to TEMP_MAX_RETRIES ONLY on FileExistsError (EEXIST). Fatal errnos (ENOSPC, EACCES, EMFILE)
+        fail immediately with structured SIEM event 'temp_create_fatal_errno' to prevent amplification DoS.
         Writes data, fchmods to 0o700 if is_executable else 0o600, fsyncs, and closes fd.
         Returns the relative temporary file name.
         """
-        write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        o_nofollow = getattr(os, "O_NOFOLLOW", None)
+        if o_nofollow is None:
+            raise RuntimeError(
+                "O_NOFOLLOW unavailable on this platform; refusing to create wrapper temp without symlink protection (CWE-59 fail-closed)"
+            )
+
+        write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | o_nofollow | getattr(os, "O_CLOEXEC", 0)
         mode = 0o600
         target_mode = 0o700 if is_executable else 0o600
 
@@ -1214,6 +1229,20 @@ class SelfHealingManager:
                     })
                 )
                 continue
+            except OSError as exc:
+                # Fatal errno (ENOSPC, EACCES, EMFILE, ELOOP, EROFS, etc.) are NOT collisions — fail closed immediately without retrying!
+                logger.error(
+                    json.dumps({
+                        "event": "temp_create_fatal_errno",
+                        "base_name": base_name,
+                        "tmp_name": tmp_name,
+                        "errno": exc.errno,
+                        "strerror": str(exc),
+                        "attempt": attempt + 1,
+                        "ts": time.time(),
+                    })
+                )
+                raise
 
             # Successfully created and opened exclusive temp fd
             try:
@@ -1243,8 +1272,8 @@ class SelfHealingManager:
 
     def ensure_wrapper_script(self) -> Tuple[Path, str]:
         """
-        Authoritative wrapper creation & reconciliation (CWE-427 / CWE-367 / CWE-78 / CWE-494 / CWE-362):
-        - Component-by-component O_NOFOLLOW directory resolution eliminates TOCTOU races.
+        Authoritative wrapper creation & reconciliation (CWE-427 / CWE-367 / CWE-78 / CWE-494 / CWE-362 / CWE-59):
+        - Component-by-component O_NOFOLLOW directory resolution eliminates TOCTOU races (fail-closed if O_NOFOLLOW missing).
         - Verifies ownership (st_uid == os.geteuid()) and directory permissions (mode & 0o022 == 0).
         - Hardens temp creation with unpredictable secrets.token_hex(16) and bounded retries against DoS.
         - Content-addressed SHA-256 verification and companion .manifest generation for runtime invocation lock.
@@ -1258,6 +1287,12 @@ class SelfHealingManager:
                 raise RuntimeError(
                     f"Wrapper reconciliation circuit breaker OPEN (cooling down for {remaining}s after repeated failures)"
                 )
+
+        o_nofollow = getattr(os, "O_NOFOLLOW", None)
+        if o_nofollow is None:
+            raise RuntimeError(
+                "O_NOFOLLOW unavailable on this platform; refusing to inspect scripts without symlink protection (CWE-59 fail-closed)"
+            )
 
         try:
             dir_fd = self._resolve_scripts_dir_fd()
@@ -1291,7 +1326,7 @@ class SelfHealingManager:
 
                 needs_write = True
                 try:
-                    check_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+                    check_flags = os.O_RDONLY | o_nofollow | getattr(os, "O_CLOEXEC", 0)
                     file_fd = os.open(wrapper_name, check_flags, dir_fd=dir_fd)
                     try:
                         st = os.fstat(file_fd)
@@ -1333,7 +1368,7 @@ class SelfHealingManager:
 
                 needs_manifest_write = True
                 try:
-                    check_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+                    check_flags = os.O_RDONLY | o_nofollow | getattr(os, "O_CLOEXEC", 0)
                     m_fd = os.open(manifest_name, check_flags, dir_fd=dir_fd)
                     try:
                         with open(m_fd, "r", encoding="utf-8", closefd=False) as fh:
@@ -1374,12 +1409,14 @@ class SelfHealingManager:
             with SelfHealingManager._circuit_lock:
                 SelfHealingManager._wrapper_failures += 1
                 if SelfHealingManager._wrapper_failures >= SelfHealingManager.CIRCUIT_MAX_FAILURES:
-                    SelfHealingManager._wrapper_circuit_open_until = time.time() + SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS
-                    logger.warning(
-                        "Wrapper reconciliation circuit breaker TRIPPED (cooldown %ds) after %d failures",
-                        int(SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS),
-                        SelfHealingManager._wrapper_failures,
-                    )
+                    now = time.time()
+                    if SelfHealingManager._wrapper_circuit_open_until <= now:
+                        SelfHealingManager._wrapper_circuit_open_until = now + SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS
+                        logger.warning(
+                            "Wrapper reconciliation circuit breaker TRIPPED (cooldown %ds) after %d failures",
+                            int(SelfHealingManager.CIRCUIT_COOLDOWN_SECONDS),
+                            SelfHealingManager._wrapper_failures,
+                        )
             raise
 
     def self_heal_drift_skips(self) -> List[Dict[str, Any]]:

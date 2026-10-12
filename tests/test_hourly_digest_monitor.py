@@ -1227,5 +1227,154 @@ def test_wrapper_failure_cleans_up_temp_and_trips_circuit_breaker(tmp_path):
     assert wp.exists()
 
 
+def test_wrapper_temp_fatal_errno_does_not_retry(tmp_path, caplog):
+    """CWE-377 / DoS Defense: Fatal errno (ENOSPC) must fail immediately on attempt 1 without retrying."""
+    SelfHealingManager.reset_circuit_breaker()
+    import errno
+    import logging
+    scripts_dir = tmp_path / "scripts_fatal_errno"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    temp_attempts = []
+    orig_open = os.open
+
+    def enospc_temp_open(path, flags, *args, **kwargs):
+        if isinstance(path, str) and path.startswith(".hermes_hourly_digest.sh.tmp."):
+            temp_attempts.append(path)
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return orig_open(path, flags, *args, **kwargs)
+
+    with caplog.at_level(logging.ERROR):
+        with patch("os.open", side_effect=enospc_temp_open):
+            with pytest.raises(OSError, match="No space left on device"):
+                mgr.ensure_wrapper_script()
+
+    # CRITICAL: exactly 1 attempt! No futile retries on ENOSPC
+    assert len(temp_attempts) == 1, f"Expected exactly 1 attempt on ENOSPC, got {len(temp_attempts)} (amplification DoS detected!)"
+
+    # SIEM telemetry verified: emitted fatal errno record
+    fatal_records = [
+        json.loads(r.message) for r in caplog.records
+        if "temp_create_fatal_errno" in r.message
+    ]
+    assert len(fatal_records) == 1
+    assert fatal_records[0]["event"] == "temp_create_fatal_errno"
+    assert fatal_records[0]["errno"] == errno.ENOSPC
+    assert fatal_records[0]["attempt"] == 1
+
+
+def test_wrapper_refuses_without_nofollow(tmp_path):
+    """CWE-59 Fail-Closed: System must refuse operation if platform lacks O_NOFOLLOW."""
+    SelfHealingManager.reset_circuit_breaker()
+    scripts_dir = tmp_path / "scripts_no_nofollow"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    # Monkeypatch away os.O_NOFOLLOW
+    with patch.object(os, "O_NOFOLLOW", None, create=True):
+        with pytest.raises(RuntimeError, match="O_NOFOLLOW unavailable on this platform; refusing to inspect scripts without symlink protection"):
+            mgr.ensure_wrapper_script()
+
+
+def test_entropy_draw_count_is_bounded(tmp_path):
+    """Entropy Contract: Clean creation consumes exactly 2 cryptographic draws (1 wrapper, 1 manifest)."""
+    SelfHealingManager.reset_circuit_breaker()
+    scripts_dir = tmp_path / "scripts_entropy_contract"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    draws = []
+    orig_token_hex = secrets.token_hex
+
+    def spy_token_hex(nbytes=16):
+        res = orig_token_hex(nbytes)
+        draws.append(res)
+        return res
+
+    with patch("secrets.token_hex", side_effect=spy_token_hex):
+        wp, digest = mgr.ensure_wrapper_script()
+
+    assert wp.exists()
+    # Exactly 2 draws on happy path: 1 for wrapper temp, 1 for manifest temp
+    assert len(draws) == 2, f"Expected exactly 2 entropy draws on initial creation, got {len(draws)}: {draws}"
+
+
+def test_atomic_publish_uses_os_replace(tmp_path):
+    """CWE-494: Wrapper publication must use atomic os.replace."""
+    SelfHealingManager.reset_circuit_breaker()
+    scripts_dir = tmp_path / "scripts_atomic_replace"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    replace_calls = []
+    orig_replace = os.replace
+
+    def spy_replace(src, dst, *args, **kwargs):
+        replace_calls.append((src, dst))
+        return orig_replace(src, dst, *args, **kwargs)
+
+    with patch("os.replace", side_effect=spy_replace):
+        wp, digest = mgr.ensure_wrapper_script()
+
+    # Both wrapper and manifest must be published via os.replace
+    assert len(replace_calls) == 2
+    wrapper_replaces = [dst for (src, dst) in replace_calls if dst == "hermes_hourly_digest.sh"]
+    manifest_replaces = [dst for (src, dst) in replace_calls if dst == ".hermes_hourly_digest.sh.manifest"]
+    assert len(wrapper_replaces) == 1
+    assert len(manifest_replaces) == 1
+
+
+def test_breaker_no_double_open_under_contention(tmp_path):
+    """CWE-362: Concurrent contention across threads trips circuit breaker cleanly once."""
+    SelfHealingManager.reset_circuit_breaker()
+    import concurrent.futures
+    import errno
+
+    scripts_dir = tmp_path / "scripts_contention"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    def failing_replace(*args, **kwargs):
+        raise OSError(errno.ENOSPC, "Contention injected error")
+
+    with patch("os.replace", side_effect=failing_replace):
+        def worker_task():
+            try:
+                mgr.ensure_wrapper_script()
+                return "SUCCESS"
+            except Exception as e:
+                return str(e)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            results = list(executor.map(lambda _: worker_task(), range(10)))
+
+    # Circuit breaker must be open
+    status = SelfHealingManager.get_circuit_status()
+    assert status["is_open"] is True
+    assert status["failures"] >= SelfHealingManager.CIRCUIT_MAX_FAILURES
+
+
+
 
 
