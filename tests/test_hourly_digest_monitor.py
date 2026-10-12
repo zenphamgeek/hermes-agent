@@ -3,6 +3,7 @@ Test Suite for Hermes Agent 24/7 Hourly Digest Monitor, Cronjob Clog & Anomaly D
 Entropy Stream Degradation Scanner, Composite Health Calculator, and Self-Healing Engine.
 """
 
+import errno
 import json
 import os
 import re
@@ -1297,17 +1298,19 @@ def test_entropy_draw_count_is_bounded(tmp_path):
     )
 
     draws = []
-    orig_token_hex = secrets.token_hex
+    orig_token = mgr._token_source
 
-    def spy_token_hex(nbytes=16):
-        res = orig_token_hex(nbytes)
+    def spy_token(nbytes=16):
+        res = orig_token(nbytes)
         draws.append(res)
         return res
 
-    with patch("secrets.token_hex", side_effect=spy_token_hex):
+    with patch.object(mgr, "_token_source", side_effect=spy_token):
         wp, digest = mgr.ensure_wrapper_script()
 
     assert wp.exists()
+    # Guarantee spy actually fired!
+    assert len(draws) > 0, "Entropy spy did not fire at all!"
     # Exactly 2 draws on happy path: 1 for wrapper temp, 1 for manifest temp
     assert len(draws) == 2, f"Expected exactly 2 entropy draws on initial creation, got {len(draws)}: {draws}"
 
@@ -1373,6 +1376,159 @@ def test_breaker_no_double_open_under_contention(tmp_path):
     status = SelfHealingManager.get_circuit_status()
     assert status["is_open"] is True
     assert status["failures"] >= SelfHealingManager.CIRCUIT_MAX_FAILURES
+
+
+def test_publish_is_recoverable_after_crash_between_replaces(tmp_path):
+    """CWE-494 / Crash Transactionality: Interruption between wrapper and manifest replaces recovers cleanly."""
+    SelfHealingManager.reset_circuit_breaker()
+    scripts_dir = tmp_path / "scripts_crash_recovery"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    orig_replace = os.replace
+
+    class SimulatedCrash(RuntimeError):
+        pass
+
+    # Inject crash right after wrapper replace succeeds, but before manifest replace
+    def crash_after_wrapper_replace(src, dst, *args, **kwargs):
+        res = orig_replace(src, dst, *args, **kwargs)
+        if dst == "hermes_hourly_digest.sh":
+            raise SimulatedCrash("Process killed / power outage between replaces")
+        return res
+
+    # Initial execution crashes
+    with patch("os.replace", side_effect=crash_after_wrapper_replace):
+        with pytest.raises(SimulatedCrash):
+            mgr.ensure_wrapper_script()
+
+    # Disk state post-crash: wrapper exists on disk, manifest does NOT exist!
+    wrapper_path = scripts_dir / "hermes_hourly_digest.sh"
+    manifest_path = scripts_dir / ".hermes_hourly_digest.sh.manifest"
+    assert wrapper_path.exists(), "Wrapper script must exist after first replace"
+    assert not manifest_path.exists(), "Manifest must NOT exist yet after simulated crash"
+
+    # Reset circuit breaker (to simulate a new process run)
+    SelfHealingManager.reset_circuit_breaker()
+
+    # Subsequent run detects canonical wrapper and self-heals the manifest without error
+    wp, digest = mgr.ensure_wrapper_script()
+    assert wp.exists()
+    assert manifest_path.exists(), "Manifest must be self-healed by subsequent run"
+
+    # Verify sha256sum integrity check passes
+    res = subprocess.run(
+        ["sha256sum", "-c", manifest_path.name],
+        cwd=scripts_dir,
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0, f"sha256sum verification failed: {res.stderr}"
+
+    # Breaker must remain CLOSED and healthy
+    status = SelfHealingManager.get_circuit_status()
+    assert status["is_open"] is False
+
+
+@pytest.mark.parametrize(
+    "err_code, err_name",
+    [
+        (errno.ENOSPC, "ENOSPC"),
+        (getattr(errno, "EDQUOT", 122), "EDQUOT"),
+        (errno.EROFS, "EROFS"),
+        (errno.EACCES, "EACCES"),
+    ],
+)
+def test_wrapper_temp_fatal_errno_siblings(tmp_path, caplog, err_code, err_name):
+    """CWE-377 / DoS Defense: Fatal errno siblings must fail immediately on attempt 1 without retrying."""
+    SelfHealingManager.reset_circuit_breaker()
+    import logging
+    scripts_dir = tmp_path / f"scripts_fatal_{err_name}"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    temp_attempts = []
+    orig_open = os.open
+
+    def fatal_temp_open(path, flags, *args, **kwargs):
+        if isinstance(path, str) and path.startswith(".hermes_hourly_digest.sh.tmp."):
+            temp_attempts.append(path)
+            raise OSError(err_code, f"Injected fatal errno {err_name}")
+        return orig_open(path, flags, *args, **kwargs)
+
+    with caplog.at_level(logging.ERROR):
+        with patch("os.open", side_effect=fatal_temp_open):
+            with pytest.raises(OSError, match=f"Injected fatal errno {err_name}"):
+                mgr.ensure_wrapper_script()
+
+    # CRITICAL: exactly 1 attempt! No futile retries on fatal errno
+    assert len(temp_attempts) == 1, f"Expected exactly 1 attempt on {err_name}, got {len(temp_attempts)}"
+
+    # SIEM telemetry verified: emitted fatal errno record
+    fatal_records = [
+        json.loads(r.message)
+        for r in caplog.records
+        if "temp_create_fatal_errno" in r.message
+    ]
+    assert len(fatal_records) == 1
+    assert fatal_records[0]["event"] == "temp_create_fatal_errno"
+    assert fatal_records[0]["errno"] == err_code
+    assert fatal_records[0]["attempt"] == 1
+
+
+def test_wrapper_refuses_without_nofollow_delattr(tmp_path, monkeypatch):
+    """CWE-59 Fail-Closed: System must refuse operation if os.O_NOFOLLOW is deleted via delattr."""
+    SelfHealingManager.reset_circuit_breaker()
+    scripts_dir = tmp_path / "scripts_delattr_nofollow"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
+    with pytest.raises(RuntimeError, match="O_NOFOLLOW unavailable on this platform"):
+        mgr.ensure_wrapper_script()
+
+
+def test_breaker_lock_not_held_across_io(tmp_path):
+    """Concurrency Invariant: _circuit_lock must NOT be held during blocking filesystem I/O."""
+    SelfHealingManager.reset_circuit_breaker()
+    scripts_dir = tmp_path / "scripts_lock_io"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    lock_checks = []
+    orig_write = os.write
+
+    def non_blocking_write_spy(fd, data):
+        # Verify circuit lock is NOT held during blocking os.write!
+        can_acquire = SelfHealingManager._circuit_lock.acquire(blocking=False)
+        if can_acquire:
+            SelfHealingManager._circuit_lock.release()
+            lock_checks.append(True)
+        else:
+            lock_checks.append(False)
+        return orig_write(fd, data)
+
+    with patch("os.write", side_effect=non_blocking_write_spy):
+        wp, digest = mgr.ensure_wrapper_script()
+
+    assert len(lock_checks) >= 2, "Expected os.write to be called for both wrapper and manifest"
+    assert all(lock_checks), "Circuit lock was held during blocking os.write I/O!"
 
 
 

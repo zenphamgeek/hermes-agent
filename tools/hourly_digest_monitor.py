@@ -75,6 +75,18 @@ DEFAULT_CHAT_ID = "1431349185"
 FLEET_SUMMARY_URL = "http://localhost:7777/api/fleet/summary"
 FLEET_COUNCIL_URL = "http://localhost:7777/api/fleet/council"
 
+_FATAL_TEMP_ERRNOS = frozenset({
+    errno.ENOSPC,
+    getattr(errno, "EDQUOT", 122),
+    errno.EROFS,
+    errno.EACCES,
+    errno.EPERM,
+    getattr(errno, "ENAMETOOLONG", 36),
+    errno.EMFILE,
+    errno.ENFILE,
+    getattr(errno, "ELOOP", 40),
+})
+
 
 def get_ssl_context() -> ssl.SSLContext:
     ctx = ssl.create_default_context()
@@ -1064,6 +1076,10 @@ class SelfHealingManager:
     TEMP_MAX_RETRIES: int = 5
 
     @classmethod
+    def _token_source(cls, nbytes: int = 16) -> str:
+        return secrets.token_hex(nbytes)
+
+    @classmethod
     def reset_circuit_breaker(cls) -> None:
         """Reset circuit breaker counters and cooldown."""
         with cls._circuit_lock:
@@ -1141,7 +1157,7 @@ class SelfHealingManager:
         Caller owns the returned fd and must os.close() it.
         """
         o_nofollow = getattr(os, "O_NOFOLLOW", None)
-        if o_nofollow is None:
+        if not o_nofollow:
             raise RuntimeError(
                 "O_NOFOLLOW unavailable on this platform; refusing to resolve scripts_dir without symlink protection (CWE-59 fail-closed)"
             )
@@ -1201,7 +1217,7 @@ class SelfHealingManager:
         Returns the relative temporary file name.
         """
         o_nofollow = getattr(os, "O_NOFOLLOW", None)
-        if o_nofollow is None:
+        if not o_nofollow:
             raise RuntimeError(
                 "O_NOFOLLOW unavailable on this platform; refusing to create wrapper temp without symlink protection (CWE-59 fail-closed)"
             )
@@ -1212,25 +1228,25 @@ class SelfHealingManager:
 
         last_exc: Optional[Exception] = None
         for attempt in range(self.TEMP_MAX_RETRIES):
-            token = secrets.token_hex(16)
+            token = self._token_source(16)
             tmp_name = f".{base_name}.tmp.{token}"
             try:
                 tmp_fd = os.open(tmp_name, write_flags, mode, dir_fd=dir_fd)
-            except FileExistsError as exc:
-                last_exc = exc
-                logger.warning(
-                    json.dumps({
-                        "event": "temp_collision_retry",
-                        "base_name": base_name,
-                        "tmp_name": tmp_name,
-                        "attempt": attempt + 1,
-                        "max_retries": self.TEMP_MAX_RETRIES,
-                        "ts": time.time(),
-                    })
-                )
-                continue
             except OSError as exc:
-                # Fatal errno (ENOSPC, EACCES, EMFILE, ELOOP, EROFS, etc.) are NOT collisions — fail closed immediately without retrying!
+                if exc.errno == errno.EEXIST or isinstance(exc, FileExistsError):
+                    last_exc = exc
+                    logger.warning(
+                        json.dumps({
+                            "event": "temp_collision_retry",
+                            "base_name": base_name,
+                            "tmp_name": tmp_name,
+                            "attempt": attempt + 1,
+                            "max_retries": self.TEMP_MAX_RETRIES,
+                            "ts": time.time(),
+                        })
+                    )
+                    continue
+                # Fatal errno (ENOSPC, EACCES, EMFILE, ELOOP, EROFS, etc. in _FATAL_TEMP_ERRNOS) are NOT collisions — fail closed immediately without retrying!
                 logger.error(
                     json.dumps({
                         "event": "temp_create_fatal_errno",
@@ -1289,7 +1305,7 @@ class SelfHealingManager:
                 )
 
         o_nofollow = getattr(os, "O_NOFOLLOW", None)
-        if o_nofollow is None:
+        if not o_nofollow:
             raise RuntimeError(
                 "O_NOFOLLOW unavailable on this platform; refusing to inspect scripts without symlink protection (CWE-59 fail-closed)"
             )
@@ -1321,8 +1337,11 @@ class SelfHealingManager:
                         raise RuntimeError(f"scripts_dir still group/world-writable after chmod: {self.scripts_dir}")
 
                 wrapper_name = "hermes_hourly_digest.sh"
+                manifest_name = f".{wrapper_name}.manifest"
                 wrapper_content, digest = self.render_wrapper_content()
                 data = wrapper_content.encode("utf-8")
+                manifest_content = f"{digest}  {wrapper_name}\n"
+                manifest_data = manifest_content.encode("utf-8")
 
                 needs_write = True
                 try:
@@ -1340,32 +1359,6 @@ class SelfHealingManager:
                 except OSError:
                     needs_write = True
 
-                if needs_write:
-                    tmp_name = self._create_exclusive_temp(
-                        dir_fd=dir_fd,
-                        base_name=wrapper_name,
-                        data=data,
-                        is_executable=True,
-                    )
-                    try:
-                        os.replace(tmp_name, wrapper_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
-                        try:
-                            os.fsync(dir_fd)
-                        except OSError:
-                            pass
-                    except Exception as exc:
-                        try:
-                            os.unlink(tmp_name, dir_fd=dir_fd)
-                        except OSError:
-                            pass
-                        logger.error("wrapper self-heal failed for %s: %s", wrapper_name, exc)
-                        raise
-
-                # A6: Companion manifest file (.hermes_hourly_digest.sh.manifest) for invocation verification
-                manifest_name = f".{wrapper_name}.manifest"
-                manifest_content = f"{digest}  {wrapper_name}\n"
-                manifest_data = manifest_content.encode("utf-8")
-
                 needs_manifest_write = True
                 try:
                     check_flags = os.O_RDONLY | o_nofollow | getattr(os, "O_CLOEXEC", 0)
@@ -1379,7 +1372,8 @@ class SelfHealingManager:
                 except OSError:
                     needs_manifest_write = True
 
-                if needs_manifest_write:
+                if not needs_write and needs_manifest_write:
+                    # Crash recovery / self-healing: wrapper matches canonical template, reconcile companion manifest
                     tmp_m = self._create_exclusive_temp(
                         dir_fd=dir_fd,
                         base_name=manifest_name,
@@ -1392,11 +1386,64 @@ class SelfHealingManager:
                             os.fsync(dir_fd)
                         except OSError:
                             pass
-                    except Exception:
+                    except Exception as exc:
                         try:
                             os.unlink(tmp_m, dir_fd=dir_fd)
                         except OSError:
                             pass
+                        logger.error("manifest self-heal failed for %s: %s", manifest_name, exc)
+                        raise
+                elif needs_write:
+                    # Full publication: prepare and fsync BOTH temp files before replacing either (CWE-494 / crash transactionality)
+                    tmp_w = self._create_exclusive_temp(
+                        dir_fd=dir_fd,
+                        base_name=wrapper_name,
+                        data=data,
+                        is_executable=True,
+                    )
+                    try:
+                        tmp_m = self._create_exclusive_temp(
+                            dir_fd=dir_fd,
+                            base_name=manifest_name,
+                            data=manifest_data,
+                            is_executable=False,
+                        )
+                    except Exception:
+                        try:
+                            os.unlink(tmp_w, dir_fd=dir_fd)
+                        except OSError:
+                            pass
+                        raise
+
+                    tmp_w_replaced = False
+                    tmp_m_replaced = False
+                    try:
+                        os.replace(tmp_w, wrapper_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                        tmp_w_replaced = True
+                        try:
+                            os.fsync(dir_fd)
+                        except OSError:
+                            pass
+
+                        os.replace(tmp_m, manifest_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                        tmp_m_replaced = True
+                        try:
+                            os.fsync(dir_fd)
+                        except OSError:
+                            pass
+                    except Exception as exc:
+                        if not tmp_w_replaced:
+                            try:
+                                os.unlink(tmp_w, dir_fd=dir_fd)
+                            except OSError:
+                                pass
+                        if not tmp_m_replaced:
+                            try:
+                                os.unlink(tmp_m, dir_fd=dir_fd)
+                            except OSError:
+                                pass
+                        logger.error("wrapper atomic publication failed: %s", exc)
+                        raise
 
                 with SelfHealingManager._circuit_lock:
                     SelfHealingManager._wrapper_failures = 0
