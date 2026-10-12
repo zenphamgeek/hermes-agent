@@ -20,6 +20,7 @@ import shlex
 import sqlite3
 import statistics
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -2917,6 +2918,7 @@ class CharClassFuzzTaxonomy:
     Publishes its generator taxonomy and theoretical accept share so the test oracle
     and the pattern generator stay strictly in lockstep (zero hard-coded magic literals).
     """
+    BASELINE_ACCEPTED_COUNT = 109
     prefixes = ("[", "[^", "[]", "[^]")
     bodies = (
         "", "a", "abc", r"\]", r"\\", r"\[", "-", "^", "0-9",
@@ -2936,11 +2938,25 @@ class CharClassFuzzTaxonomy:
                     yield p + b + s
 
     @classmethod
+    def live_accept_split(cls) -> Tuple[int, int]:
+        """Accepted/total measured against the live re engine, not a literal."""
+        accepted = 0
+        total = 0
+        for pattern in cls.generate_patterns():
+            total += 1
+            try:
+                re.compile(pattern)
+            except re.error:
+                continue
+            accepted += 1
+        return accepted, total
+
+    @classmethod
     def accept_split(cls) -> Tuple[int, int]:
         """Returns (accepted_cases, total_generated) derived from this taxonomy."""
         # 4 prefixes x 14 bodies x 2 closed suffixes (']', 'x]') = 112
         # minus 3 edge cases where internal escapes / trailing syntax modify delimiters = 109
-        return 109, cls.total_cases()
+        return cls.BASELINE_ACCEPTED_COUNT, cls.total_cases()
 
 
 def validate_fuzz_oracle_distribution(
@@ -2997,10 +3013,17 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
     taxonomy = CharClassFuzzTaxonomy
     total_cases = taxonomy.total_cases()
     assert total_cases >= 168, f"corpus shrank to {total_cases}; oracle coverage lost"
+    assert total_cases == len(taxonomy.prefixes) * len(taxonomy.bodies) * len(taxonomy.suffixes), (
+        "taxonomy total_cases desynced from product of axes"
+    )
 
-    accepted_cases, total_generated = taxonomy.accept_split()
+    accepted_cases, total_generated = taxonomy.live_accept_split()
     assert total_generated == total_cases, (
-        f"taxonomy/corpus desync: taxonomy={total_generated} corpus={total_cases}"
+        f"taxonomy/corpus desync: generated={total_generated} corpus={total_cases}"
+    )
+    assert accepted_cases == taxonomy.BASELINE_ACCEPTED_COUNT, (
+        f"re-engine accept-count drift under {sys.version.split()[0]}: "
+        f"live={accepted_cases} baseline={taxonomy.BASELINE_ACCEPTED_COUNT}"
     )
     expected_accept_ratio = accepted_cases / total_generated
 
@@ -3194,6 +3217,64 @@ def test_oracle_desync_guard_fires_on_taxonomy_mismatch():
     with pytest.raises(AssertionError, match="taxonomy/corpus desync"):
         assert total == simulated_corpus_count, (
             f"taxonomy/corpus desync: taxonomy={total} corpus={simulated_corpus_count}"
+        )
+
+
+def test_taxonomy_accept_count_matches_live_engine():
+    """Nebula Cycle 25: Asserts live re engine accept count matches baseline under running CPython."""
+    live_accepted, total = CharClassFuzzTaxonomy.live_accept_split()
+    assert live_accepted == CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT, (
+        f"re-engine accept-count drift under {sys.version.split()[0]}: "
+        f"live={live_accepted} baseline={CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT}"
+    )
+
+
+def test_taxonomy_cardinality_is_product_of_axes():
+    """Nebula Cycle 25: Asserts taxonomy cardinality is strictly the Cartesian product of its axes."""
+    assert (
+        CharClassFuzzTaxonomy.total_cases()
+        == len(CharClassFuzzTaxonomy.prefixes)
+        * len(CharClassFuzzTaxonomy.bodies)
+        * len(CharClassFuzzTaxonomy.suffixes)
+        == 168
+    )
+
+
+def test_taxonomy_mutation_detects_drift():
+    r"""Nebula Cycle 25: Simulates mutated taxonomy with r'\s' body and verifies drift guard detects departure."""
+    class MutatedTaxonomy(CharClassFuzzTaxonomy):
+        bodies = CharClassFuzzTaxonomy.bodies + (r"\s",)
+
+    mutated_total = MutatedTaxonomy.total_cases()
+    mutated_accepted, mutated_gen_total = MutatedTaxonomy.live_accept_split()
+
+    assert (
+        mutated_total != 168
+        or mutated_accepted != CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT
+    ), "drift guard failed to detect taxonomy mutation"
+    assert mutated_total != CharClassFuzzTaxonomy.total_cases()
+    assert mutated_accepted != CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT
+    # Assert drift guard assertion raises AssertionError when evaluated against mutated taxonomy
+    with pytest.raises(AssertionError, match="re-engine accept-count drift"):
+        assert mutated_accepted == CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT, (
+            f"re-engine accept-count drift under {sys.version.split()[0]}: "
+            f"live={mutated_accepted} baseline={CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT}"
+        )
+
+
+def test_taxonomy_delimiter_edge_cases_differential_agreement():
+    """Nebula Cycle 25: Asserts differential agreement between _scan_char_class and re.compile on delimiter edge cases."""
+    edge_cases = ["[]", "[^]", "[]]", "[^]]", r"[\]]", r"[\\\]]", r"[a\]b]"]
+    for pattern in edge_cases:
+        try:
+            re.compile(pattern)
+            re_accepts = True
+        except re.error:
+            re_accepts = False
+        _, closed = _scan_char_class(pattern, 0)
+        assert closed == re_accepts, (
+            f"Differential agreement failed for edge case {pattern!r}: "
+            f"scanner_closed={closed} re_accepts={re_accepts}"
         )
 
 
