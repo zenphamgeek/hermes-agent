@@ -1087,15 +1087,16 @@ class SelfHealingManager:
         - Returns (wrapper_script_path, content_sha256).
         """
         self.scripts_dir.mkdir(parents=True, exist_ok=True)
-        # File-descriptor anchored security verification (defeats TOCTOU symlink swap)
+        if not hasattr(os, "O_NOFOLLOW"):
+            raise RuntimeError("O_NOFOLLOW unavailable on this platform; refusing to proceed with unprotected scripts_dir open")
+
+        open_flags = os.O_RDONLY | os.O_NOFOLLOW
+        if hasattr(os, "O_DIRECTORY"):
+            open_flags |= os.O_DIRECTORY
+        if hasattr(os, "O_CLOEXEC"):
+            open_flags |= os.O_CLOEXEC
+
         try:
-            open_flags = os.O_RDONLY
-            if hasattr(os, "O_DIRECTORY"):
-                open_flags |= os.O_DIRECTORY
-            if hasattr(os, "O_NOFOLLOW"):
-                open_flags |= os.O_NOFOLLOW
-            if hasattr(os, "O_CLOEXEC"):
-                open_flags |= os.O_CLOEXEC
             dir_fd = os.open(str(self.scripts_dir), open_flags)
         except OSError as exc:
             raise RuntimeError(f"scripts_dir open refused (symlink or non-dir): {self.scripts_dir}: {exc}")
@@ -1114,47 +1115,59 @@ class SelfHealingManager:
                     raise RuntimeError(f"failed to harden scripts_dir perms, refusing: {self.scripts_dir}: {exc}")
                 if os.fstat(dir_fd).st_mode & 0o022:
                     raise RuntimeError(f"scripts_dir still group/world-writable after chmod: {self.scripts_dir}")
-        finally:
-            os.close(dir_fd)
 
-        wrapper_script = self.scripts_dir / "hermes_hourly_digest.sh"
-        wrapper_content, digest = self.render_wrapper_content()
+            wrapper_name = "hermes_hourly_digest.sh"
+            wrapper_content, digest = self.render_wrapper_content()
+            data = wrapper_content.encode("utf-8")
 
-        needs_write = True
-        if wrapper_script.exists():
+            needs_write = True
             try:
-                if wrapper_script.is_symlink():
-                    wrapper_script.unlink()
-                    needs_write = True
-                else:
-                    st = wrapper_script.stat()
+                check_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+                file_fd = os.open(wrapper_name, check_flags, dir_fd=dir_fd)
+                try:
+                    st = os.fstat(file_fd)
                     owned_by_us = (st.st_uid == os.getuid())
-                    content_matches = (wrapper_script.read_text(encoding="utf-8") == wrapper_content)
+                    with open(file_fd, "r", encoding="utf-8", closefd=False) as fh:
+                        existing_content = fh.read()
+                    content_matches = (existing_content == wrapper_content)
                     needs_write = not (owned_by_us and content_matches)
+                finally:
+                    os.close(file_fd)
             except OSError:
                 needs_write = True
 
-        if needs_write:
-            fd, tmp_path = tempfile.mkstemp(dir=str(self.scripts_dir), prefix=".hermes_wrapper_")
-            try:
+            if needs_write:
+                tmp_name = f".{wrapper_name}.tmp.{os.getpid()}_{time.time_ns()}"
+                write_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+                tmp_fd = os.open(tmp_name, write_flags, 0o700, dir_fd=dir_fd)
                 try:
-                    os.fchmod(fd, 0o700)
-                except OSError:
-                    os.chmod(tmp_path, stat.S_IRWXU)
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write(wrapper_content)
-                    fh.flush()
-                    os.fsync(fh.fileno())
-                os.replace(tmp_path, wrapper_script)
-            except Exception as exc:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                logger.error("wrapper self-heal failed for %s: %s", wrapper_script, exc)
-                raise
+                    os.write(tmp_fd, data)
+                    try:
+                        os.fchmod(tmp_fd, 0o700)
+                    except OSError:
+                        pass
+                    os.fsync(tmp_fd)
+                finally:
+                    os.close(tmp_fd)
 
-        return wrapper_script, digest
+                try:
+                    os.replace(tmp_name, wrapper_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                    try:
+                        os.fsync(dir_fd)
+                    except OSError:
+                        pass
+                except Exception as exc:
+                    try:
+                        os.unlink(tmp_name, dir_fd=dir_fd)
+                    except OSError:
+                        pass
+                    logger.error("wrapper self-heal failed for %s: %s", wrapper_name, exc)
+                    raise
+
+            wrapper_script = self.scripts_dir / wrapper_name
+            return wrapper_script, digest
+        finally:
+            os.close(dir_fd)
 
     def self_heal_drift_skips(self) -> List[Dict[str, Any]]:
         """

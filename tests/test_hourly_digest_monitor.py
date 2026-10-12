@@ -729,6 +729,23 @@ def test_wrapper_symlinked_scripts_dir_refused(tmp_path):
         manager.ensure_wrapper_script()
 
 
+def test_wrapper_write_anchored_to_validated_dir(tmp_path):
+    """Verify ensure_wrapper_script writes relative to dir_fd using openat/renameat semantics."""
+    scripts_dir = tmp_path / "scripts"
+    manager = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+    wrapper_path, digest = manager.ensure_wrapper_script()
+    assert wrapper_path.exists()
+    assert wrapper_path.name == "hermes_hourly_digest.sh"
+    content = wrapper_path.read_text(encoding="utf-8")
+    assert "set -euo pipefail" in content
+    import hashlib
+    assert hashlib.sha256(content.encode("utf-8")).hexdigest() == digest
+
+
 def test_wrapper_reconciliation_overwrites_tampered_script(tmp_path):
     """Verify pre-planted or tampered wrapper script is overwritten with canonical content (CWE-427 / CWE-367)."""
     scripts_dir = tmp_path / "scripts"
