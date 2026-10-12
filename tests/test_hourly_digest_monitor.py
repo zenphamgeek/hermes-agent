@@ -2602,6 +2602,11 @@ def analyze_redos_vulnerabilities(pattern_str: str) -> List[str]:
         if c == "[" and not in_char_class:
             in_char_class = True
             i += 1
+            # In regex, a ']' immediately after '[' or '[^' is a literal ']' character, not the closing delimiter
+            if i < n and pattern_str[i] == "^":
+                i += 1
+            if i < n and pattern_str[i] == "]":
+                i += 1
             continue
         if c == "]" and in_char_class:
             in_char_class = False
@@ -2620,6 +2625,12 @@ def analyze_redos_vulnerabilities(pattern_str: str) -> List[str]:
                     groups.append((start, end, pattern_str[start + 1 : end], quantifier))
         i += 1
 
+    if stack:
+        issues.append(
+            f"UNANALYZABLE: unbalanced groups ({len(stack)} unclosed '(') - "
+            "static ReDoS analysis is incomplete for this pattern"
+        )
+
     def strip_char_classes(s: str) -> str:
         out = []
         in_cls = False
@@ -2637,6 +2648,13 @@ def analyze_redos_vulnerabilities(pattern_str: str) -> List[str]:
                 in_cls = True
                 out.append("[")
                 idx += 1
+                # In regex, a ']' immediately after '[' or '[^' is a literal ']' character, not the closing delimiter
+                if idx < len(s) and s[idx] == "^":
+                    out.append("x")
+                    idx += 1
+                if idx < len(s) and s[idx] == "]":
+                    out.append("x")
+                    idx += 1
                 continue
             if ch == "]" and in_cls:
                 in_cls = False
@@ -2666,6 +2684,13 @@ def analyze_redos_vulnerabilities(pattern_str: str) -> List[str]:
                 in_cls = True
                 curr.append(ch)
                 idx += 1
+                # In regex, a ']' immediately after '[' or '[^' is a literal ']' character, not the closing delimiter
+                if idx < len(s) and s[idx] == "^":
+                    curr.append(s[idx])
+                    idx += 1
+                if idx < len(s) and s[idx] == "]":
+                    curr.append(s[idx])
+                    idx += 1
                 continue
             if ch == "]" and in_cls:
                 in_cls = False
@@ -2751,6 +2776,24 @@ def test_redos_analyzer_detects_three_way_overlapping_alternation():
     issues = analyze_redos_vulnerabilities(r"(a|b|ab)+")
     assert issues, "Expected ReDoS issues for (a|b|ab)+"
     assert any("overlapping alternation" in i.lower() for i in issues)
+
+
+def test_redos_analyzer_handles_literal_bracket_in_char_class():
+    """Nebula Cycle 15: Character-class literal ']' parsing ([...] and [^...])."""
+    # 1. Literal ']' at start of class
+    issues_literal_bracket = analyze_redos_vulnerabilities(r"[]abc]+")
+    assert not issues_literal_bracket, f"Unexpected issues for r'[]abc]+': {issues_literal_bracket}"
+
+    # 2. Literal ']' after negated '^'
+    issues_negated_literal_bracket = analyze_redos_vulnerabilities(r"[^]abc]+")
+    assert not issues_negated_literal_bracket, f"Unexpected issues for r'[^]abc]+': {issues_negated_literal_bracket}"
+
+
+def test_redos_analyzer_flags_unbalanced_parentheses():
+    """Nebula Cycle 15: Flag unanalyzable patterns with unbalanced parentheses."""
+    issues = analyze_redos_vulnerabilities(r"(abc(")
+    assert issues, "Expected issues for unbalanced parentheses pattern r'(abc('"
+    assert any("UNANALYZABLE: unbalanced groups" in issue for issue in issues)
 
 
 def test_constant_factor_blowup_is_bounded(tmp_path):
