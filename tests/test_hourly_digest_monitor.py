@@ -10,12 +10,14 @@ except ImportError:
     fcntl = None
 import hashlib
 import html
+import itertools
 import json
 import os
 import re
 import secrets
 import shlex
 import sqlite3
+import statistics
 import subprocess
 import time
 from datetime import datetime, timedelta, timezone
@@ -2577,26 +2579,140 @@ def test_generic_credentials_and_api_keys_redacted(tmp_path):
 
 
 def analyze_redos_vulnerabilities(pattern_str: str) -> List[str]:
-    """Statically inspects a regex pattern for known catastrophic backtracking constructs:
-    1. Nested quantifiers: (x+)+, (x*)*, (x{1,5}){1,5}, (x+)*
-    2. Overlapping alternation with quantifier: (a|a)+, (a|ab)+
-    3. Quantified wildcard/character set containing inner quantifiers
-    4. Unbounded repeat over open wildcards without delimiters
+    """Statically inspects a regex pattern for known catastrophic backtracking constructs.
+
+    NOTE: This is a best-effort structural analyzer for test canaries and credential
+    patterns, using balanced-parentheses stack inspection to detect nested quantifiers,
+    N-way overlapping alternations, and unescaped greedy wildcards.
     """
     issues = []
-    # Check for nested quantifiers inside capturing or non-capturing groups
-    # e.g., (something+)+ or (something*)* or (something{1,5})+
-    if re.search(r"\([^)]*[\+\*\{][^)]*\)[\+\*\{]", pattern_str):
-        issues.append("Nested quantifiers detected on group")
 
-    # Check for overlapping alternation with outer quantifier: (x|x)+ or (a|ab)*
-    alt_match = re.search(r"\(([^|)]+)\|([^)]+)\)[\+\*]", pattern_str)
-    if alt_match:
-        p1, p2 = alt_match.group(1), alt_match.group(2)
-        if p1 == p2 or p1 in p2 or p2 in p1:
-            issues.append(f"Overlapping alternation with quantifier: ({p1}|{p2})")
+    # 1. Balanced-parentheses stack inspection to find groups and their quantifiers
+    groups = []  # (start_idx, end_idx, inner_content, quantifier)
+    stack = []
+    i = 0
+    n = len(pattern_str)
+    in_char_class = False
 
-    # Check for unbounded outer quantifiers on generic wildcards
+    while i < n:
+        c = pattern_str[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "[" and not in_char_class:
+            in_char_class = True
+            i += 1
+            continue
+        if c == "]" and in_char_class:
+            in_char_class = False
+            i += 1
+            continue
+        if not in_char_class:
+            if c == "(":
+                stack.append(i)
+            elif c == ")":
+                if stack:
+                    start = stack.pop()
+                    end = i
+                    rem = pattern_str[end + 1 :]
+                    q_match = re.match(r"^([\+\*]|\{\d+(?:,\d*)?\})\??", rem)
+                    quantifier = q_match.group(0) if q_match else None
+                    groups.append((start, end, pattern_str[start + 1 : end], quantifier))
+        i += 1
+
+    def strip_char_classes(s: str) -> str:
+        out = []
+        in_cls = False
+        idx = 0
+        while idx < len(s):
+            ch = s[idx]
+            if ch == "\\":
+                if in_cls:
+                    out.append("x")
+                else:
+                    out.append(s[idx : idx + 2])
+                idx += 2
+                continue
+            if ch == "[" and not in_cls:
+                in_cls = True
+                out.append("[")
+                idx += 1
+                continue
+            if ch == "]" and in_cls:
+                in_cls = False
+                out.append("]")
+                idx += 1
+                continue
+            if in_cls:
+                out.append("x")
+            else:
+                out.append(ch)
+            idx += 1
+        return "".join(out)
+
+    def split_top_level_alts(s: str) -> List[str]:
+        alts = []
+        curr = []
+        idx = 0
+        depth = 0
+        in_cls = False
+        while idx < len(s):
+            ch = s[idx]
+            if ch == "\\":
+                curr.append(s[idx : idx + 2])
+                idx += 2
+                continue
+            if ch == "[" and not in_cls:
+                in_cls = True
+                curr.append(ch)
+                idx += 1
+                continue
+            if ch == "]" and in_cls:
+                in_cls = False
+                curr.append(ch)
+                idx += 1
+                continue
+            if not in_cls:
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    if depth > 0:
+                        depth -= 1
+                elif ch == "|" and depth == 0:
+                    alts.append("".join(curr))
+                    curr = []
+                    idx += 1
+                    continue
+            curr.append(ch)
+            idx += 1
+        alts.append("".join(curr))
+        return alts
+
+    for start, end, inner, quantifier in groups:
+        clean_inner = re.sub(r"^\?(?:P<[^>]+>|[:!=]|<[=!])", "", inner)
+
+        # 2. Check for N-way alternation inside quantified group
+        if quantifier:
+            alts = split_top_level_alts(clean_inner)
+            if len(alts) > 1:
+                for a, b in itertools.combinations(alts, 2):
+                    if a == b or a in b or b in a:
+                        issues.append(f"Overlapping alternation with quantifier: ({a}|{b})")
+                        break
+
+            # 3. Check for nested quantifiers inside this quantified group
+            stripped = strip_char_classes(clean_inner)
+            stripped_no_classes = re.sub(r"\[x+\]", "", stripped)
+            has_inner_parens = bool(re.search(r"(?<!\\)\(", stripped_no_classes))
+            has_inner_quantifier = bool(re.search(r"(?<!\\)(?:[\+\*]|\{\d+(?:,\d*)?\})", stripped_no_classes))
+
+            if has_inner_quantifier:
+                if has_inner_parens:
+                    issues.append("Nested quantifiers detected on group (inner-paren quantifier)")
+                else:
+                    issues.append("Nested quantifiers detected on group")
+
+    # 4. Check for unbounded outer quantifiers on generic wildcards
     if re.search(r"(?<!\\)\.[\+\*](?!\?)", pattern_str):
         issues.append("Unbounded greedy wildcard .")
 
@@ -2619,34 +2735,80 @@ def test_redos_analyzer_detects_known_canary_patterns():
         )
 
 
+def test_redos_analyzer_detects_nested_group_with_inner_parens():
+    """Nebula Cycle 14: Balanced-parentheses stack inspection detects nested quantifiers and inner-paren quantifiers."""
+    issues_nested = analyze_redos_vulnerabilities(r"((a+)+)+")
+    assert issues_nested, "Expected ReDoS issues for ((a+)+)+"
+    assert any("nested quantifiers" in i.lower() for i in issues_nested)
+
+    issues_inner = analyze_redos_vulnerabilities(r"(x(y+)z)*")
+    assert issues_inner, "Expected ReDoS issues for (x(y+)z)*"
+    assert any("inner-paren quantifier" in i.lower() or "inner" in i.lower() for i in issues_inner)
+
+
+def test_redos_analyzer_detects_three_way_overlapping_alternation():
+    """Nebula Cycle 14: N-way alternation detection catches overlapping branches across combinations."""
+    issues = analyze_redos_vulnerabilities(r"(a|b|ab)+")
+    assert issues, "Expected ReDoS issues for (a|b|ab)+"
+    assert any("overlapping alternation" in i.lower() for i in issues)
+
+
+def test_constant_factor_blowup_is_bounded(tmp_path):
+    """Nebula Cycle 14: Feeds 64KB payload to redact_secrets, asserting execution time < 250ms."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    payload = "A" * 65536
+    start = time.perf_counter()
+    out = notifier.redact_secrets(payload)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.250, f"Redaction of 64KB payload took {elapsed*1000:.2f}ms; expected < 250ms"
+    assert isinstance(out, str)
+
+
+def test_adversarial_backtracking_payload(tmp_path):
+    """Nebula Cycle 14: Feeds evil near-match string without terminating boundary to redact_secrets, asserting < 250ms."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    evil_payload = "ya29." + "a" * 10000
+    start = time.perf_counter()
+    out = notifier.redact_secrets(evil_payload)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.250, f"Adversarial backtracking near-match took {elapsed*1000:.2f}ms; expected < 250ms"
+    assert isinstance(out, str)
+
+
 def test_redos_timing_bound(tmp_path):
     """CWE-1333: redact_secrets completes within reasonable latency and scales sub-quadratically on repeating stress inputs."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
     notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
 
+    def measure_median(func, payload: str, runs: int = 5) -> float:
+        times = []
+        for _ in range(runs):
+            s = time.perf_counter()
+            func(payload)
+            times.append(time.perf_counter() - s)
+        return statistics.median(times)
+
     # 4KB string consisting of repeated /+=
     stress_payload = ("/+=" * 1500)[:4096]
-    start = time.perf_counter()
-    out = notifier.redact_secrets(stress_payload)
-    elapsed = time.perf_counter() - start
-
-    assert elapsed < 1.0, f"Redaction took {elapsed*1000:.2f}ms; investigate regression"
-    assert isinstance(out, str)
+    median_inst = measure_median(notifier.redact_secrets, stress_payload, runs=5)
+    assert median_inst < 0.250, f"Instance redaction median took {median_inst*1000:.2f}ms; expected < 250ms"
 
     # Classmethod invocation verification
-    start_cls = time.perf_counter()
-    out_cls = HermesTelegramNotifier.redact_secrets(stress_payload)
-    elapsed_cls = time.perf_counter() - start_cls
-    assert elapsed_cls < 1.0
-    assert isinstance(out_cls, str)
+    median_cls = measure_median(HermesTelegramNotifier.redact_secrets, stress_payload, runs=5)
+    assert median_cls < 0.250, f"Classmethod redaction median took {median_cls*1000:.2f}ms; expected < 250ms"
 
     # Nebula F1: Linear scaling verification (4x input length must scale sub-quadratically)
     def measure(n):
-        payload = ("/+=" * n)[:n]
-        s = time.perf_counter()
-        notifier.redact_secrets(payload)
-        return time.perf_counter() - s
+        return measure_median(notifier.redact_secrets, ("/+=" * n)[:n], runs=5)
 
     small_t = measure(2048)
     large_t = measure(8192)

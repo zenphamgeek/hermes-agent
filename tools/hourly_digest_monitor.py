@@ -1006,7 +1006,7 @@ class HermesTelegramNotifier:
             return False
 
     _URL_CRED_PATTERN = re.compile(
-        r"(?P<scheme>(?:jdbc:)?[a-zA-Z][a-zA-Z0-9+.\-]*://[^:@/\s]+:)(?:[^@/\s]+)(?P<at>@)",
+        r"(?P<scheme>\b(?:jdbc:)?[a-zA-Z][a-zA-Z0-9+.\-]*://[^:@/\s]+:)(?:[^@/\s]+)(?P<at>@)",
         re.I,
     )
     _QUERY_PARAM_PATTERN = re.compile(
