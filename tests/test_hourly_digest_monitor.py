@@ -4,6 +4,10 @@ Entropy Stream Degradation Scanner, Composite Health Calculator, and Self-Healin
 """
 
 import errno
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 import json
 import os
 import re
@@ -1663,6 +1667,244 @@ def test_token_source_is_csprng_default():
     # Verify hex format
     assert re.fullmatch(r"[0-9a-f]{32}", t1) is not None
     assert re.fullmatch(r"[0-9a-f]{32}", t2) is not None
+
+
+def test_poisoned_ledger_clamps_window_and_logs_siem_event(tmp_path, caplog):
+    """CWE-20 / CWE-377: Attacker writing far-future timestamp (9e18) is clamped to _MAX_CIRCUIT_WINDOW_S and emits SIEM event."""
+    import logging
+    state_file = tmp_path / "poisoned_ledger.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    # Poison the ledger with 9e18 (far future epoch timestamp)
+    poisoned_state = {
+        "tripped_at": time.time(),
+        "circuit_open_until": 9e18,
+        "failures": 3,
+        "reason": "malicious far-future timestamp injection",
+    }
+    state_file.write_text(json.dumps(poisoned_state), encoding="utf-8")
+
+    scripts_dir = tmp_path / "scripts_poison"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        status = SelfHealingManager.get_circuit_status()
+
+    # 1. Breaker is open
+    assert status["is_open"] is True
+    # 2. Window is clamped to <= _MAX_CIRCUIT_WINDOW_S (900.0s), NOT 9e18!
+    assert status["cooldown_remaining"] <= SelfHealingManager._MAX_CIRCUIT_WINDOW_S
+    assert status["cooldown_remaining"] > 0.0
+
+    # 3. SIEM audit event 'circuit_ledger_window_clamped' was logged
+    clamp_events = [
+        json.loads(r.message) for r in caplog.records
+        if "circuit_ledger_window_clamped" in r.message
+    ]
+    assert len(clamp_events) >= 1
+    assert clamp_events[0]["event"] == "circuit_ledger_window_clamped"
+    assert clamp_events[0]["raw_open_until"] == 9e18
+    assert clamp_events[0]["max_window_s"] == SelfHealingManager._MAX_CIRCUIT_WINDOW_S
+
+    # 4. ensure_wrapper_script raises with clamped cooldown, not 9e18
+    with pytest.raises(RuntimeError) as exc_info:
+        mgr.ensure_wrapper_script()
+    assert "Wrapper reconciliation circuit breaker OPEN" in str(exc_info.value)
+    match = re.search(r"cooling down for (\d+)s", str(exc_info.value))
+    assert match is not None
+    assert int(match.group(1)) <= int(SelfHealingManager._MAX_CIRCUIT_WINDOW_S)
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_corrupt_ledger_fails_safe_closed_and_logs_warning(tmp_path, caplog):
+    """CWE-20 / CWE-377: Corrupt/truncated JSON in persistent ledger fails safe CLOSED so self-heal can proceed."""
+    import logging
+    state_file = tmp_path / "corrupt_ledger.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    # Corrupt JSON syntax
+    state_file.write_text("{invalid json garbage: missing quotes", encoding="utf-8")
+
+    scripts_dir = tmp_path / "scripts_corrupt"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        status = SelfHealingManager.get_circuit_status()
+
+    # Breaker must fail safe CLOSED
+    assert status["is_open"] is False
+    assert status["cooldown_remaining"] == 0.0
+
+    # Self-heal / ensure_wrapper_script proceeds without getting blocked
+    wp, digest = mgr.ensure_wrapper_script()
+    assert wp.exists()
+
+    # Log was recorded
+    assert any("Circuit ledger corrupt or unreadable" in r.message for r in caplog.records)
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_type_confusion_ledger_fails_safe_closed(tmp_path, caplog):
+    """CWE-20 / CWE-377: Type confusion payloads (non-dict, strings, bools, NaN) fail safe CLOSED."""
+    state_file = tmp_path / "type_confused_ledger.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+
+    scripts_dir = tmp_path / "scripts_type_confusion"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    bad_payloads = [
+        ["a", "list", "instead", "of", "dict"],
+        {"circuit_open_until": "soon", "failures": 3},
+        {"circuit_open_until": True, "failures": 3},
+        {"circuit_open_until": None, "failures": 3},
+    ]
+
+    for payload in bad_payloads:
+        SelfHealingManager.reset_circuit_breaker()
+        state_file.write_text(json.dumps(payload), encoding="utf-8")
+        status = SelfHealingManager.get_circuit_status()
+        assert status["is_open"] is False, f"Failed safe CLOSED check for {payload}"
+
+    # Verify self-healing is not locked out
+    wp, _ = mgr.ensure_wrapper_script()
+    assert wp.exists()
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_ledger_flock_cross_process_mutual_exclusion(tmp_path):
+    """CWE-362: Advisory fcntl.flock on .circuit_breaker.lock serializes across processes."""
+    if fcntl is None:
+        pytest.skip("fcntl not available on platform")
+
+    state_file = tmp_path / "flock_test_ledger.json"
+    lock_file = tmp_path / "flock_test_ledger.json.lock"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    # Enter lock via context manager
+    with SelfHealingManager._with_ledger_lock():
+        assert lock_file.exists(), "Lock file was not created by _with_ledger_lock"
+        # In a separate file descriptor, an exclusive non-blocking lock must be rejected!
+        other_fd = os.open(str(lock_file), os.O_RDWR)
+        try:
+            with pytest.raises((BlockingIOError, OSError)):
+                fcntl.flock(other_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(other_fd)
+
+    # After exiting the with block, lock must be released so other fd can acquire
+    other_fd = os.open(str(lock_file), os.O_RDWR)
+    try:
+        fcntl.flock(other_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(other_fd, fcntl.LOCK_UN)
+    finally:
+        os.close(other_fd)
+
+    # Test re-entrant lock execution
+    def inner_call():
+        return "re_entered"
+
+    res = SelfHealingManager._with_ledger_lock(inner_call)
+    assert res == "re_entered"
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_security_artifacts_are_not_world_writable(tmp_path):
+    """CWE-732 / Restrictive Modes Invariant: All security artifacts must satisfy mode & 0o022 == 0."""
+    state_file = tmp_path / "mode_test_ledger.json"
+    SelfHealingManager.set_circuit_state_file(state_file)
+    SelfHealingManager.reset_circuit_breaker()
+
+    scripts_dir = tmp_path / "scripts_mode_test"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    wp, digest = mgr.ensure_wrapper_script()
+    manifest_path = scripts_dir / ".hermes_hourly_digest.sh.manifest"
+
+    # Verify wrapper is 0o700 and manifest is 0o600
+    assert (wp.stat().st_mode & 0o022) == 0
+    assert (manifest_path.stat().st_mode & 0o022) == 0
+    assert (scripts_dir.stat().st_mode & 0o022) == 0
+
+    # Plant insecure permissions (e.g. 0o777 on wrapper, 0o666 on manifest)
+    os.chmod(wp, 0o777)
+    os.chmod(manifest_path, 0o666)
+    assert (wp.stat().st_mode & 0o022) != 0
+    assert (manifest_path.stat().st_mode & 0o022) != 0
+
+    # ensure_wrapper_script must detect and harden both
+    wp2, _ = mgr.ensure_wrapper_script()
+    assert (wp2.stat().st_mode & 0o022) == 0
+    assert (manifest_path.stat().st_mode & 0o022) == 0
+
+    # Trip breaker and verify ledger and lock permissions
+    SelfHealingManager._trip_circuit_breaker("test_mode_hardening")
+    assert state_file.exists()
+    assert (state_file.stat().st_mode & 0o022) == 0
+    lock_file = tmp_path / "mode_test_ledger.json.lock"
+    if lock_file.exists():
+        assert (lock_file.stat().st_mode & 0o022) == 0
+
+    SelfHealingManager.reset_circuit_breaker()
+    SelfHealingManager.set_circuit_state_file(None)
+
+
+def test_wrapper_render_shell_escaping_with_metacharacters(tmp_path):
+    """CWE-78: Wrapper generation escapes malicious shell metacharacters in paths and passes bash syntax check."""
+    malicious_repo = tmp_path / 'evil "$(rm -rf /)" ; `touch /tmp/pwn` && echo \'hacked\''
+    malicious_python = '/usr/bin/python3; echo "injected"'
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=malicious_repo,
+        python_bin=malicious_python,
+        scripts_dir=tmp_path / "scripts",
+    )
+
+    wrapper_content, digest = mgr.render_wrapper_content()
+
+    # 1. Ensure quotes prevent evaluation
+    assert f"REPO_DIR={shlex.quote(str(malicious_repo))}" in wrapper_content
+    assert f"exec {shlex.quote(malicious_python)}" in wrapper_content
+
+    # 2. Verify bash syntax check passes with code 0
+    res = subprocess.run(
+        ["bash", "-n"],
+        input=wrapper_content,
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0, f"Bash syntax check failed: {res.stderr}\nWrapper:\n{wrapper_content}"
+
 
 
 
