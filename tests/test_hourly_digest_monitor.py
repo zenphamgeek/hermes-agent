@@ -9,6 +9,7 @@ try:
 except ImportError:
     fcntl = None
 import hashlib
+import html
 import json
 import os
 import re
@@ -2572,6 +2573,197 @@ def test_generic_credentials_and_api_keys_redacted(tmp_path):
     assert "0123456789" not in redacted
     assert "[REDACTED_PRIVATE_KEY]" in redacted
     assert "[REDACTED]" in redacted
+
+
+def test_redos_timing_bound(tmp_path):
+    """CWE-1333: redact_secrets completes well within 100ms bound on 4KB repeating regex stress inputs."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    # 4KB string consisting of repeated /+=
+    stress_payload = ("/+=" * 1500)[:4096]
+    start = time.perf_counter()
+    out = notifier.redact_secrets(stress_payload)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.100, f"Redaction took {elapsed*1000:.2f}ms, exceeding 100ms ReDoS bound"
+    assert isinstance(out, str)
+
+    # Classmethod invocation verification
+    start_cls = time.perf_counter()
+    out_cls = HermesTelegramNotifier.redact_secrets(stress_payload)
+    elapsed_cls = time.perf_counter() - start_cls
+    assert elapsed_cls < 0.100, f"Classmethod redaction took {elapsed_cls*1000:.2f}ms, exceeding 100ms"
+    assert isinstance(out_cls, str)
+
+
+@pytest.mark.parametrize("limit", [100, 120])
+def test_truncation_boundary_secret_never_leaks_fragment(tmp_path, limit):
+    """CWE-532 / CWE-116: Secrets whose tail straddles the truncation boundary never leak fragments >= 8 characters."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    secret_raw = "SUPER_SECRET_PAYLOAD_TOKEN_9876543210"
+    # Place secret so its first 10 characters are before limit, and tail crosses limit
+    prefix = "A" * (limit - 10)
+    full_text = prefix + secret_raw
+
+    out = notifier.sanitize_error(full_text, limit=limit, known_secrets={secret_raw})
+
+    # Verify no fragment >= 8 characters of secret_raw appears in the output
+    for i in range(len(secret_raw) - 7):
+        frag = secret_raw[i : i + 8]
+        assert frag not in out, f"Leaked {len(frag)}-char fragment '{frag}' at offset {i} in '{out}'"
+
+    # Also test with a pattern-matched secret (e.g. Bearer token) straddling the boundary
+    bearer_secret = "Bearer " + ("Z" * 50)
+    full_bearer_text = ("X" * (limit - 16)) + " " + bearer_secret
+    out_bearer = notifier.sanitize_error(full_bearer_text, limit=limit)
+    for i in range(len(bearer_secret) - 7):
+        frag = bearer_secret[i : i + 8]
+        assert frag not in out_bearer, f"Leaked bearer fragment '{frag}' in '{out_bearer}'"
+
+
+def test_escape_redact_ordering_with_html_special_chars(tmp_path):
+    """CWE-116 / CWE-532: Passwords with HTML special characters inside DB URLs are redacted before escaping."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    raw_password = "p&ss<w>ord"
+    db_url = f"postgresql://user:{raw_password}@db:5432/main"
+
+    out_sanitized = notifier.sanitize_error(db_url, limit=120)
+    out_redacted = notifier.redact_secrets(db_url)
+
+    # Verify neither raw password nor escaped p&amp;ss&lt;w&gt;ord appears in sanitized output
+    assert raw_password not in out_sanitized
+    assert "p&amp;ss&lt;w&gt;ord" not in out_sanitized
+    assert html.escape(raw_password, quote=True) not in out_sanitized
+    assert "[REDACTED]" in out_sanitized
+    assert "postgresql://user:[REDACTED]@db:5432/main" in out_sanitized
+
+    assert raw_password not in out_redacted
+    assert "postgresql://user:[REDACTED]@db:5432/main" in out_redacted
+
+    # Verify through format_urgent_alert
+    scan = {
+        "overall_health_score": 20,
+        "severity": "CRITICAL",
+        "cron": {
+            "clogged_jobs": [
+                {
+                    "job_name": "db-job",
+                    "consecutive_failures": 3,
+                    "last_error": f"Failed: {db_url}",
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    alert_out = notifier.format_urgent_alert(scan)
+    assert raw_password not in alert_out
+    assert "p&amp;ss&lt;w&gt;ord" not in alert_out
+    assert "[REDACTED]" in alert_out
+
+
+def test_known_env_value_exact_verbatim_redacted(tmp_path):
+    """Defense B1: Known secrets loaded from .env are scrubbed verbatim even when unformatted."""
+    unique_secret = "TEST_SOVEREIGN_KEY_9876543210"
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN=test-token-123\nAPP_API_KEY={unique_secret}\n")
+
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    assert unique_secret in notifier._known_secrets
+
+    # Put it completely unformatted into last_error (no prefix, no URL, no password=)
+    raw_error = f"Fatal system crash while processing payload: {unique_secret} at node 4"
+    scan = {
+        "overall_health_score": 10,
+        "severity": "CRITICAL",
+        "cron": {
+            "clogged_jobs": [
+                {
+                    "job_name": "sovereign-job",
+                    "consecutive_failures": 3,
+                    "last_error": raw_error,
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    out = notifier.format_urgent_alert(scan)
+
+    assert unique_secret not in out
+    assert "[REDACTED]" in out
+
+    sanitized = notifier.sanitize_error(raw_error)
+    assert unique_secret not in sanitized
+    assert "[REDACTED]" in sanitized
+
+    redacted = notifier.redact_secrets(raw_error)
+    assert unique_secret not in redacted
+    assert "[REDACTED]" in redacted
+
+
+def test_uppercase_jdbc_query_param_basic_auth_redacted(tmp_path):
+    """Defense A3: Uppercase JDBC schemes, query parameter credentials, and Basic Authorization are redacted."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    # 1. Uppercase JDBC URL
+    jdbc_url = "JDBC:POSTGRESQL://admin:MyPass123@localhost:5432/db"
+    out_jdbc = notifier.redact_secrets(jdbc_url)
+    assert "MyPass123" not in out_jdbc
+    assert "JDBC:POSTGRESQL://admin:[REDACTED]@localhost:5432/db" in out_jdbc
+
+    # 2. Query Parameter Credentials
+    query_url = "https://api.example.com/data?token=SuperSecretQueryParamToken12345"
+    out_query = notifier.redact_secrets(query_url)
+    assert "SuperSecretQueryParamToken12345" not in out_query
+    assert "https://api.example.com/data?token=[REDACTED]" in out_query
+
+    # Query Parameter in middle of URL with other params
+    multi_param_url = "https://api.example.com/v1?page=1&api_key=UltraSecretKey9988&format=json"
+    out_multi = notifier.redact_secrets(multi_param_url)
+    assert "UltraSecretKey9988" not in out_multi
+    assert "https://api.example.com/v1?page=1&api_key=[REDACTED]&format=json" in out_multi
+
+    # 3. Basic Authorization Header
+    basic_auth = "Authorization: Basic dXNlcjpwYXNzd29yZDEyMw=="
+    out_auth = notifier.redact_secrets(basic_auth)
+    assert "dXNlcjpwYXNzd29yZDEyMw==" not in out_auth
+    assert "Authorization: Basic [REDACTED]" in out_auth
+
+
+def test_false_positive_guard_for_clean_identifiers(tmp_path):
+    """Defense B3: Verify legitimate 12-digit numbers, order IDs, chat IDs, and epochs are NOT corrupted."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    chat_id = "1431349185"
+    order_id = "987654321012"
+    epoch_ts = "1728848000"
+    job_uuid = "46a4a24c-0878-434e-989d-35d64421bbca"
+
+    clean_message = (
+        f"Order {order_id} sent to chat {chat_id} at epoch {epoch_ts} for job {job_uuid}"
+    )
+
+    out = notifier.redact_secrets(clean_message)
+    assert out == clean_message
+    assert "[REDACTED]" not in out
+
+    sanitized = notifier.sanitize_error(clean_message, limit=200)
+    assert order_id in sanitized
+    assert chat_id in sanitized
+    assert epoch_ts in sanitized
+    assert job_uuid in sanitized
+    assert "[REDACTED]" not in sanitized
 
 
 

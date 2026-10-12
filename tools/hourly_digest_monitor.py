@@ -50,7 +50,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("hourly_digest_monitor")
@@ -845,8 +845,64 @@ class CompositeHealthCalculator:
 # ==============================================================================
 # 4. HermesTelegramNotifier
 # ==============================================================================
+class hybridmethod:
+    """Descriptor allowing a method to be invoked on either the class or an instance.
+
+    When invoked on an instance, `cls_or_self` is the instance.
+    When invoked on the class, `cls_or_self` is the class.
+    If invoked on the class with an instance as the first argument,
+    `cls_or_self` receives that instance.
+    """
+
+    def __init__(self, func):
+        self.func = func
+        self.__doc__ = func.__doc__
+        self.__name__ = func.__name__
+
+    def __get__(self, obj, cls=None):
+        target = obj if obj is not None else cls
+
+        def wrapper(*args, **kwargs):
+            if obj is None and args and isinstance(args[0], (cls, type)):
+                return self.func(*args, **kwargs)
+            return self.func(target, *args, **kwargs)
+
+        wrapper.__doc__ = self.func.__doc__
+        wrapper.__name__ = self.func.__name__
+        return wrapper
+
+
 class HermesTelegramNotifier:
     """Delivers rich HTML alerts and executive hourly digests to Hermes Telegram."""
+
+    _SECRET_KEY_KEYWORDS = (
+        "TOKEN",
+        "SECRET",
+        "KEY",
+        "PASSWORD",
+        "PASSWD",
+        "CREDENTIAL",
+        "AUTH",
+        "DATABASE_URL",
+    )
+
+    _COMMON_NON_SECRETS = frozenset(
+        {
+            "true",
+            "false",
+            "none",
+            "null",
+            "production",
+            "development",
+            "http://",
+            "https://",
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+        }
+    )
+
+    _MAX_SCAN = 8192
 
     def __init__(
         self,
@@ -857,6 +913,44 @@ class HermesTelegramNotifier:
         self.env_file = Path(env_file)
         self.target_chat_id = target_chat_id
         self.bot_token = bot_token or self._load_token()
+        self._known_secrets: Set[str] = self._load_known_secrets()
+
+    def _load_known_secrets(self) -> Set[str]:
+        """Load known secrets from .env and environment for exact verbatim redaction (Defense B1)."""
+        loaded_secrets: Set[str] = set()
+
+        def _maybe_add(k: str, v: str) -> None:
+            if not k or not v:
+                return
+            k_up = k.strip().upper()
+            if any(kw in k_up for kw in self._SECRET_KEY_KEYWORDS):
+                val = v.strip().strip("'\"")
+                if len(val) >= 8 and val.lower() not in self._COMMON_NON_SECRETS:
+                    loaded_secrets.add(val)
+
+        # 1. Scan self.env_file if it exists
+        if self.env_file.exists():
+            try:
+                with open(self.env_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            _maybe_add(k, v)
+            except Exception as e:
+                logger.warning("Failed loading secrets from %s: %s", self.env_file, e)
+
+        # 2. Scan os.environ
+        for k, v in os.environ.items():
+            _maybe_add(k, v)
+
+        # 3. Include self.bot_token if present and len >= 8
+        if self.bot_token:
+            bt = self.bot_token.strip().strip("'\"")
+            if len(bt) >= 8 and bt.lower() not in self._COMMON_NON_SECRETS:
+                loaded_secrets.add(bt)
+
+        return loaded_secrets
 
     def _load_token(self) -> Optional[str]:
         """Load Telegram bot token from .env file or environment."""
@@ -912,29 +1006,39 @@ class HermesTelegramNotifier:
             return False
 
     _URL_CRED_PATTERN = re.compile(
-        r"(?P<scheme>[a-z][a-z0-9+.\-]*://[^:@/\s]+:)(?:[^@/\s]+)(?P<at>@)",
+        r"(?P<scheme>(?:jdbc:)?[a-zA-Z][a-zA-Z0-9+.\-]*://[^:@/\s]+:)(?:[^@/\s]+)(?P<at>@)",
         re.I,
     )
+    _QUERY_PARAM_PATTERN = re.compile(
+        r"(?i)([\?&](?:token|key|secret|password|passwd|api[_-]?key|access[_-]?token)=)([^&\s]+)"
+    )
+    _BASIC_AUTH_PATTERN = re.compile(
+        r"(?i)\b(Authorization:\s*Basic\s+)[A-Za-z0-9+/=]{10,512}"
+    )
     _KV_SECRET_PATTERN = re.compile(
-        r"(?i)\b(?P<k>password|passwd|secret|api[_-]?key|client[_-]?secret)(?P<sep>\s*[:=]\s*)(?:[\"']?[^\s,;'\"}]+[\"']?)"
+        r"(?i)\b(?P<k>password|passwd|secret|api[_-]?key|client[_-]?secret)(?P<sep>\s*[:=]\s*)(?:[\"']?[^\s,;'\"}&\[]+[\"']?)"
     )
     _PEM_KEY_PATTERN = re.compile(
         r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+ PRIVATE KEY-----"
     )
     _SECRET_PATTERNS = (
-        re.compile(r"\bBearer\s+[A-Za-z0-9._\-/+=]{10,}", re.I),
-        re.compile(r"\bya29\.[A-Za-z0-9._\-/+=]+", re.I),
-        re.compile(r"\b1//[A-Za-z0-9._\-/+=]+", re.I),
-        re.compile(r"\b[0-9]{6,}:[A-Za-z0-9_\-]{30,}\b"),
-        re.compile(r"\b(?:access|refresh|id)[_-]?token\s*[:=]?\s*[A-Za-z0-9._\-/+=]+", re.I),
-        re.compile(r"\beyJ[A-Za-z0-9._\-/+=]{20,}"),
+        re.compile(r"\bBearer\s+[A-Za-z0-9._\-/+=]{10,512}", re.I),
+        re.compile(r"\bya29\.[A-Za-z0-9._\-/+=]{10,512}", re.I),
+        re.compile(r"\b1//[A-Za-z0-9._\-/+=]{10,512}", re.I),
+        re.compile(r"\b[0-9]{6,20}:[A-Za-z0-9_\-]{30,128}\b"),
+        re.compile(r"\b(?:access|refresh|id)[_-]?token\s*[:=]?\s*[A-Za-z0-9._\-/+=]{10,512}", re.I),
+        re.compile(r"\beyJ[A-Za-z0-9._\-/+=]{20,1024}"),
         re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b"),
         re.compile(r"\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b"),
         re.compile(r"\bxox[baprs]-[0-9A-Za-z]{10,48}\b"),
     )
 
-    @classmethod
-    def redact_secrets(cls, text: Any) -> str:
+    @hybridmethod
+    def redact_secrets(
+        cls_or_self,
+        text: Any,
+        known_secrets: Optional[Iterable[str]] = None,
+    ) -> str:
         """Best-effort redaction of bearer tokens, OAuth credentials, keys, passwords, and JWTs from error strings (CWE-532 / CWE-259)."""
         if text is None:
             return ""
@@ -942,23 +1046,72 @@ class HermesTelegramNotifier:
             text = str(text)
         if not text:
             return ""
-        text = cls._PEM_KEY_PATTERN.sub("[REDACTED_PRIVATE_KEY]", text)
-        text = cls._URL_CRED_PATTERN.sub(r"\g<scheme>[REDACTED]\g<at>", text)
-        text = cls._KV_SECRET_PATTERN.sub(r"\g<k>\g<sep>[REDACTED]", text)
-        for pat in cls._SECRET_PATTERNS:
-            text = pat.sub("[REDACTED]", text)
-        return text
 
-    @classmethod
-    def sanitize_error(cls, text: Any, limit: int = 120) -> str:
-        """Sanitize error string: type-coerce, redact secrets, truncate, and HTML-escape (CWE-532 / CWE-116)."""
+        if isinstance(cls_or_self, HermesTelegramNotifier) and known_secrets is None:
+            known_secrets = cls_or_self._known_secrets
+
+        # Exact Known-Secrets Scrubbing (sorted by length descending to prevent partial prefix replacement)
+        if known_secrets:
+            valid_secrets = [
+                s
+                for s in known_secrets
+                if isinstance(s, str)
+                and len(s) >= 8
+                and s.lower() not in cls_or_self._COMMON_NON_SECRETS
+            ]
+            valid_secrets.sort(key=len, reverse=True)
+            for s in valid_secrets:
+                text = text.replace(s, "[REDACTED]")
+
+        # B3 ReDoS Guard: Cap input length before regex processing
+        if len(text) > cls_or_self._MAX_SCAN:
+            head = text[: cls_or_self._MAX_SCAN]
+            tail = text[cls_or_self._MAX_SCAN :]
+        else:
+            head = text
+            tail = ""
+
+        # Format Regex Redaction
+        head = cls_or_self._PEM_KEY_PATTERN.sub("[REDACTED_PRIVATE_KEY]", head)
+        head = cls_or_self._URL_CRED_PATTERN.sub(r"\g<scheme>[REDACTED]\g<at>", head)
+        head = cls_or_self._QUERY_PARAM_PATTERN.sub(r"\g<1>[REDACTED]", head)
+        head = cls_or_self._BASIC_AUTH_PATTERN.sub(r"\g<1>[REDACTED]", head)
+        head = cls_or_self._KV_SECRET_PATTERN.sub(r"\g<k>\g<sep>[REDACTED]", head)
+        for pat in cls_or_self._SECRET_PATTERNS:
+            head = pat.sub("[REDACTED]", head)
+
+        return head + tail
+
+    @hybridmethod
+    def sanitize_error(
+        cls_or_self,
+        text: Any,
+        limit: int = 120,
+        known_secrets: Optional[Iterable[str]] = None,
+    ) -> str:
+        """Sanitize error string with load-bearing security ordering (CWE-532 / CWE-116 / CWE-259):
+
+        Order of Execution:
+            1. Type Coercion: Convert non-string objects to str; handle None -> "".
+            2. Known-Secret Exact Substitution: Verbatim replacement of known secrets from .env & env vars.
+            3. Format Regex Redaction: Pattern-based redaction (URLs, Query Params, Auth headers, Bearer tokens, etc.).
+            4. Truncate to Limit: Bounds length to prevent denial of service and UI overflow.
+            5. HTML Escape: Encodes HTML entities (<, >, &, ", ') for safe display in Telegram HTML parse mode.
+
+        Note: Redaction MUST happen before truncation to prevent boundary leakage of sensitive tokens,
+        and truncation MUST happen before HTML escaping to prevent producing broken/dangling entities.
+        """
         if text is None:
             raw = ""
         elif not isinstance(text, str):
             raw = str(text)
         else:
             raw = text
-        redacted = cls.redact_secrets(raw)
+
+        if isinstance(cls_or_self, HermesTelegramNotifier) and known_secrets is None:
+            known_secrets = cls_or_self._known_secrets
+
+        redacted = cls_or_self.redact_secrets(raw, known_secrets=known_secrets)
         truncated = redacted[:limit] if limit is not None and limit >= 0 else redacted
         return html.escape(truncated, quote=True)
 
