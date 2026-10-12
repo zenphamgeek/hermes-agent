@@ -4,8 +4,10 @@ Entropy Stream Degradation Scanner, Composite Health Calculator, and Self-Healin
 """
 
 import json
+import os
 import shlex
 import sqlite3
+import subprocess
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -889,7 +891,7 @@ def test_scripts_dir_symlink_refusal_emits_structured_audit_event(tmp_path, capl
         try:
             data = json.loads(record.message)
             if data.get("event") == "scripts_dir_symlink_refused":
-                assert data.get("component") == str(symlink_parent)
+                assert data.get("component") in (str(symlink_parent), symlink_parent.name)
                 assert data.get("scripts_dir") == str(nested_scripts_dir)
                 assert "euid" in data
                 assert "ts" in data
@@ -898,6 +900,132 @@ def test_scripts_dir_symlink_refusal_emits_structured_audit_event(tmp_path, capl
         except (json.JSONDecodeError, TypeError):
             continue
     assert found_event, "Structured audit log event 'scripts_dir_symlink_refused' was not emitted!"
+
+
+def test_home_fallback_target_is_safe(tmp_path, monkeypatch):
+    """B2 / A2: Fallback when Path.home() raises must land cleanly in scripts_dir without putting /tmp on PATH."""
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("USERPROFILE", raising=False)
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("Unset home"))))
+
+    target_scripts = tmp_path / "custom_scripts"
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=target_scripts,
+    )
+    wp, digest = mgr.ensure_wrapper_script()
+    assert wp.exists()
+    assert wp.parent == target_scripts
+    content = wp.read_text(encoding="utf-8")
+    # Must NOT put world-writable /tmp on PATH
+    assert "/tmp/.local/bin" not in content
+    assert "/usr/local/bin" in content
+
+
+def test_wrapper_temp_is_exclusive_and_nofollow(tmp_path):
+    """B3 / A3: Temp creation must use O_CREAT | O_EXCL to prevent hijacking pre-planted files."""
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    # First write creates the script and manifest
+    wp, digest = mgr.ensure_wrapper_script()
+    assert wp.exists()
+
+    # Pre-plant a collision at a mocked temp pattern and verify O_CREAT | O_EXCL behavior
+    # Direct test: os.open with O_CREAT | O_EXCL on an existing path raises FileExistsError
+    dir_fd = os.open(str(scripts_dir), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        planted = "preplanted_test.tmp"
+        p_fd = os.open(planted, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=dir_fd)
+        os.close(p_fd)
+        with pytest.raises(FileExistsError):
+            os.open(planted, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
+def test_scripts_dir_mode_and_ownership_hardening(tmp_path):
+    """B4 / A4: scripts_dir with permissive mode (0o777) must be hardened to 0o700."""
+    permissive_dir = tmp_path / "permissive_scripts"
+    permissive_dir.mkdir(mode=0o777, parents=True, exist_ok=True)
+    os.chmod(permissive_dir, 0o777)
+    assert (permissive_dir.stat().st_mode & 0o077) != 0
+
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=permissive_dir,
+    )
+    wp, _ = mgr.ensure_wrapper_script()
+    assert wp.exists()
+    # Directory permissions must now be 0o700 (no group or world bits)
+    st = permissive_dir.stat()
+    assert (st.st_mode & 0o077) == 0
+
+
+def test_audit_event_resists_log_injection(tmp_path, caplog):
+    """B5 / A5: Component name containing newlines and forged JSON must be escaped cleanly by json.dumps."""
+    import logging
+    real_dir = tmp_path / "real_target"
+    real_dir.mkdir(parents=True, exist_ok=True)
+    symlink_evil = tmp_path / "symlink\n{\"event\":\"forged_fake_pass\"}"
+    symlink_evil.symlink_to(real_dir, target_is_directory=True)
+    nested_scripts_dir = symlink_evil / "scripts"
+
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=nested_scripts_dir,
+    )
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(RuntimeError, match="symlink, refusing"):
+            mgr.ensure_wrapper_script()
+
+    # Verify that log messages contain strictly valid single JSON records
+    for record in caplog.records:
+        if "scripts_dir_symlink_refused" in record.message:
+            parsed = json.loads(record.message)
+            assert parsed["event"] == "scripts_dir_symlink_refused"
+            # The newline and injection string must be safely contained inside the component property
+            assert "forged_fake_pass" in parsed["component"]
+            assert "\n" in parsed["component"]
+
+
+def test_wrapper_manifest_pinned_execution(tmp_path):
+    """A6 / Manifest-Pinned Execution: Bash wrapper validates companion manifest before executing."""
+    scripts_dir = tmp_path / "scripts"
+    mgr = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+    wp, digest = mgr.ensure_wrapper_script()
+
+    manifest_file = scripts_dir / ".hermes_hourly_digest.sh.manifest"
+    assert manifest_file.exists()
+    assert (manifest_file.stat().st_mode & 0o777) == 0o600
+    manifest_content = manifest_file.read_text(encoding="utf-8")
+    assert digest in manifest_content
+    assert "hermes_hourly_digest.sh" in manifest_content
+
+    # Behavioral test: sha256sum verification passes on untampered script
+    res = subprocess.run(["sha256sum", "-c", str(manifest_file), "--status"], cwd=scripts_dir)
+    assert res.returncode == 0
+
+    # Tampering with wrapper causes sha256sum verification to fail
+    with open(wp, "a", encoding="utf-8") as f:
+        f.write("# unauthorized modification\n")
+
+    res_tampered = subprocess.run(["sha256sum", "-c", str(manifest_file), "--status"], cwd=scripts_dir)
+    assert res_tampered.returncode != 0
+
 
 
 

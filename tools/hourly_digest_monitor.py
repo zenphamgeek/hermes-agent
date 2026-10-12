@@ -23,6 +23,7 @@ CLI:
 """
 
 import argparse
+import errno
 import hashlib
 import json
 import logging
@@ -1070,18 +1071,31 @@ class SelfHealingManager:
         """
         Renders the canonical bash wrapper content with strict shlex quoting (CWE-78 guard)
         and computes its SHA-256 digest for content-addressed verification.
+        Includes self-verification against companion manifest before execution (A6).
         """
         repo_dir_q = shlex.quote(str(self.repo_dir))
         python_bin_q = shlex.quote(str(self.python_bin))
         try:
-            local_bin_path = str(Path.home() / ".local" / "bin")
+            _h = Path.home()
+            local_bin_path = str(_h / ".local" / "bin")
         except Exception:
-            local_bin_path = str(Path(os.environ.get("HOME", "/tmp")) / ".local" / "bin")
+            local_bin_path = "/usr/local/bin"
         local_bin_q = shlex.quote(local_bin_path)
+
+        wrapper_name = "hermes_hourly_digest.sh"
+        manifest_name = f".{wrapper_name}.manifest"
 
         wrapper_content = (
             "#!/usr/bin/env bash\n"
             "set -euo pipefail\n\n"
+            'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n'
+            f'MANIFEST="$SCRIPT_DIR/{manifest_name}"\n'
+            'if [ -f "$MANIFEST" ]; then\n'
+            '    (cd "$SCRIPT_DIR" && sha256sum -c "$MANIFEST" --status) || {\n'
+            '        echo "FATAL: Wrapper script SHA-256 integrity verification failed against manifest!" >&2\n'
+            '        exit 1\n'
+            '    }\n'
+            'fi\n\n'
             f"REPO_DIR={repo_dir_q}\n"
             'cd "$REPO_DIR"\n'
             f'export PATH={local_bin_q}:"$PATH"\n\n'
@@ -1090,66 +1104,69 @@ class SelfHealingManager:
         digest = hashlib.sha256(wrapper_content.encode("utf-8")).hexdigest()
         return wrapper_content, digest
 
+    def _resolve_scripts_dir_fd(self) -> int:
+        """
+        Creates or opens scripts_dir component-by-component, anchored to each parent's
+        fd with O_NOFOLLOW | O_DIRECTORY (CWE-367 / CWE-427).
+        Refusal originates directly from ELOOP/ENOTDIR on O_NOFOLLOW without prior lstat.
+        Caller owns the returned fd and must os.close() it.
+        """
+        d = Path(os.path.abspath(str(self.scripts_dir)))
+        root = d.anchor or "/"
+        cloexec = getattr(os, "O_CLOEXEC", 0)
+        open_flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0) | cloexec
+
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | cloexec)
+        cur_fd = root_fd
+        parts = d.parts[1:]
+
+        try:
+            for comp in parts:
+                try:
+                    nxt = os.open(comp, open_flags, dir_fd=cur_fd)
+                except FileNotFoundError:
+                    os.mkdir(comp, mode=0o700, dir_fd=cur_fd)
+                    nxt = os.open(comp, open_flags, dir_fd=cur_fd)
+                except OSError as exc:
+                    if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+                        logger.error(
+                            json.dumps({
+                                "event": "scripts_dir_symlink_refused",
+                                "component": str(comp),
+                                "scripts_dir": str(self.scripts_dir),
+                                "euid": os.geteuid(),
+                                "ts": time.time(),
+                            })
+                        )
+                        if comp == parts[-1]:
+                            raise RuntimeError(f"scripts_dir open refused (symlink or non-dir): {self.scripts_dir}") from exc
+                        else:
+                            raise RuntimeError(f"scripts_dir ancestor is a symlink, refusing: {comp}") from exc
+                    raise
+                if cur_fd != root_fd:
+                    os.close(cur_fd)
+                cur_fd = nxt
+            return cur_fd
+        except Exception:
+            if cur_fd != root_fd:
+                os.close(cur_fd)
+            os.close(root_fd)
+            raise
+
     def ensure_wrapper_script(self) -> Tuple[Path, str]:
         """
-        Authoritative wrapper creation & reconciliation (CWE-427 / CWE-367 / CWE-78):
-        - Never blindly trusts a pre-existing file on disk.
-        - Verifies ownership (st_uid == os.getuid()) and exact content match.
-        - If stale, missing, or mismatched, atomically replaces with mode 0o700 via tempfile + os.replace.
+        Authoritative wrapper creation & reconciliation (CWE-427 / CWE-367 / CWE-78 / CWE-494):
+        - Component-by-component O_NOFOLLOW directory resolution eliminates TOCTOU races.
+        - Verifies ownership (st_uid == os.geteuid()) and directory permissions (mode & 0o022 == 0).
+        - Hardens temp creation with O_CREAT | O_EXCL | O_NOFOLLOW at mode 0o600, then fchmod 0o700.
+        - Content-addressed SHA-256 verification and companion .manifest generation for runtime invocation lock.
         - Returns (wrapper_script_path, content_sha256).
         """
-        # Ancestor-path symlink validation (CWE-427): refuse any intermediate parent
-        # that is a symlink. NOTE: is_symlink() is lstat-based: catches both live and
-        # dangling symlinks. Dropping .exists() prevents dangling-symlink bypass.
-        try:
-            _home = Path.home()
-        except Exception:
-            _home = None
-
-        _root = Path(self.scripts_dir.anchor) if self.scripts_dir.anchor else Path("/")
-        for parent in self.scripts_dir.parents:
-            if parent == _root or (_home is not None and parent == _home):
-                break
-            if parent.is_symlink():
-                logger.error(
-                    json.dumps({
-                        "event": "scripts_dir_symlink_refused",
-                        "component": str(parent),
-                        "scripts_dir": str(self.scripts_dir),
-                        "euid": os.getuid(),
-                        "ts": time.time(),
-                    })
-                )
-                raise RuntimeError(f"scripts_dir ancestor is a symlink, refusing: {parent}")
-
-        self.scripts_dir.mkdir(parents=True, exist_ok=True)
-        if not hasattr(os, "O_NOFOLLOW"):
-            raise RuntimeError("O_NOFOLLOW unavailable on this platform; refusing to proceed with unprotected scripts_dir open")
-
-        open_flags = os.O_RDONLY | os.O_NOFOLLOW
-        if hasattr(os, "O_DIRECTORY"):
-            open_flags |= os.O_DIRECTORY
-        if hasattr(os, "O_CLOEXEC"):
-            open_flags |= os.O_CLOEXEC
-
-        try:
-            dir_fd = os.open(str(self.scripts_dir), open_flags)
-        except OSError as exc:
-            logger.error(
-                json.dumps({
-                    "event": "scripts_dir_symlink_refused",
-                    "component": str(self.scripts_dir),
-                    "scripts_dir": str(self.scripts_dir),
-                    "euid": os.getuid(),
-                    "ts": time.time(),
-                })
-            )
-            raise RuntimeError(f"scripts_dir open refused (symlink or non-dir): {self.scripts_dir}: {exc}")
-
+        dir_fd = self._resolve_scripts_dir_fd()
         try:
             st_dir = os.fstat(dir_fd)
-            if st_dir.st_uid != os.getuid():
-                raise PermissionError(f"scripts_dir not owned by current user: {self.scripts_dir}")
+            if st_dir.st_uid != os.geteuid():
+                raise PermissionError(f"scripts_dir not owned by current user (euid {os.geteuid()}, owner {st_dir.st_uid}): {self.scripts_dir}")
             if st_dir.st_mode & 0o022:
                 try:
                     if hasattr(os, "fchmod"):
@@ -1171,7 +1188,7 @@ class SelfHealingManager:
                 file_fd = os.open(wrapper_name, check_flags, dir_fd=dir_fd)
                 try:
                     st = os.fstat(file_fd)
-                    owned_by_us = (st.st_uid == os.getuid())
+                    owned_by_us = (st.st_uid == os.geteuid())
                     with open(file_fd, "r", encoding="utf-8", closefd=False) as fh:
                         existing_content = fh.read()
                     content_matches = (existing_content == wrapper_content)
@@ -1181,10 +1198,11 @@ class SelfHealingManager:
             except OSError:
                 needs_write = True
 
+            write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+
             if needs_write:
                 tmp_name = f".{wrapper_name}.tmp.{os.getpid()}_{time.time_ns()}"
-                write_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-                tmp_fd = os.open(tmp_name, write_flags, 0o700, dir_fd=dir_fd)
+                tmp_fd = os.open(tmp_name, write_flags, 0o600, dir_fd=dir_fd)
                 try:
                     os.write(tmp_fd, data)
                     try:
@@ -1208,6 +1226,44 @@ class SelfHealingManager:
                         pass
                     logger.error("wrapper self-heal failed for %s: %s", wrapper_name, exc)
                     raise
+
+            # A6: Companion manifest file (.hermes_hourly_digest.sh.manifest) for invocation verification
+            manifest_name = f".{wrapper_name}.manifest"
+            manifest_content = f"{digest}  {wrapper_name}\n"
+            manifest_data = manifest_content.encode("utf-8")
+
+            needs_manifest_write = True
+            try:
+                check_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+                m_fd = os.open(manifest_name, check_flags, dir_fd=dir_fd)
+                try:
+                    with open(m_fd, "r", encoding="utf-8", closefd=False) as fh:
+                        existing_m = fh.read()
+                    needs_manifest_write = (existing_m != manifest_content)
+                finally:
+                    os.close(m_fd)
+            except OSError:
+                needs_manifest_write = True
+
+            if needs_manifest_write:
+                tmp_m = f".{manifest_name}.tmp.{os.getpid()}_{time.time_ns()}"
+                tmp_m_fd = os.open(tmp_m, write_flags, 0o600, dir_fd=dir_fd)
+                try:
+                    os.write(tmp_m_fd, manifest_data)
+                    os.fsync(tmp_m_fd)
+                finally:
+                    os.close(tmp_m_fd)
+                try:
+                    os.replace(tmp_m, manifest_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                    try:
+                        os.fsync(dir_fd)
+                    except OSError:
+                        pass
+                except Exception:
+                    try:
+                        os.unlink(tmp_m, dir_fd=dir_fd)
+                    except OSError:
+                        pass
 
             wrapper_script = self.scripts_dir / wrapper_name
             return wrapper_script, digest
