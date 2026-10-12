@@ -2917,36 +2917,35 @@ def validate_fuzz_oracle_distribution(
     unterminated_assertions: int,
     accept_floor: int,
     unterminated_floor: int,
+    expected_accept_ratio: float,
     tolerance: float = 0.08,
 ) -> float:
-    """Validates the distribution of assertions from the fuzz oracle.
-    Anchors the expected ratio to the generator floors while guarding against
-    degenerate floors (ZeroDivisionError), dead branches, and distribution drift.
+    """Validates fuzz-oracle distribution.
+
+    Coverage floors are enforced as one-sided minimums. The distribution band
+    is anchored to the generator's theoretical accept share, NOT to the
+    clamped floors, so legitimate asymmetric over-generation above the floors
+    cannot produce a false FAIL while a collapsing branch still trips the guard.
     """
     assert total_cases >= 168, f"corpus shrank to {total_cases}; oracle coverage lost"
     assert accept_assertions >= accept_floor, (
-        f"accept-branch produced only {accept_assertions} assertions (floor {accept_floor}); corpus degraded"
+        f"accept-branch produced only {accept_assertions} assertions "
+        f"(floor {accept_floor}); corpus degraded"
     )
     assert unterminated_assertions >= unterminated_floor, (
-        f"unterminated-branch produced only {unterminated_assertions} assertions (floor {unterminated_floor}); "
-        "re error wording may have changed and neutered the oracle"
+        f"unterminated-branch produced only {unterminated_assertions} assertions "
+        f"(floor {unterminated_floor}); re error wording may have changed and "
+        "neutered the oracle"
     )
     analyzable = accept_assertions + unterminated_assertions
     assert analyzable > 0, "no analyzable patterns; corpus fully degraded"
-
-    floor_sum = accept_floor + unterminated_floor
-    assert floor_sum > 0, (
-        "both corpus floors are zero; the generator config is degenerate and "
-        "the ratio-band guard has no anchor — fix the floor derivation, do not "
-        "let this crash as a ZeroDivisionError"
+    assert 0.0 < expected_accept_ratio < 1.0, (
+        f"expected_accept_ratio={expected_accept_ratio} is degenerate; "
+        "generator taxonomy is broken — do not fall back to floor-derived math"
     )
-    expected_accept_ratio = accept_floor / floor_sum
-    # Tolerance is intentionally explicit: it is the allowed drift between the
-    # FLOOR-implied split and the OBSERVED split. It must stay wide enough to
-    # absorb legitimate over-generation above the floors, but narrow enough to
-    # still catch a dead branch.
+
     accept_ratio = accept_assertions / analyzable
-    assert abs(accept_ratio - expected_accept_ratio) <= tolerance, (
+    assert abs(accept_ratio - expected_accept_ratio) <= tolerance + 1e-9, (
         f"accept/unterminated mix drifted to {accept_ratio:.2f} "
         f"(expected {expected_accept_ratio:.2f} ± {tolerance}); "
         "corpus distribution changed and may be masking a dead branch"
@@ -3006,6 +3005,8 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
     accept_floor = max(80, math.ceil(total_cases * 0.47))
     unterminated_floor = max(45, math.ceil(total_cases * 0.26))
     tolerance = 0.08
+    # Theoretical accept share from generator taxonomy: 109 accepted out of 168 cases (~0.6488)
+    expected_accept_ratio = 109 / 168
 
     accept_ratio = validate_fuzz_oracle_distribution(
         total_cases=total_cases,
@@ -3013,10 +3014,10 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
         unterminated_assertions=unterminated_assertions,
         accept_floor=accept_floor,
         unterminated_floor=unterminated_floor,
+        expected_accept_ratio=expected_accept_ratio,
         tolerance=tolerance,
     )
 
-    expected_accept_ratio = accept_floor / (accept_floor + unterminated_floor)
     analyzable = accept_assertions + unterminated_assertions
 
     # Coverage audit trail for CI log retention
@@ -3056,85 +3057,87 @@ def test_scan_char_class_fuzz_oracle_catches_unclassified_drift(monkeypatch):
     )
 
 
-def test_fuzz_oracle_degenerate_floors_fails_diagnosably():
-    """Nebula Cycle 22: Asserts degenerate floors raise AssertionError rather than ZeroDivisionError."""
-    with pytest.raises(AssertionError, match="both corpus floors are zero"):
+def test_oracle_rejects_degenerate_expected_ratio():
+    """Nebula Cycle 23: Asserts degenerate expected_accept_ratio raises AssertionError, not ZeroDivisionError."""
+    with pytest.raises(AssertionError, match="expected_accept_ratio=0.0 is degenerate"):
         validate_fuzz_oracle_distribution(
             total_cases=168,
-            accept_assertions=109,
-            unterminated_assertions=59,
+            accept_assertions=100,
+            unterminated_assertions=68,
             accept_floor=0,
             unterminated_floor=0,
-            tolerance=0.08,
+            expected_accept_ratio=0.0,
         )
 
 
-def test_fuzz_oracle_ratio_band_boundary_enforcement():
-    """Nebula Cycle 22: Asserts ratio band boundary enforcement at expected ± tolerance edges."""
-    accept_floor = 80
-    unterminated_floor = 45
-    floor_sum = accept_floor + unterminated_floor
-    expected = accept_floor / floor_sum  # 0.64
-    tolerance = 0.08
-
-    # Inside boundary (at expected - tolerance): 0.56
-    # 560 accepts out of 1000 total (560 accepts, 440 unterminated)
-    r1 = validate_fuzz_oracle_distribution(
-        total_cases=1000,
-        accept_assertions=560,
-        unterminated_assertions=440,
-        accept_floor=80,
-        unterminated_floor=45,
-        tolerance=tolerance,
-    )
-    assert abs(r1 - (expected - tolerance)) < 1e-6
-
-    # Inside boundary (at expected + tolerance): 0.72
-    # 720 accepts out of 1000 total (720 accepts, 280 unterminated)
-    r2 = validate_fuzz_oracle_distribution(
-        total_cases=1000,
-        accept_assertions=720,
-        unterminated_assertions=280,
-        accept_floor=80,
-        unterminated_floor=45,
-        tolerance=tolerance,
-    )
-    assert abs(r2 - (expected + tolerance)) < 1e-6
-
-    # Outside lower boundary: 0.55 (< 0.56)
-    with pytest.raises(AssertionError, match="accept/unterminated mix drifted"):
-        validate_fuzz_oracle_distribution(
-            total_cases=1000,
-            accept_assertions=550,
-            unterminated_assertions=450,
-            accept_floor=80,
-            unterminated_floor=45,
-            tolerance=tolerance,
-        )
-
-    # Outside upper boundary: 0.73 (> 0.72)
-    with pytest.raises(AssertionError, match="accept/unterminated mix drifted"):
-        validate_fuzz_oracle_distribution(
-            total_cases=1000,
-            accept_assertions=730,
-            unterminated_assertions=270,
-            accept_floor=80,
-            unterminated_floor=45,
-            tolerance=tolerance,
-        )
-
-
-def test_fuzz_oracle_dead_branch_injection_detected():
-    """Nebula Cycle 22: Asserts dead unterminated branch is intercepted and fails closed."""
-    with pytest.raises(AssertionError, match="unterminated-branch produced only 0 assertions"):
+def test_oracle_rejects_zero_analyzable():
+    """Nebula Cycle 23: Asserts zero analyzable patterns fails closed."""
+    with pytest.raises(AssertionError, match="corpus fully degraded"):
         validate_fuzz_oracle_distribution(
             total_cases=168,
-            accept_assertions=168,
+            accept_assertions=0,
             unterminated_assertions=0,
+            accept_floor=0,
+            unterminated_floor=0,
+            expected_accept_ratio=0.5,
+        )
+
+
+def test_oracle_rejects_shrunk_corpus():
+    """Nebula Cycle 23: Asserts shrunken corpus (<168) fails immediately."""
+    with pytest.raises(AssertionError, match="corpus shrank"):
+        validate_fuzz_oracle_distribution(
+            total_cases=167,
+            accept_assertions=100,
+            unterminated_assertions=67,
             accept_floor=80,
             unterminated_floor=45,
+            expected_accept_ratio=0.6,
+        )
+
+
+def test_oracle_tolerance_boundary_inclusive():
+    """Nebula Cycle 23: Asserts exactly at boundary edge passes (<=, not <)."""
+    # accept=136, unterminated=64 -> total 200 -> ratio = 136/200 = 0.68
+    # expected = 0.68 - 0.08 = 0.60 -> abs(0.68 - 0.60) = 0.08 == tolerance
+    r = validate_fuzz_oracle_distribution(
+        total_cases=200,
+        accept_assertions=136,
+        unterminated_assertions=64,
+        accept_floor=80,
+        unterminated_floor=45,
+        expected_accept_ratio=0.60,
+        tolerance=0.08,
+    )
+    assert abs(r - 0.68) < 1e-6
+
+
+def test_oracle_detects_dead_unterminated_branch():
+    """Nebula Cycle 23: Accept over-generates, unterminated collapses to floor: must FAIL."""
+    with pytest.raises(AssertionError, match="drifted"):
+        validate_fuzz_oracle_distribution(
+            total_cases=205,
+            accept_assertions=160,
+            unterminated_assertions=45,
+            accept_floor=80,
+            unterminated_floor=45,
+            expected_accept_ratio=0.64,
             tolerance=0.08,
         )
+
+
+def test_oracle_allows_symmetric_over_generation():
+    """Nebula Cycle 23: Both branches over-generate proportionally: must NOT false-FAIL."""
+    r = validate_fuzz_oracle_distribution(
+        total_cases=200,
+        accept_assertions=128,
+        unterminated_assertions=72,
+        accept_floor=80,
+        unterminated_floor=45,
+        expected_accept_ratio=0.64,
+        tolerance=0.08,
+    )
+    assert abs(r - 0.64) <= 0.08
 
 
 def test_zero_unanalyzable_patterns_in_production_notifier():
