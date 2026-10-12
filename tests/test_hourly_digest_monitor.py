@@ -2286,6 +2286,83 @@ def test_html_entity_escaping_prevents_telegram_parse_errors(tmp_path):
     assert "&lt;inject&gt;" in digest_html
 
 
+def test_truncation_never_splits_html_entities(tmp_path):
+    """CWE-116: Truncating before escaping guarantees entities cannot be sliced into dangling fragments."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    scan = {
+        "overall_health_score": 30,
+        "severity": "CRITICAL",
+        "cron": {
+            "cron_health_score": 10,
+            "clogged_jobs": [
+                {
+                    "job_name": "clogged_job_test",
+                    "consecutive_failures": 1,
+                    # Force char 120 to land where an entity would split if sliced after escape
+                    "last_error": ("x" * 119) + "&&&&&",
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    out = notifier.format_urgent_alert(scan)
+    # Assert no dangling ampersand fragment
+    dangling = re.search(r"&(?!amp;|lt;|gt;|quot;|#x27;|#\d+;)", out)
+    assert dangling is None, f"Dangling entity detected in formatted alert: {out}"
+    assert "&amp;" in out
+
+
+def test_token_shaped_error_is_redacted(tmp_path):
+    """CWE-532: Error strings with Bearer tokens, OAuth access tokens, or secrets are redacted before formatting."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    scan = {
+        "overall_health_score": 20,
+        "severity": "CRITICAL",
+        "cron": {
+            "cron_health_score": 10,
+            "auth_failed_jobs": [
+                {
+                    "job_name": "oauth-sync",
+                    "last_error": "Bearer ya29.A0ARrdaM-SECRETTOKENVALUE123456 rejected with refresh_token=1//04abcdef123456",
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    out = notifier.format_urgent_alert(scan)
+    assert "ya29.A0ARrdaM-SECRETTOKENVALUE123456" not in out
+    assert "1//04abcdef123456" not in out
+    assert "[REDACTED]" in out
+
+
+@pytest.mark.parametrize("length", [98, 99, 100, 101, 118, 119, 120, 121])
+@pytest.mark.parametrize("special_char", ["&", "<", ">", "\"", "'", "<script>"])
+def test_boundary_truncation_entity_integrity(tmp_path, length, special_char):
+    """CWE-116: Verify that error messages ending at boundary lengths never produce broken entities or unescaped tags."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    err_text = ("a" * length) + special_char + "tail"
+    scan = {
+        "overall_health_score": 20,
+        "severity": "CRITICAL",
+        "cron": {
+            "cron_health_score": 10,
+            "clogged_jobs": [{"job_name": "boundary_test", "consecutive_failures": 3, "last_error": err_text}],
+            "auth_failed_jobs": [{"job_name": "auth_test", "last_error": err_text}],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    out = notifier.format_urgent_alert(scan)
+    assert re.search(r"&(?!amp;|lt;|gt;|quot;|#x27;|#\d+;)", out) is None
+    assert "<script>" not in out
+
+
+
 
 
 

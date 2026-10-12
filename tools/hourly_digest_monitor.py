@@ -911,6 +911,23 @@ class HermesTelegramNotifier:
             logger.error("Telegram delivery failed: %s", e)
             return False
 
+    _SECRET_PATTERNS = (
+        re.compile(r"\bBearer\s+[A-Za-z0-9._\-]+", re.I),
+        re.compile(r"\bya29\.[A-Za-z0-9._\-]+", re.I),
+        re.compile(r"\b[0-9]{8,10}:[A-Za-z0-9_\-]{30,}\b"),
+        re.compile(r"\b(?:access|refresh|id)_token=?[A-Za-z0-9._\-]+", re.I),
+        re.compile(r"\beyJ[A-Za-z0-9._\-]{20,}"),
+    )
+
+    @classmethod
+    def redact_secrets(cls, text: str) -> str:
+        """Best-effort redaction of bearer tokens, OAuth credentials, and JWTs from error strings (CWE-532)."""
+        if not text:
+            return ""
+        for pat in cls._SECRET_PATTERNS:
+            text = pat.sub("[REDACTED]", text)
+        return text
+
     def send_alert(self, alert_text: str) -> bool:
         """Send urgent critical anomaly alert."""
         return self._send_payload(alert_text)
@@ -936,7 +953,7 @@ class HermesTelegramNotifier:
         ]
 
         lines = [
-            "🚨 <b>[HERMES CRITICAL ALERT] Cron Clog & Entropy Degradation Detected</b>",
+            "🚨 <b>[HERMES CRITICAL ALERT] Cron Clog &amp; Entropy Degradation Detected</b>",
             f"<b>Overall Health:</b> <code>{overall}/100</code> [<b>{severity}</b>]",
             "",
         ]
@@ -945,7 +962,8 @@ class HermesTelegramNotifier:
             lines.append(f"⛔ <b>Clogged Cron Jobs ({len(clogged)}):</b>")
             for c in clogged:
                 job_name = html.escape(str(c.get("job_name", "")))
-                err = html.escape(str(c.get("last_error") or ""))[:120]
+                raw_err = self.redact_secrets(str(c.get("last_error") or ""))
+                err = html.escape(raw_err[:120])
                 lines.append(
                     f"• <code>{job_name}</code>: {c.get('consecutive_failures')} fails. "
                     f"<i>{err}</i>"
@@ -967,7 +985,8 @@ class HermesTelegramNotifier:
             lines.append(f"🔑 <b>Authentication Failures ({len(auth_failed)}):</b>")
             for a in auth_failed:
                 job_name = html.escape(str(a.get("job_name", "")))
-                err = html.escape(str(a.get("last_error") or ""))[:100]
+                raw_err = self.redact_secrets(str(a.get("last_error") or ""))
+                err = html.escape(raw_err[:100])
                 lines.append(f"• <code>{job_name}</code>: <i>{err}</i>")
             lines.append("")
 
