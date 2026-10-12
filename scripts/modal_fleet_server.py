@@ -293,7 +293,10 @@ from scripts.fleet_policy import (
     _REQUIRED_KEYS,
     _validate_policy,
     load_fleet_policy,
+    get_fleet_policy,
     _policy_degraded,
+    is_excluded,
+    is_deploy_blocked,
     FLEET_POLICY,
     FLEET_EXCLUDED,
     FLEET_DEPLOY_BLOCKED,
@@ -384,9 +387,10 @@ def register_hotplug_worker(spec: Dict[str, Any]) -> Dict[str, Any]:
     worker_id = spec["worker_id"].strip()
     workspace = spec["workspace"].strip()
 
-    if _policy_degraded(FLEET_POLICY):
+    pol = globals().get("FLEET_POLICY")
+    if _policy_degraded(pol):
         raise RuntimeError("Fleet policy degraded (circuit open): refusing all deploy/worker operations.")
-    if workspace in FLEET_DEPLOY_BLOCKED:
+    if is_deploy_blocked(workspace, pol):
         raise ValueError(f"Workspace '{workspace}' is deploy-blocked by fleet policy.")
 
     # Validate workspace is in canonical list or modal.toml
@@ -2100,7 +2104,8 @@ def get_single_template_detail(template_id: str) -> Dict[str, Any]:
 
 def get_toml_profiles() -> List[str]:
     """Reads all profiles from ~/.modal.toml."""
-    if _policy_degraded(FLEET_POLICY):
+    pol = globals().get("FLEET_POLICY")
+    if _policy_degraded(pol):
         logger.error("Fleet policy degraded (circuit open): refusing all profile discovery.")
         return []
     profiles = []
@@ -2111,7 +2116,7 @@ def get_toml_profiles() -> List[str]:
                 profiles.append(m.group(1))
     if not profiles:
         profiles = list(CANONICAL_20_PROFILES)
-    return [p for p in profiles if p not in FLEET_EXCLUDED]
+    return [p for p in profiles if not is_excluded(p, pol)]
 
 
 _PROFILE_LKG: Dict[str, Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]] = {}
@@ -3522,7 +3527,7 @@ def _load_canonical_inventory() -> List[Dict[str, Any]]:
         for ws, acc, tier in workspaces_meta
     ]
 
-CANONICAL_20_INVENTORY = [] if _policy_degraded(FLEET_POLICY) else [e for e in _load_canonical_inventory() if e["workspace"] not in FLEET_EXCLUDED]
+CANONICAL_20_INVENTORY = [] if _policy_degraded() else [e for e in _load_canonical_inventory() if not is_excluded(e["workspace"])]
 
 
 class InFlightRequestTracker:
@@ -4043,7 +4048,8 @@ class SentinelUsageLimitAuditor:
 
     def audit_fleet_usage_limits(self) -> Dict[str, Any]:
         with self._lock:
-            if _policy_degraded(FLEET_POLICY):
+            pol = globals().get("FLEET_POLICY")
+            if _policy_degraded(pol):
                 raise RuntimeError("Fleet policy degraded (circuit open): refusing all deploy/probe operations.")
             now = time.time()
             iso_now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -4088,7 +4094,7 @@ class SentinelUsageLimitAuditor:
                 spend = current_spends.get(ws, 0.0)
 
                 # Special case 1: overdue invoice on just-ask-mr-zen
-                if ws in FLEET_POLICY.get("overdue_invoice", []):
+                if ws in (pol or {}).get("overdue_invoice", []):
                     configured_limit = 29.50
                     is_configured = True
                     is_compliant = False
@@ -4189,7 +4195,7 @@ class SentinelUsageLimitAuditor:
                     "proposed_guardian_action": prop_action,
                     "proposed_action": action_slug,
                     "overdue_alert": bool(billing_status == "overdue_invoice"),
-                    "deploy_blocked": ws in FLEET_DEPLOY_BLOCKED,
+                    "deploy_blocked": is_deploy_blocked(ws, pol),
                 }
                 audited_workspaces.append(ws_record)
 
@@ -4210,7 +4216,7 @@ class SentinelUsageLimitAuditor:
                     "last_audited": iso_now, "last_probed_at": iso_now,
                     "next_probe_scheduled": iso_now, "proposed_guardian_action": None,
                     "proposed_action": None, "overdue_alert": False, "extra_profile": True,
-                    "deploy_blocked": extra in FLEET_DEPLOY_BLOCKED,
+                    "deploy_blocked": is_deploy_blocked(extra, pol),
                 })
 
             compliant_count = sum(1 for w in audited_workspaces if w["is_compliant"])

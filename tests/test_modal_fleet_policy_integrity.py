@@ -7,7 +7,7 @@ Unit test suite verifying Modal Fleet Policy Authorization Boundary (CWE-862):
 1. Confirms output/modal_fleet_policy.json exists and adheres to required schema.
 2. Verifies fail-closed enforcement when policy is missing or strict.
 3. Verifies circuit-breaker trip to _POLICY_DENY_ALL with _degraded flag.
-4. Verifies schema validation (non-object, missing keys, non-string entries).
+4. Verifies schema validation (non-object, missing keys, non-string entries, routing typing).
 5. Verifies empty exclusion list fail-open prevention (F2) and intent flag.
 6. Verifies disk-supplied _degraded is stripped and not trusted (F2).
 7. Verifies standalone scripts.fleet_policy module is decoupled from HTTP server (F1).
@@ -15,23 +15,36 @@ Unit test suite verifying Modal Fleet Policy Authorization Boundary (CWE-862):
 9. Verifies shared probe lock identity (F5 fix) and serialized concurrency.
 10. Verifies probe state hydration from persistent ledger (F3).
 11. Verifies degraded policy blocks profile discovery and worker registration.
+12. Verifies fail-closed accessors (is_excluded, is_deploy_blocked) exclude everything when degraded.
+13. Verifies module reload does not crash when policy file is absent (import bulkhead).
 """
 
+import importlib
 import json
 from pathlib import Path
 import threading
 import time
 import pytest
 
+import scripts.fleet_policy as fp
 from scripts.fleet_policy import (
     load_fleet_policy,
+    get_fleet_policy,
     DEFAULT_FLEET_POLICY_PATH,
     _policy_degraded,
+    is_excluded,
+    is_deploy_blocked,
 )
 from scripts.modal_billing_sync import ModalBillingSyncEngine
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CANONICAL_POLICY_PATH = REPO_ROOT / "output" / "modal_fleet_policy.json"
+
+
+def _write_policy(tmp_path: Path, obj: dict) -> Path:
+    p = tmp_path / "modal_fleet_policy.json"
+    p.write_text(json.dumps(obj), encoding="utf-8")
+    return p
 
 
 def test_canonical_modal_fleet_policy_exists_and_valid():
@@ -107,8 +120,7 @@ def test_non_string_entries(tmp_path):
 
 def test_empty_exclusion_without_intent_is_rejected(tmp_path):
     """Verify empty exclusion list without explicit intent fails closed (F2 anti-fail-open)."""
-    p = tmp_path / "empty_policy.json"
-    p.write_text('{"excluded": [], "deploy_blocked": []}', encoding="utf-8")
+    p = _write_policy(tmp_path, {"excluded": [], "deploy_blocked": []})
     with pytest.raises((ValueError, RuntimeError)):
         load_fleet_policy(p, strict=True)
 
@@ -119,27 +131,80 @@ def test_empty_exclusion_without_intent_is_rejected(tmp_path):
 
 def test_empty_exclusion_with_intent_is_accepted(tmp_path):
     """Verify empty exclusion list with explicit intent flag is accepted (F2)."""
-    p = tmp_path / "intentional_empty.json"
-    p.write_text('{"excluded": [], "deploy_blocked": [], "excluded_intentionally_empty": true}', encoding="utf-8")
+    p = _write_policy(tmp_path, {
+        "excluded": [],
+        "deploy_blocked": [],
+        "excluded_intentionally_empty": True,
+    })
     pol = load_fleet_policy(p, strict=True)
     assert pol["excluded"] == []
     assert not pol.get("_degraded")
 
 
+def test_empty_excluded_with_nonbool_flag_is_rejected(tmp_path):
+    """Verify non-boolean excluded_intentionally_empty is rejected."""
+    p = _write_policy(tmp_path, {
+        "excluded": [],
+        "deploy_blocked": [],
+        "excluded_intentionally_empty": "true",
+    })
+    with pytest.raises((ValueError, RuntimeError)):
+        load_fleet_policy(p, strict=True)
+
+
 def test_disk_supplied_degraded_is_stripped(tmp_path):
     """Verify _degraded supplied from disk is stripped and not trusted (F2)."""
-    p = tmp_path / "tampered.json"
-    p.write_text('{"excluded": ["motion"], "deploy_blocked": [], "_degraded": false}', encoding="utf-8")
+    p = _write_policy(tmp_path, {
+        "excluded": ["motion"],
+        "deploy_blocked": [],
+        "_degraded": False,
+    })
     pol = load_fleet_policy(p, strict=True)
     assert "_degraded" not in pol
 
 
+def test_deny_all_mode_trips_breaker_on_missing_file(tmp_path):
+    """Verify deny_all mode returns degraded policy without raising."""
+    missing = tmp_path / "nope.json"
+    pol = load_fleet_policy(missing, strict=False)
+    assert _policy_degraded(pol) is True
+
+
+def test_degraded_policy_excludes_everything(tmp_path):
+    """Verify fail-closed membership accessors treat everything as excluded/blocked when degraded."""
+    missing = tmp_path / "nope.json"
+    pol = load_fleet_policy(missing, strict=False)
+    assert is_excluded("any-workspace", pol) is True
+    assert is_deploy_blocked("any-workspace", pol) is True
+
+
+def test_routing_must_be_str_mapping(tmp_path):
+    """Verify routing dict entries must not contain primitive numbers (injection guard)."""
+    p = _write_policy(tmp_path, {
+        "excluded": ["ws"],
+        "deploy_blocked": [],
+        "routing": {"job": 42},
+    })
+    with pytest.raises((ValueError, RuntimeError)):
+        load_fleet_policy(p, strict=True)
+
+
+def test_import_does_not_crash_when_policy_missing(monkeypatch, tmp_path):
+    """Verify importing/reloading fleet_policy does not crash even if policy is missing (bulkhead)."""
+    monkeypatch.setenv("MODAL_FLEET_POLICY_FAILMODE", "crash")
+    monkeypatch.setattr(fp, "DEFAULT_FLEET_POLICY_PATH", tmp_path / "absent.json")
+    # Must not raise during reload because loader is lazy
+    importlib.reload(fp)
+
+
 def test_fleet_policy_standalone_module_decoupled():
     """Verify scripts.fleet_policy is standalone and does not import network/HTTP servers (F1)."""
-    import scripts.fleet_policy as fp
     assert hasattr(fp, "load_fleet_policy")
+    assert hasattr(fp, "get_fleet_policy")
     assert hasattr(fp, "_validate_policy")
     assert hasattr(fp, "_policy_degraded")
+    assert hasattr(fp, "is_excluded")
+    assert hasattr(fp, "is_deploy_blocked")
     assert "http.server" not in fp.__dict__
     assert "socketserver" not in fp.__dict__
 

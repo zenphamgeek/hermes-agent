@@ -43,6 +43,7 @@ def _validate_policy(data: Any, target: Path) -> Dict[str, Any]:
     # F2: System-controlled only; never trust _degraded from disk
     data.pop("_degraded", None)
 
+    # Validate mandatory keys
     missing = [k for k in _REQUIRED_KEYS if k not in data]
     if missing:
         raise ValueError(f"CRITICAL: fleet policy at '{target}' missing keys: {missing}")
@@ -52,12 +53,37 @@ def _validate_policy(data: Any, target: Path) -> Dict[str, Any]:
         if not isinstance(val, list) or any(not isinstance(x, str) for x in val):
             raise ValueError(f"CRITICAL: fleet policy '{k}' must be a list[str] at '{target}'.")
 
-    # F2 Anti-Fail-Open: empty exclusion list without explicit intent is rejected
-    if not data["excluded"] and not data.get("excluded_intentionally_empty"):
+    # Anti-fail-open escape hatch validation
+    intentional = data.pop("excluded_intentionally_empty", False)
+    if not isinstance(intentional, bool):
+        raise ValueError(
+            f"CRITICAL: 'excluded_intentionally_empty' must be a JSON bool at '{target}'."
+        )
+    if not data["excluded"] and not intentional:
         raise ValueError(
             f"CRITICAL: empty exclusion list at '{target}' without "
             "'excluded_intentionally_empty': true (refusing fail-open)."
         )
+
+    # Validate optional routing dict structure
+    if "routing" in data:
+        routing = data["routing"]
+        if not isinstance(routing, dict):
+            raise ValueError(f"CRITICAL: fleet policy 'routing' must be a dict at '{target}'.")
+        for rk, rv in routing.items():
+            if not isinstance(rk, str):
+                raise ValueError(f"CRITICAL: fleet policy 'routing' key '{rk}' must be a str at '{target}'.")
+            if not isinstance(rv, (dict, list, str)):
+                raise ValueError(f"CRITICAL: fleet policy 'routing' entry '{rk}' must be dict, list, or str at '{target}'.")
+            if isinstance(rv, list) and any(not isinstance(x, str) for x in rv):
+                raise ValueError(f"CRITICAL: fleet policy 'routing' list '{rk}' must contain str items at '{target}'.")
+
+    # Validate optional list keys
+    for opt_key in ("deploy_ok", "overdue_invoice"):
+        if opt_key in data:
+            opt_val = data[opt_key]
+            if not isinstance(opt_val, list) or any(not isinstance(x, str) for x in opt_val):
+                raise ValueError(f"CRITICAL: fleet policy '{opt_key}' must be list[str] at '{target}'.")
 
     return data
 
@@ -83,12 +109,52 @@ def load_fleet_policy(policy_path: Optional[Path] = None, *, strict: Optional[bo
         return dict(_POLICY_DENY_ALL)
 
 
+_FLEET_POLICY_CACHE: Optional[Dict[str, Any]] = None
+
+
+def get_fleet_policy(*, refresh: bool = False, policy_path: Optional[Path] = None, strict: Optional[bool] = None) -> Dict[str, Any]:
+    """Lazily load + memoize the policy. Import never crashes; first real
+    use is still fail-closed per MODAL_FLEET_POLICY_FAILMODE."""
+    global _FLEET_POLICY_CACHE
+    if refresh or _FLEET_POLICY_CACHE is None or policy_path is not None:
+        pol = load_fleet_policy(policy_path, strict=strict)
+        if policy_path is None:
+            _FLEET_POLICY_CACHE = pol
+        return pol
+    return _FLEET_POLICY_CACHE
+
+
 def _policy_degraded(policy: Optional[Dict[str, Any]] = None) -> bool:
     """Returns True if the policy is in a degraded / tripped state."""
-    pol = policy if policy is not None else FLEET_POLICY
+    pol = policy if policy is not None else get_fleet_policy()
     return bool(pol.get("_degraded"))
 
 
-FLEET_POLICY = load_fleet_policy()
-FLEET_EXCLUDED = set(FLEET_POLICY.get("excluded", []))
-FLEET_DEPLOY_BLOCKED = set(FLEET_POLICY.get("deploy_blocked", []))
+def is_excluded(workspace: str, policy: Optional[Dict[str, Any]] = None) -> bool:
+    """Fail-closed membership check. In degraded state EVERYTHING is treated
+    as excluded so no privileged action proceeds against a tripped breaker."""
+    pol = policy if policy is not None else get_fleet_policy()
+    if _policy_degraded(pol):
+        return True  # degraded => exclude all; refuse operations
+    return workspace in set(pol.get("excluded", []))
+
+
+def is_deploy_blocked(workspace: str, policy: Optional[Dict[str, Any]] = None) -> bool:
+    """Fail-closed deploy-blocked check. In degraded state ALL deployments are blocked."""
+    pol = policy if policy is not None else get_fleet_policy()
+    if _policy_degraded(pol):
+        return True  # degraded => block all deploys
+    return workspace in set(pol.get("deploy_blocked", []))
+
+
+def __getattr__(name: str) -> Any:
+    """Module-level attribute fallback for backward compatibility."""
+    if name == "FLEET_POLICY":
+        return get_fleet_policy()
+    if name == "FLEET_EXCLUDED":
+        pol = get_fleet_policy()
+        return set(pol.get("excluded", []))
+    if name == "FLEET_DEPLOY_BLOCKED":
+        pol = get_fleet_policy()
+        return set(pol.get("deploy_blocked", []))
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
