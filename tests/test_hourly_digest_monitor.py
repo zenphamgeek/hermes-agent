@@ -22,7 +22,7 @@ import subprocess
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -2578,6 +2578,37 @@ def test_generic_credentials_and_api_keys_redacted(tmp_path):
     assert "[REDACTED]" in redacted
 
 
+def _scan_char_class(s: str, start_idx: int) -> Tuple[int, bool]:
+    """Scans a character class starting at start_idx (which must be '[').
+    Handles:
+      - Leading literal ']' immediately after '[' (e.g. '[]abc]')
+      - Leading literal ']' immediately after '[^' (e.g. '[^]abc]')
+      - Escaped characters inside class: '\\\\]', '\\\\[', '\\\\\\\\' (skips '\\' + next char)
+      - Closing ']' delimiter
+    Returns:
+      (next_index_after_closing_bracket, is_closed)
+      If class is unterminated before end of string, returns (len(s), False).
+    """
+    n = len(s)
+    idx = start_idx + 1
+    # Handle leading negated caret
+    if idx < n and s[idx] == "^":
+        idx += 1
+    # Handle literal ']' at the start of character class
+    if idx < n and s[idx] == "]":
+        idx += 1
+
+    while idx < n:
+        ch = s[idx]
+        if ch == "\\":
+            idx += 2  # consume backslash and escaped character
+            continue
+        if ch == "]":
+            return idx + 1, True
+        idx += 1
+    return n, False
+
+
 def analyze_redos_vulnerabilities(pattern_str: str) -> List[str]:
     """Statically inspects a regex pattern for known catastrophic backtracking constructs.
 
@@ -2592,37 +2623,31 @@ def analyze_redos_vulnerabilities(pattern_str: str) -> List[str]:
     stack = []
     i = 0
     n = len(pattern_str)
-    in_char_class = False
 
     while i < n:
         c = pattern_str[i]
         if c == "\\":
             i += 2
             continue
-        if c == "[" and not in_char_class:
-            in_char_class = True
-            i += 1
-            # In regex, a ']' immediately after '[' or '[^' is a literal ']' character, not the closing delimiter
-            if i < n and pattern_str[i] == "^":
-                i += 1
-            if i < n and pattern_str[i] == "]":
-                i += 1
+        if c == "[":
+            next_i, closed = _scan_char_class(pattern_str, i)
+            if not closed:
+                issues.append(
+                    "UNANALYZABLE: unterminated character class '[' - "
+                    "static ReDoS analysis is incomplete for this pattern"
+                )
+            i = next_i
             continue
-        if c == "]" and in_char_class:
-            in_char_class = False
-            i += 1
-            continue
-        if not in_char_class:
-            if c == "(":
-                stack.append(i)
-            elif c == ")":
-                if stack:
-                    start = stack.pop()
-                    end = i
-                    rem = pattern_str[end + 1 :]
-                    q_match = re.match(r"^([\+\*]|\{\d+(?:,\d*)?\})\??", rem)
-                    quantifier = q_match.group(0) if q_match else None
-                    groups.append((start, end, pattern_str[start + 1 : end], quantifier))
+        if c == "(":
+            stack.append(i)
+        elif c == ")":
+            if stack:
+                start = stack.pop()
+                end = i
+                rem = pattern_str[end + 1 :]
+                q_match = re.match(r"^([\+\*]|\{\d+(?:,\d*)?\})\??", rem)
+                quantifier = q_match.group(0) if q_match else None
+                groups.append((start, end, pattern_str[start + 1 : end], quantifier))
         i += 1
 
     if stack:
@@ -2633,38 +2658,20 @@ def analyze_redos_vulnerabilities(pattern_str: str) -> List[str]:
 
     def strip_char_classes(s: str) -> str:
         out = []
-        in_cls = False
         idx = 0
-        while idx < len(s):
+        n = len(s)
+        while idx < n:
             ch = s[idx]
             if ch == "\\":
-                if in_cls:
-                    out.append("x")
-                else:
-                    out.append(s[idx : idx + 2])
+                out.append(s[idx : idx + 2])
                 idx += 2
                 continue
-            if ch == "[" and not in_cls:
-                in_cls = True
-                out.append("[")
-                idx += 1
-                # In regex, a ']' immediately after '[' or '[^' is a literal ']' character, not the closing delimiter
-                if idx < len(s) and s[idx] == "^":
-                    out.append("x")
-                    idx += 1
-                if idx < len(s) and s[idx] == "]":
-                    out.append("x")
-                    idx += 1
+            if ch == "[":
+                next_idx, closed = _scan_char_class(s, idx)
+                out.append("[x]")
+                idx = next_idx
                 continue
-            if ch == "]" and in_cls:
-                in_cls = False
-                out.append("]")
-                idx += 1
-                continue
-            if in_cls:
-                out.append("x")
-            else:
-                out.append(ch)
+            out.append(ch)
             idx += 1
         return "".join(out)
 
@@ -2673,41 +2680,28 @@ def analyze_redos_vulnerabilities(pattern_str: str) -> List[str]:
         curr = []
         idx = 0
         depth = 0
-        in_cls = False
-        while idx < len(s):
+        n = len(s)
+        while idx < n:
             ch = s[idx]
             if ch == "\\":
                 curr.append(s[idx : idx + 2])
                 idx += 2
                 continue
-            if ch == "[" and not in_cls:
-                in_cls = True
-                curr.append(ch)
-                idx += 1
-                # In regex, a ']' immediately after '[' or '[^' is a literal ']' character, not the closing delimiter
-                if idx < len(s) and s[idx] == "^":
-                    curr.append(s[idx])
-                    idx += 1
-                if idx < len(s) and s[idx] == "]":
-                    curr.append(s[idx])
-                    idx += 1
+            if ch == "[":
+                next_idx, closed = _scan_char_class(s, idx)
+                curr.append(s[idx:next_idx])
+                idx = next_idx
                 continue
-            if ch == "]" and in_cls:
-                in_cls = False
-                curr.append(ch)
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth > 0:
+                    depth -= 1
+            elif ch == "|" and depth == 0:
+                alts.append("".join(curr))
+                curr = []
                 idx += 1
                 continue
-            if not in_cls:
-                if ch == "(":
-                    depth += 1
-                elif ch == ")":
-                    if depth > 0:
-                        depth -= 1
-                elif ch == "|" and depth == 0:
-                    alts.append("".join(curr))
-                    curr = []
-                    idx += 1
-                    continue
             curr.append(ch)
             idx += 1
         alts.append("".join(curr))
@@ -2794,6 +2788,22 @@ def test_redos_analyzer_flags_unbalanced_parentheses():
     issues = analyze_redos_vulnerabilities(r"(abc(")
     assert issues, "Expected issues for unbalanced parentheses pattern r'(abc('"
     assert any("UNANALYZABLE: unbalanced groups" in issue for issue in issues)
+
+
+def test_redos_analyzer_handles_escaped_bracket_in_char_class():
+    """Nebula Cycle 16: Verify analyze_redos_vulnerabilities handles escaped brackets and backslashes in character classes."""
+    assert not analyze_redos_vulnerabilities(r"[a\]b]+")
+    assert not analyze_redos_vulnerabilities(r"[\]]+")
+    assert not analyze_redos_vulnerabilities(r"[a\\]]+")
+
+
+def test_redos_analyzer_flags_unterminated_character_class():
+    """Nebula Cycle 16: Verify analyze_redos_vulnerabilities flags unterminated character classes."""
+    issues1 = analyze_redos_vulnerabilities(r"[abc")
+    assert any("UNANALYZABLE: unterminated character class" in issue for issue in issues1)
+
+    issues2 = analyze_redos_vulnerabilities(r"[^]")
+    assert any("UNANALYZABLE: unterminated character class" in issue for issue in issues2)
 
 
 def test_constant_factor_blowup_is_bounded(tmp_path):
