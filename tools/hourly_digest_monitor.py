@@ -1169,6 +1169,22 @@ class SelfHealingManager:
             script_path = self.repo_dir / "tools" / "hourly_digest_monitor.py"
             cmd = f"{self.python_bin} {script_path} --notify --self-heal"
 
+            # Ensure wrapper script in ~/.hermes/scripts/ exists for Hermes cron scheduler
+            hermes_scripts = Path.home() / ".hermes" / "scripts"
+            hermes_scripts.mkdir(parents=True, exist_ok=True)
+            wrapper_script = hermes_scripts / "hermes_hourly_digest.sh"
+            if not wrapper_script.exists():
+                wrapper_content = (
+                    "#!/usr/bin/env bash\n"
+                    "set -euo pipefail\n\n"
+                    f"REPO_DIR=\"{self.repo_dir}\"\n"
+                    "cd \"$REPO_DIR\"\n"
+                    "export PATH=\"/home/zen/.local/bin:$PATH\"\n\n"
+                    f"\"{self.python_bin}\" \"$REPO_DIR/tools/hourly_digest_monitor.py\" --notify --self-heal\n"
+                )
+                wrapper_script.write_text(wrapper_content, encoding="utf-8")
+                wrapper_script.chmod(0o755)
+
             digest_job = {
                 "id": job_id,
                 "name": "hermes-hourly-digest-and-entropy-monitor",
@@ -1180,8 +1196,9 @@ class SelfHealingManager:
                 "provider_snapshot": "custom",
                 "model_snapshot": "codex",
                 "base_url": None,
-                "script": None,
+                "script": "hermes_hourly_digest.sh",
                 "command": cmd,
+                "workdir": str(self.repo_dir),
                 "no_agent": True,
                 "schedule": {
                     "kind": "cron",
