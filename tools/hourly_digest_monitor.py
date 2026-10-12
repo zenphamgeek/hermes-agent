@@ -1125,7 +1125,7 @@ class SelfHealingManager:
         elif stream == "legal_docs":
             script = self.repo_dir / "skills" / "research" / "vietnam-legal-crawler" / "crawler.py"
             out_dir = self.repo_dir / "output_legal_docs"
-            cmd = [self.python_bin, str(script), "-o", str(out_dir)]
+            cmd = [self.python_bin, str(script), "-o", str(out_dir), "--limit", "5", "--no-attachments"]
         elif stream == "media_production":
             script = self.repo_dir / "skills" / "creative" / "media-asset-bank" / "hourly_producer.py"
             cmd = [self.python_bin, str(script), "--run-once"]
