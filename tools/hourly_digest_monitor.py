@@ -911,22 +911,56 @@ class HermesTelegramNotifier:
             logger.error("Telegram delivery failed: %s", e)
             return False
 
+    _URL_CRED_PATTERN = re.compile(
+        r"(?P<scheme>[a-z][a-z0-9+.\-]*://[^:@/\s]+:)(?:[^@/\s]+)(?P<at>@)",
+        re.I,
+    )
+    _KV_SECRET_PATTERN = re.compile(
+        r"(?i)\b(?P<k>password|passwd|secret|api[_-]?key|client[_-]?secret)(?P<sep>\s*[:=]\s*)(?:[\"']?[^\s,;'\"}]+[\"']?)"
+    )
+    _PEM_KEY_PATTERN = re.compile(
+        r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+ PRIVATE KEY-----"
+    )
     _SECRET_PATTERNS = (
-        re.compile(r"\bBearer\s+[A-Za-z0-9._\-]+", re.I),
-        re.compile(r"\bya29\.[A-Za-z0-9._\-]+", re.I),
-        re.compile(r"\b[0-9]{8,10}:[A-Za-z0-9_\-]{30,}\b"),
-        re.compile(r"\b(?:access|refresh|id)_token=?[A-Za-z0-9._\-]+", re.I),
-        re.compile(r"\beyJ[A-Za-z0-9._\-]{20,}"),
+        re.compile(r"\bBearer\s+[A-Za-z0-9._\-/+=]{10,}", re.I),
+        re.compile(r"\bya29\.[A-Za-z0-9._\-/+=]+", re.I),
+        re.compile(r"\b1//[A-Za-z0-9._\-/+=]+", re.I),
+        re.compile(r"\b[0-9]{6,}:[A-Za-z0-9_\-]{30,}\b"),
+        re.compile(r"\b(?:access|refresh|id)[_-]?token\s*[:=]?\s*[A-Za-z0-9._\-/+=]+", re.I),
+        re.compile(r"\beyJ[A-Za-z0-9._\-/+=]{20,}"),
+        re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b"),
+        re.compile(r"\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b"),
+        re.compile(r"\bxox[baprs]-[0-9A-Za-z]{10,48}\b"),
     )
 
     @classmethod
-    def redact_secrets(cls, text: str) -> str:
-        """Best-effort redaction of bearer tokens, OAuth credentials, and JWTs from error strings (CWE-532)."""
+    def redact_secrets(cls, text: Any) -> str:
+        """Best-effort redaction of bearer tokens, OAuth credentials, keys, passwords, and JWTs from error strings (CWE-532 / CWE-259)."""
+        if text is None:
+            return ""
+        if not isinstance(text, str):
+            text = str(text)
         if not text:
             return ""
+        text = cls._PEM_KEY_PATTERN.sub("[REDACTED_PRIVATE_KEY]", text)
+        text = cls._URL_CRED_PATTERN.sub(r"\g<scheme>[REDACTED]\g<at>", text)
+        text = cls._KV_SECRET_PATTERN.sub(r"\g<k>\g<sep>[REDACTED]", text)
         for pat in cls._SECRET_PATTERNS:
             text = pat.sub("[REDACTED]", text)
         return text
+
+    @classmethod
+    def sanitize_error(cls, text: Any, limit: int = 120) -> str:
+        """Sanitize error string: type-coerce, redact secrets, truncate, and HTML-escape (CWE-532 / CWE-116)."""
+        if text is None:
+            raw = ""
+        elif not isinstance(text, str):
+            raw = str(text)
+        else:
+            raw = text
+        redacted = cls.redact_secrets(raw)
+        truncated = redacted[:limit] if limit is not None and limit >= 0 else redacted
+        return html.escape(truncated, quote=True)
 
     def send_alert(self, alert_text: str) -> bool:
         """Send urgent critical anomaly alert."""
@@ -962,8 +996,7 @@ class HermesTelegramNotifier:
             lines.append(f"⛔ <b>Clogged Cron Jobs ({len(clogged)}):</b>")
             for c in clogged:
                 job_name = html.escape(str(c.get("job_name", "")))
-                raw_err = self.redact_secrets(str(c.get("last_error") or ""))
-                err = html.escape(raw_err[:120])
+                err = self.sanitize_error(c.get("last_error"), limit=120)
                 lines.append(
                     f"• <code>{job_name}</code>: {c.get('consecutive_failures')} fails. "
                     f"<i>{err}</i>"
@@ -985,8 +1018,7 @@ class HermesTelegramNotifier:
             lines.append(f"🔑 <b>Authentication Failures ({len(auth_failed)}):</b>")
             for a in auth_failed:
                 job_name = html.escape(str(a.get("job_name", "")))
-                raw_err = self.redact_secrets(str(a.get("last_error") or ""))
-                err = html.escape(raw_err[:100])
+                err = self.sanitize_error(a.get("last_error"), limit=100)
                 lines.append(f"• <code>{job_name}</code>: <i>{err}</i>")
             lines.append("")
 

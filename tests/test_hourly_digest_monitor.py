@@ -2336,6 +2336,10 @@ def test_token_shaped_error_is_redacted(tmp_path):
     out = notifier.format_urgent_alert(scan)
     assert "ya29.A0ARrdaM-SECRETTOKENVALUE123456" not in out
     assert "1//04abcdef123456" not in out
+    assert "04abcdef123456" not in out
+    assert "//04" not in out
+    assert "A0ARrdaM" not in out
+    assert "SECRETTOKENVALUE123456" not in out
     assert "[REDACTED]" in out
 
 
@@ -2360,6 +2364,215 @@ def test_boundary_truncation_entity_integrity(tmp_path, length, special_char):
     out = notifier.format_urgent_alert(scan)
     assert re.search(r"&(?!amp;|lt;|gt;|quot;|#x27;|#\d+;)", out) is None
     assert "<script>" not in out
+
+
+def test_google_refresh_token_body_fully_redacted(tmp_path):
+    """CWE-532: Google OAuth refresh tokens (1//...) are fully redacted without partial leakage."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    secret_body = "04AbCdEfGhIjKlMnOpQrStUvWxYz_1234567890"
+    token = f"1//{secret_body}"
+    scan = {
+        "overall_health_score": 20,
+        "severity": "CRITICAL",
+        "cron": {
+            "clogged_jobs": [
+                {
+                    "job_name": "gdrive-sync",
+                    "consecutive_failures": 3,
+                    "last_error": f"Failed refresh with token {token} and code 401",
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    out = notifier.format_urgent_alert(scan)
+    assert secret_body not in out
+    assert "1//" not in out
+    assert "[REDACTED]" in out
+
+
+def test_base64_token_with_slash_and_plus_redacted(tmp_path):
+    """CWE-532: Tokens containing base64 characters (+, /, =) are redacted as a whole."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    frag_slash = "partAfterSlash99"
+    frag_plus = "partAfterPlus88"
+    b64_token = f"Bearer aHR0cHM6Ly9leGFtcGxl/{frag_slash}+{frag_plus}===="
+    scan = {
+        "overall_health_score": 20,
+        "severity": "CRITICAL",
+        "cron": {
+            "auth_failed_jobs": [
+                {
+                    "job_name": "api-sync",
+                    "last_error": f"Invalid token header: {b64_token} denied",
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    out = notifier.format_urgent_alert(scan)
+    assert frag_slash not in out
+    assert frag_plus not in out
+    assert "[REDACTED]" in out
+
+
+def test_db_url_password_redacted_cwe259(tmp_path):
+    """CWE-259: Database connection URLs have passwords sanitized with [REDACTED]."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    db_pass = "SuperSecret_Passw0rd-2026!"
+    scan = {
+        "overall_health_score": 20,
+        "severity": "CRITICAL",
+        "cron": {
+            "clogged_jobs": [
+                {
+                    "job_name": "db-backup",
+                    "consecutive_failures": 3,
+                    "last_error": f"Failed: postgresql://db_user:{db_pass}@postgres.internal:5432/main_db",
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    out = notifier.format_urgent_alert(scan)
+    assert db_pass not in out
+    assert "postgresql://db_user:[REDACTED]@postgres.internal:5432/main_db" in out
+
+    mysql_url = "mysql://root:s3cr3tPassword@localhost:3306/hermes"
+    mongo_url = "mongodb+srv://admin:P4ssw0rd!@cluster0.mongodb.net/test"
+    redacted = notifier.redact_secrets(f"{mysql_url} {mongo_url}")
+    assert "s3cr3tPassword" not in redacted
+    assert "P4ssw0rd!" not in redacted
+    assert "mysql://root:[REDACTED]@localhost:3306/hermes" in redacted
+    assert "mongodb+srv://admin:[REDACTED]@cluster0.mongodb.net/test" in redacted
+
+
+def test_long_telegram_bot_token_is_redacted(tmp_path):
+    """CWE-532: Long Telegram bot tokens with >10 digit bot IDs (e.g. 13-digit) are redacted."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    secret_part = "AAFlkjdsf098324_lkasdjflkasjdflkj"
+    bot_token = f"1234567890123:{secret_part}"
+    scan = {
+        "overall_health_score": 20,
+        "severity": "CRITICAL",
+        "cron": {
+            "clogged_jobs": [
+                {
+                    "job_name": "tg-worker",
+                    "consecutive_failures": 4,
+                    "last_error": f"Connection error to bot {bot_token} on webhook",
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    out = notifier.format_urgent_alert(scan)
+    assert secret_part not in out
+    assert "1234567890123:" not in out
+    assert "[REDACTED]" in out
+
+
+def test_non_string_last_error_does_not_crash(tmp_path):
+    """CWE-532: Non-string error values (None, int, dict, Exception) do not crash redaction or formatting."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    for bad_val in [None, 503, {"error": "internal"}, RuntimeError("database offline")]:
+        scan = {
+            "overall_health_score": 20,
+            "severity": "CRITICAL",
+            "cron": {
+                "clogged_jobs": [
+                    {
+                        "job_name": "resilient-job",
+                        "consecutive_failures": 3,
+                        "last_error": bad_val,
+                    }
+                ],
+                "auth_failed_jobs": [
+                    {
+                        "job_name": "auth-resilient",
+                        "last_error": bad_val,
+                    }
+                ],
+                "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+            },
+        }
+        out = notifier.format_urgent_alert(scan)
+        assert isinstance(out, str)
+        assert "resilient-job" in out
+        assert "auth-resilient" in out
+
+
+def test_secret_straddling_truncation_boundary(tmp_path):
+    """CWE-532 / CWE-116: Secrets straddling the truncation boundary are redacted before truncation."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    prefix = "A" * 110
+    secret_token = "ya29.STRADDLE_TOKEN_BODY_BOUNDARY_TEST_1234567890"
+    full_err = prefix + " " + secret_token
+    scan = {
+        "overall_health_score": 20,
+        "severity": "CRITICAL",
+        "cron": {
+            "clogged_jobs": [
+                {
+                    "job_name": "straddle-clog",
+                    "consecutive_failures": 3,
+                    "last_error": full_err,
+                }
+            ],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 1.0},
+        },
+    }
+    out = notifier.format_urgent_alert(scan)
+    assert "STRADDLE_TOKEN_BODY_BOUNDARY_TEST" not in out
+    assert "1234567890" not in out
+    assert "ya29." not in out
+
+
+def test_generic_credentials_and_api_keys_redacted(tmp_path):
+    """CWE-532 / CWE-259: Generic credentials, cloud API keys, and KV secrets are redacted."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    aiza_key = "AIzaSyD-1234567890abcdefghijklmnopqrstu"
+    aws_key = "AKIAIOSFODNN7EXAMPLE"
+    slack_tok = "xoxb-123456789012345678"
+    pw_val = "SuperSecretP@ss!"
+    secret_val = "TopSecretVaultVal99"
+    api_key_val = "MyCustomAPIKey12345"
+    client_secret_val = "OAuthClientSecretVal456"
+    pem_val = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0123456789\n-----END RSA PRIVATE KEY-----"
+
+    test_err = (
+        f"google_key={aiza_key} aws={aws_key} slack={slack_tok} "
+        f"password=\"{pw_val}\" secret: {secret_val} "
+        f"api_key: \"{api_key_val}\" client_secret = '{client_secret_val}'\n{pem_val}"
+    )
+
+    redacted = notifier.redact_secrets(test_err)
+    assert aiza_key not in redacted
+    assert aws_key not in redacted
+    assert slack_tok not in redacted
+    assert pw_val not in redacted
+    assert secret_val not in redacted
+    assert api_key_val not in redacted
+    assert client_secret_val not in redacted
+    assert "0123456789" not in redacted
+    assert "[REDACTED_PRIVATE_KEY]" in redacted
+    assert "[REDACTED]" in redacted
+
 
 
 
