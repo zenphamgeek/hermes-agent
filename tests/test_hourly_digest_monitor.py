@@ -2864,9 +2864,16 @@ def test_scan_char_class_structural_boundaries():
     end_idx, closed = _scan_char_class(s_unterm, 0)
     assert closed is False and end_idx == len(s_unterm), f"Expected ({len(s_unterm)}, False), got {(end_idx, closed)}"
 
-    # 7. POSIX-like token [[:alpha:]] (Python re treats '[:' literally, closing at index 9 -> returns 10)
-    end_idx, closed = _scan_char_class(r"[[:alpha:]]", 0)
-    assert closed is True and end_idx == 10, f"Expected (10, True), got {(end_idx, closed)}"
+    # 7. POSIX-like token [[:alpha:]]: Python's re has no POSIX classes, so the
+    #    outer '[' opens a class, the first ']' at index 9 closes it, and the
+    #    scanner returns the index just past it (10). r"[[:alpha:]]" indices:
+    #    0:[ 1:[ 2:: 3:a 4:l 5:p 6:h 7:a 8:: 9:] 10:]  -> close at 9, return 10.
+    posix_like = r"[[:alpha:]]"
+    expected_end = posix_like.index("]") + 1  # 10, derived from first unescaped closing ']'
+    end_idx, closed = _scan_char_class(posix_like, 0)
+    assert closed is True and end_idx == expected_end, (
+        f"Expected ({expected_end}, True), got {(end_idx, closed)}"
+    )
 
     # 8. Lone ']' passed at non-zero start_idx on non-'[' character -> closes False without crash
     s_lone = "abc]def"
@@ -2910,7 +2917,7 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
     Oracle contract:
       - re accepts                         -> scanner MUST report closed=True
       - re rejects 'unterminated'          -> scanner MUST report closed=False
-      - other error (bad escape, etc.)     -> case skipped, coverage floor prevents all-skip
+      - other re.error (unclassified)      -> recorded to catch CPython wording drift
     """
     prefixes = ["[", "[^", "[]", "[^]"]
     bodies = [
@@ -2919,7 +2926,11 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
     ]
     suffixes = ["]", "", "x]"]
 
-    meaningful_assertions = 0
+    # Split counters so neither branch can mask the other's degradation
+    accept_assertions = 0
+    unterminated_assertions = 0
+    unclassified_errors = []
+
     for p in prefixes:
         for b in bodies:
             for s in suffixes:
@@ -2935,17 +2946,44 @@ def test_scan_char_class_combinatorial_fuzzed_corpus():
                     assert closed is True, (
                         f"re accepted valid pattern {pattern!r} but scanner reported unclosed"
                     )
-                    meaningful_assertions += 1
+                    accept_assertions += 1
                 elif "unterminated character set" in err_msg:
                     assert closed is False, (
                         f"re rejected {pattern!r} as unterminated, but scanner reported closed"
                     )
-                    meaningful_assertions += 1
+                    unterminated_assertions += 1
+                else:
+                    unclassified_errors.append((pattern, err_msg))
 
-    # Coverage floor: guard against corpus silently degrading or skipping all assertions
-    assert meaningful_assertions >= 120, (
-        f"fuzz corpus produced only {meaningful_assertions} meaningful assertions; oracle degraded"
+    # Floors are per-branch so a CPython message change or a corpus edit that
+    # inflates one branch cannot mask the other going dead.
+    # Derivation: 4 prefixes x 14 bodies x 3 suffixes = 168 total cases.
+    assert accept_assertions >= 80, (
+        f"accept-branch produced only {accept_assertions} assertions; corpus degraded"
     )
+    assert unterminated_assertions >= 45, (
+        f"unterminated-branch produced only {unterminated_assertions} assertions; "
+        "re error wording may have changed and neutered the oracle"
+    )
+    # Catch version-drift case explicitly instead of letting it vanish silently
+    assert not unclassified_errors, (
+        "re rejected patterns for reasons the oracle does not classify "
+        f"(possible CPython message drift): {unclassified_errors[:5]}"
+    )
+
+
+def test_scan_char_class_fuzz_oracle_catches_unclassified_drift(monkeypatch):
+    """Nebula Cycle 19: Simulates CPython error message drift and asserts the oracle catches it."""
+    orig_compile = re.compile
+
+    def mock_compile(pattern, *args, **kwargs):
+        if pattern == r"[abc":
+            raise re.error("character set not closed (new CPython phrasing)")
+        return orig_compile(pattern, *args, **kwargs)
+
+    monkeypatch.setattr(re, "compile", mock_compile)
+    with pytest.raises(AssertionError, match="possible CPython message drift"):
+        test_scan_char_class_combinatorial_fuzzed_corpus()
 
 
 def test_zero_unanalyzable_patterns_in_production_notifier():
