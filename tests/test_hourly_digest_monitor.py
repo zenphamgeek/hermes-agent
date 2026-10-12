@@ -670,3 +670,77 @@ def test_self_healing_manager_install_uninstall_cron(tmp_path):
         data2 = json.load(f)
     assert len(data2["jobs"]) == 0
 
+
+def test_wrapper_shlex_quoting_prevents_command_injection(tmp_path):
+    """Adversarial boundary test: verify path with command injection vector is safely quoted (CWE-78)."""
+    pwned_marker = tmp_path / "pwned_audit_test"
+    if pwned_marker.exists():
+        pwned_marker.unlink()
+
+    malicious_repo = tmp_path / f"repo$(touch {pwned_marker})"
+    manager = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=malicious_repo,
+        scripts_dir=tmp_path / "scripts",
+    )
+
+    content, digest = manager.render_wrapper_content()
+
+    # The marker file MUST NOT have been created
+    assert not pwned_marker.exists(), "Command injection vulnerability: payload executed during rendering!"
+
+    # The content must contain single-quoted literal, not unquoted double-quoted string
+    assert "touch" in content
+    # In bash, single quotes prevent $(...) expansion: e.g. REPO_DIR='/tmp/...$(touch ...)'
+    assert f"'{malicious_repo}'" in content or f'"{malicious_repo}"' not in content
+    assert len(digest) == 64
+
+
+def test_wrapper_reconciliation_overwrites_tampered_script(tmp_path):
+    """Verify pre-planted or tampered wrapper script is overwritten with canonical content (CWE-427 / CWE-367)."""
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    tampered_file = scripts_dir / "hermes_hourly_digest.sh"
+    tampered_file.write_text("#!/bin/bash\necho 'MALICIOUS_PRE_PLANTED_PAYLOAD'\n", encoding="utf-8")
+
+    manager = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "hermes_repo",
+        scripts_dir=scripts_dir,
+    )
+
+    # Calling ensure_wrapper_script must detect content mismatch and overwrite atomically
+    script_path, digest = manager.ensure_wrapper_script()
+
+    assert script_path == tampered_file
+    new_content = tampered_file.read_text(encoding="utf-8")
+    assert "MALICIOUS_PRE_PLANTED_PAYLOAD" not in new_content
+    assert "hourly_digest_monitor.py" in new_content
+    # Verify file permissions are 0o700 (owner executable only)
+    st = tampered_file.stat()
+    assert (st.st_mode & 0o777) == 0o700
+
+
+def test_wrapper_reconciliation_in_self_heal_drift_skips(tmp_path):
+    """Verify self_heal_drift_skips automatically reconciles the wrapper script."""
+    jobs_file = tmp_path / "jobs.json"
+    jobs_file.write_text(json.dumps({"jobs": []}), encoding="utf-8")
+    scripts_dir = tmp_path / "scripts"
+
+    manager = SelfHealingManager(
+        jobs_path=jobs_file,
+        repo_dir=tmp_path / "repo",
+        scripts_dir=scripts_dir,
+    )
+
+    # Wrapper does not exist initially
+    wrapper = scripts_dir / "hermes_hourly_digest.sh"
+    assert not wrapper.exists()
+
+    manager.self_heal_drift_skips()
+
+    # Wrapper must be created by self-heal
+    assert wrapper.exists()
+    assert (wrapper.stat().st_mode & 0o777) == 0o700
+
+

@@ -23,14 +23,18 @@ CLI:
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
 import re
+import shlex
 import sqlite3
 import ssl
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -1046,11 +1050,76 @@ class SelfHealingManager:
         jobs_path: Path = DEFAULT_JOBS_JSON,
         repo_dir: Path = REPO_ROOT,
         python_bin: Optional[str] = None,
+        scripts_dir: Optional[Path] = None,
     ):
         self.jobs_path = Path(jobs_path)
         self.repo_dir = Path(repo_dir)
         venv_py = self.repo_dir / ".venv" / "bin" / "python"
         self.python_bin = python_bin or (str(venv_py) if venv_py.exists() else sys.executable)
+        self.scripts_dir = Path(scripts_dir) if scripts_dir else (HERMES_HOME / "scripts")
+
+    def render_wrapper_content(self) -> Tuple[str, str]:
+        """
+        Renders the canonical bash wrapper content with strict shlex quoting (CWE-78 guard)
+        and computes its SHA-256 digest for content-addressed verification.
+        """
+        repo_dir_q = shlex.quote(str(self.repo_dir))
+        python_bin_q = shlex.quote(str(self.python_bin))
+        local_bin_q = shlex.quote(str(Path.home() / ".local" / "bin"))
+
+        wrapper_content = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n\n"
+            f"REPO_DIR={repo_dir_q}\n"
+            'cd "$REPO_DIR"\n'
+            f'export PATH={local_bin_q}:"$PATH"\n\n'
+            f'exec {python_bin_q} "$REPO_DIR/tools/hourly_digest_monitor.py" --notify --self-heal\n'
+        )
+        digest = hashlib.sha256(wrapper_content.encode("utf-8")).hexdigest()
+        return wrapper_content, digest
+
+    def ensure_wrapper_script(self) -> Tuple[Path, str]:
+        """
+        Authoritative wrapper creation & reconciliation (CWE-427 / CWE-367 / CWE-78):
+        - Never blindly trusts a pre-existing file on disk.
+        - Verifies ownership (st_uid == os.getuid()) and exact content match.
+        - If stale, missing, or mismatched, atomically replaces with mode 0o700 via tempfile + os.replace.
+        - Returns (wrapper_script_path, content_sha256).
+        """
+        self.scripts_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.scripts_dir.chmod(0o700)
+        except OSError:
+            pass
+
+        wrapper_script = self.scripts_dir / "hermes_hourly_digest.sh"
+        wrapper_content, digest = self.render_wrapper_content()
+
+        needs_write = True
+        if wrapper_script.exists():
+            try:
+                st = wrapper_script.stat()
+                owned_by_us = (st.st_uid == os.getuid())
+                content_matches = (wrapper_script.read_text(encoding="utf-8") == wrapper_content)
+                needs_write = not (owned_by_us and content_matches)
+            except OSError:
+                needs_write = True
+
+        if needs_write:
+            fd, tmp_path = tempfile.mkstemp(dir=str(self.scripts_dir), prefix=".hermes_wrapper_")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(wrapper_content)
+                os.chmod(tmp_path, stat.S_IRWXU)  # 0o700: owner-only execution
+                os.replace(tmp_path, wrapper_script)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+
+        return wrapper_script, digest
 
     def self_heal_drift_skips(self) -> List[Dict[str, Any]]:
         """
@@ -1059,7 +1128,14 @@ class SelfHealingManager:
         - Pins model_snapshot: 'codex', provider_snapshot: 'custom'
         - Resets drift_alerted: False
         - Clears last_error if drift_skip
+        - Reconciles canonical procedural wrapper script against disk
         """
+        # Reconcile wrapper script against canonical procedural memory (CWE-427 / CWE-367)
+        try:
+            self.ensure_wrapper_script()
+        except Exception as e:
+            logger.warning("Failed reconciling wrapper script during self-heal: %s", e)
+
         if not self.jobs_path.exists():
             return []
 
@@ -1169,21 +1245,8 @@ class SelfHealingManager:
             script_path = self.repo_dir / "tools" / "hourly_digest_monitor.py"
             cmd = f"{self.python_bin} {script_path} --notify --self-heal"
 
-            # Ensure wrapper script in ~/.hermes/scripts/ exists for Hermes cron scheduler
-            hermes_scripts = Path.home() / ".hermes" / "scripts"
-            hermes_scripts.mkdir(parents=True, exist_ok=True)
-            wrapper_script = hermes_scripts / "hermes_hourly_digest.sh"
-            if not wrapper_script.exists():
-                wrapper_content = (
-                    "#!/usr/bin/env bash\n"
-                    "set -euo pipefail\n\n"
-                    f"REPO_DIR=\"{self.repo_dir}\"\n"
-                    "cd \"$REPO_DIR\"\n"
-                    "export PATH=\"/home/zen/.local/bin:$PATH\"\n\n"
-                    f"\"{self.python_bin}\" \"$REPO_DIR/tools/hourly_digest_monitor.py\" --notify --self-heal\n"
-                )
-                wrapper_script.write_text(wrapper_content, encoding="utf-8")
-                wrapper_script.chmod(0o755)
+            # Ensure wrapper script in scripts dir exists and is verified
+            wrapper_script, wrapper_sha256 = self.ensure_wrapper_script()
 
             digest_job = {
                 "id": job_id,
@@ -1196,7 +1259,8 @@ class SelfHealingManager:
                 "provider_snapshot": "custom",
                 "model_snapshot": "codex",
                 "base_url": None,
-                "script": "hermes_hourly_digest.sh",
+                "script": wrapper_script.name,
+                "script_sha256": wrapper_sha256,
                 "command": cmd,
                 "workdir": str(self.repo_dir),
                 "no_agent": True,
@@ -1224,7 +1288,13 @@ class SelfHealingManager:
                 json.dump(data, f, indent=2)
             tmp_path.replace(self.jobs_path)
 
-            return {"status": "installed", "job_id": job_id, "command": cmd}
+            return {
+                "status": "installed",
+                "job_id": job_id,
+                "command": cmd,
+                "script": wrapper_script.name,
+                "script_sha256": wrapper_sha256,
+            }
         except Exception as e:
             logger.error("Failed installing hourly digest cron: %s", e)
             return {"status": "error", "error": str(e)}
