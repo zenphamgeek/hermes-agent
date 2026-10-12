@@ -1087,10 +1087,14 @@ class SelfHealingManager:
         - Returns (wrapper_script_path, content_sha256).
         """
         self.scripts_dir.mkdir(parents=True, exist_ok=True)
+        if self.scripts_dir.is_symlink():
+            raise RuntimeError(f"scripts_dir is a symlink, refusing: {self.scripts_dir}")
+        st_dir = self.scripts_dir.stat()
+        if st_dir.st_uid != os.getuid():
+            raise PermissionError(f"scripts_dir not owned by current user: {self.scripts_dir}")
         try:
             os.chmod(self.scripts_dir, 0o700)
-            st_dir = self.scripts_dir.stat()
-            if st_dir.st_mode & 0o022:
+            if self.scripts_dir.stat().st_mode & 0o022:
                 os.chmod(self.scripts_dir, 0o700)
         except OSError:
             pass
@@ -1124,11 +1128,12 @@ class SelfHealingManager:
                     fh.flush()
                     os.fsync(fh.fileno())
                 os.replace(tmp_path, wrapper_script)
-            except Exception:
+            except Exception as exc:
                 try:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
+                logger.error("wrapper self-heal failed for %s: %s", wrapper_script, exc)
                 raise
 
         return wrapper_script, digest

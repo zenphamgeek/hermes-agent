@@ -699,13 +699,34 @@ def test_wrapper_shlex_quoting_prevents_command_injection(tmp_path):
     assert f'={malicious_repo}' not in content
     assert len(digest) == 64
 
-    # Behavioral execution oracle: execute bash variable assignment to verify zero subshell expansion
-    probe = tmp_path / "exec_probe"
-    if probe.exists():
-        probe.unlink()
+    # Behavioral execution oracle: execute bash variable assignment in real shell
+    # If expected was unquoted, bash would expand $(touch ...) and create pwned_marker.
     import subprocess
     subprocess.run(["bash", "-c", f"REPO_DIR={expected}\n:"], check=True)
-    assert not probe.exists(), "Command injection payload executed during bash variable assignment!"
+    assert not pwned_marker.exists(), "Command injection payload executed during bash variable assignment!"
+
+    # Mutation test: prove that without shlex.quote, bash DOES execute the subshell payload
+    unquoted_payload = str(malicious_repo)
+    subprocess.run(["bash", "-c", f"REPO_DIR={unquoted_payload}\n:"], check=True)
+    assert pwned_marker.exists(), "Mutation check failed: unquoted payload did not trigger injection!"
+    pwned_marker.unlink()
+
+
+def test_wrapper_symlinked_scripts_dir_refused(tmp_path):
+    """Verify ensure_wrapper_script refuses to write to a symlinked scripts_dir (CWE-427)."""
+    real_target = tmp_path / "real_scripts_target"
+    real_target.mkdir(parents=True, exist_ok=True)
+    symlink_dir = tmp_path / "symlinked_scripts"
+    symlink_dir.symlink_to(real_target, target_is_directory=True)
+
+    manager = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=symlink_dir,
+    )
+
+    with pytest.raises(RuntimeError, match="scripts_dir is a symlink, refusing"):
+        manager.ensure_wrapper_script()
 
 
 def test_wrapper_reconciliation_overwrites_tampered_script(tmp_path):
