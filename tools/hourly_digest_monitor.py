@@ -1088,7 +1088,10 @@ class SelfHealingManager:
         """
         self.scripts_dir.mkdir(parents=True, exist_ok=True)
         try:
-            self.scripts_dir.chmod(0o700)
+            os.chmod(self.scripts_dir, 0o700)
+            st_dir = self.scripts_dir.stat()
+            if st_dir.st_mode & 0o022:
+                os.chmod(self.scripts_dir, 0o700)
         except OSError:
             pass
 
@@ -1098,19 +1101,28 @@ class SelfHealingManager:
         needs_write = True
         if wrapper_script.exists():
             try:
-                st = wrapper_script.stat()
-                owned_by_us = (st.st_uid == os.getuid())
-                content_matches = (wrapper_script.read_text(encoding="utf-8") == wrapper_content)
-                needs_write = not (owned_by_us and content_matches)
+                if wrapper_script.is_symlink():
+                    wrapper_script.unlink()
+                    needs_write = True
+                else:
+                    st = wrapper_script.stat()
+                    owned_by_us = (st.st_uid == os.getuid())
+                    content_matches = (wrapper_script.read_text(encoding="utf-8") == wrapper_content)
+                    needs_write = not (owned_by_us and content_matches)
             except OSError:
                 needs_write = True
 
         if needs_write:
             fd, tmp_path = tempfile.mkstemp(dir=str(self.scripts_dir), prefix=".hermes_wrapper_")
             try:
+                try:
+                    os.fchmod(fd, 0o700)
+                except OSError:
+                    os.chmod(tmp_path, stat.S_IRWXU)
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
                     fh.write(wrapper_content)
-                os.chmod(tmp_path, stat.S_IRWXU)  # 0o700: owner-only execution
+                    fh.flush()
+                    os.fsync(fh.fileno())
                 os.replace(tmp_path, wrapper_script)
             except Exception:
                 try:

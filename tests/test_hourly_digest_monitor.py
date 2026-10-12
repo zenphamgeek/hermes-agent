@@ -4,6 +4,7 @@ Entropy Stream Degradation Scanner, Composite Health Calculator, and Self-Healin
 """
 
 import json
+import shlex
 import sqlite3
 import time
 from datetime import datetime, timedelta, timezone
@@ -689,11 +690,22 @@ def test_wrapper_shlex_quoting_prevents_command_injection(tmp_path):
     # The marker file MUST NOT have been created
     assert not pwned_marker.exists(), "Command injection vulnerability: payload executed during rendering!"
 
-    # The content must contain single-quoted literal, not unquoted double-quoted string
-    assert "touch" in content
-    # In bash, single quotes prevent $(...) expansion: e.g. REPO_DIR='/tmp/...$(touch ...)'
-    assert f"'{malicious_repo}'" in content or f'"{malicious_repo}"' not in content
+    expected = shlex.quote(str(malicious_repo))
+    # Strict positive oracle: the exact shlex-quoted form must be present
+    assert expected in content, f"repo_dir was not shlex-quoted; expected {expected!r} in content"
+    # Negative oracle: the raw $(...) sequence must not survive unquoted outside the literal
+    assert "$(touch" not in content.replace(expected, ""), "injection sequence present outside quoted literal"
+    assert f'"{malicious_repo}"' not in content
+    assert f'={malicious_repo}' not in content
     assert len(digest) == 64
+
+    # Behavioral execution oracle: execute bash variable assignment to verify zero subshell expansion
+    probe = tmp_path / "exec_probe"
+    if probe.exists():
+        probe.unlink()
+    import subprocess
+    subprocess.run(["bash", "-c", f"REPO_DIR={expected}\n:"], check=True)
+    assert not probe.exists(), "Command injection payload executed during bash variable assignment!"
 
 
 def test_wrapper_reconciliation_overwrites_tampered_script(tmp_path):
