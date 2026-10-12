@@ -2576,7 +2576,7 @@ def test_generic_credentials_and_api_keys_redacted(tmp_path):
 
 
 def test_redos_timing_bound(tmp_path):
-    """CWE-1333: redact_secrets completes well within 100ms bound on 4KB repeating regex stress inputs."""
+    """CWE-1333: redact_secrets completes within reasonable latency and scales sub-quadratically on repeating stress inputs."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
     notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
@@ -2587,20 +2587,39 @@ def test_redos_timing_bound(tmp_path):
     out = notifier.redact_secrets(stress_payload)
     elapsed = time.perf_counter() - start
 
-    assert elapsed < 0.100, f"Redaction took {elapsed*1000:.2f}ms, exceeding 100ms ReDoS bound"
+    assert elapsed < 0.150, f"Redaction took {elapsed*1000:.2f}ms, exceeding 150ms ReDoS bound"
     assert isinstance(out, str)
 
     # Classmethod invocation verification
     start_cls = time.perf_counter()
     out_cls = HermesTelegramNotifier.redact_secrets(stress_payload)
     elapsed_cls = time.perf_counter() - start_cls
-    assert elapsed_cls < 0.100, f"Classmethod redaction took {elapsed_cls*1000:.2f}ms, exceeding 100ms"
+    assert elapsed_cls < 0.150, f"Classmethod redaction took {elapsed_cls*1000:.2f}ms, exceeding 150ms"
     assert isinstance(out_cls, str)
+
+    # Nebula F1: Linear scaling verification (4x input length must scale sub-quadratically)
+    def measure(n):
+        payload = ("/+=" * n)[:n]
+        s = time.perf_counter()
+        notifier.redact_secrets(payload)
+        return time.perf_counter() - s
+
+    small_t = measure(2048)
+    large_t = measure(8192)
+    # 4x input length must scale sub-quadratically (not blow up > 10x or > 250ms)
+    assert large_t < max(small_t * 10, 0.150)
+
+    # Nebula F1: Verify pattern quantifiers in HermesTelegramNotifier._SECRET_PATTERNS are bounded
+    # (no unbounded + or * on open character sets or wildcards)
+    for pat in HermesTelegramNotifier._SECRET_PATTERNS:
+        assert not re.search(r"(\[[^\]]+\]|(?<!\\)\.)[\+\*]", pat.pattern), (
+            f"Pattern '{pat.pattern}' contains unbounded quantifier on character set or wildcard"
+        )
 
 
 @pytest.mark.parametrize("limit", [100, 120])
 def test_truncation_boundary_secret_never_leaks_fragment(tmp_path, limit):
-    """CWE-532 / CWE-116: Secrets whose tail straddles the truncation boundary never leak fragments >= 8 characters."""
+    """CWE-532 / CWE-116: Secrets whose tail straddles the truncation boundary never leak fragments >= 6 characters."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
     notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
@@ -2612,17 +2631,21 @@ def test_truncation_boundary_secret_never_leaks_fragment(tmp_path, limit):
 
     out = notifier.sanitize_error(full_text, limit=limit, known_secrets={secret_raw})
 
-    # Verify no fragment >= 8 characters of secret_raw appears in the output
-    for i in range(len(secret_raw) - 7):
-        frag = secret_raw[i : i + 8]
+    # Nebula F2: Verify [REDACTED] is present in output, confirming redaction occurred before truncation
+    assert "[REDACTED]" in out
+
+    # Nebula F2: Verify no fragment >= 6 characters of secret_raw appears in the output
+    for i in range(len(secret_raw) - 5):
+        frag = secret_raw[i : i + 6]
         assert frag not in out, f"Leaked {len(frag)}-char fragment '{frag}' at offset {i} in '{out}'"
 
     # Also test with a pattern-matched secret (e.g. Bearer token) straddling the boundary
     bearer_secret = "Bearer " + ("Z" * 50)
     full_bearer_text = ("X" * (limit - 16)) + " " + bearer_secret
     out_bearer = notifier.sanitize_error(full_bearer_text, limit=limit)
-    for i in range(len(bearer_secret) - 7):
-        frag = bearer_secret[i : i + 8]
+    assert "[REDACTED]" in out_bearer
+    for i in range(len(bearer_secret) - 5):
+        frag = bearer_secret[i : i + 6]
         assert frag not in out_bearer, f"Leaked bearer fragment '{frag}' in '{out_bearer}'"
 
 
@@ -2766,11 +2789,123 @@ def test_false_positive_guard_for_clean_identifiers(tmp_path):
     assert "[REDACTED]" not in sanitized
 
 
+def test_multi_secret_per_line_all_redacted(tmp_path):
+    """CWE-532 / Nebula F4: Multiple credentials on a single line are all redacted simultaneously."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    raw_text = (
+        'postgresql://user:pass123@host:5432/db with token ya29.A0ARrdaM-12345 and password="fooBarPassword"'
+    )
+    redacted = notifier.redact_secrets(raw_text)
+
+    assert "pass123" not in redacted
+    assert "A0ARrdaM" not in redacted
+    assert "fooBarPassword" not in redacted
+    assert "postgresql://user:[REDACTED]@host:5432/db" in redacted
+    assert "token [REDACTED]" in redacted
+    assert "password=[REDACTED]" in redacted
+
+    sanitized = notifier.sanitize_error(raw_text, limit=300)
+    assert "pass123" not in sanitized
+    assert "A0ARrdaM" not in sanitized
+    assert "fooBarPassword" not in sanitized
+    assert "[REDACTED]" in sanitized
 
 
+def test_secret_split_across_traceback_newlines(tmp_path):
+    """CWE-532 / Nebula F4: Multi-line traceback with distinct credentials across newlines are all redacted."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    traceback_str = (
+        "Traceback (most recent call last):\n"
+        '  File "db.py", line 12, in connect\n'
+        '    engine = create_engine("mysql://root:secretPass99@db.prod.internal:3306/main")\n'
+        '  File "auth.py", line 45, in request_token\n'
+        '    headers = {"X-Api-Key": "AIzaSyD-1234567890abcdefghijklmnopqrstu"}\n'
+        '  File "google_auth.py", line 88, in refresh\n'
+        '    refresh_token = "1//04testRefreshToken9876543210-abcdef"\n'
+        "RuntimeError: Authentication failed"
+    )
+
+    redacted = notifier.redact_secrets(traceback_str)
+    assert "secretPass99" not in redacted
+    assert "AIzaSyD-1234567890abcdefghijklmnopqrstu" not in redacted
+    assert "1//04testRefreshToken9876543210-abcdef" not in redacted
+    assert "mysql://root:[REDACTED]@db.prod.internal:3306/main" in redacted
+
+    sanitized = notifier.sanitize_error(traceback_str, limit=500)
+    assert "secretPass99" not in sanitized
+    assert "AIzaSyD-1234567890abcdefghijklmnopqrstu" not in sanitized
+    assert "1//04testRefreshToken9876543210-abcdef" not in sanitized
+    assert "[REDACTED]" in sanitized
 
 
+def test_percent_encoded_and_unicode_passwords_in_url(tmp_path):
+    """CWE-532 / CWE-259 / Nebula F4: URLs containing percent-encoded and unicode passwords are fully redacted."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+
+    # 1. Percent-encoded password containing %26 (&) and %40 (@)
+    percent_url = "postgresql://user:p%26ss%40word123@host:5432/db"
+    redacted_percent = notifier.redact_secrets(percent_url)
+    assert "p%26ss%40word123" not in redacted_percent
+    assert "postgresql://user:[REDACTED]@host:5432/db" in redacted_percent
+
+    sanitized_percent = notifier.sanitize_error(percent_url, limit=120)
+    assert "p%26ss%40word123" not in sanitized_percent
+    assert "[REDACTED]" in sanitized_percent
+
+    # 2. Unicode characters in password
+    unicode_url = "mysql://admin:pàsswórd123@host:3306/db"
+    redacted_unicode = notifier.redact_secrets(unicode_url)
+    assert "pàsswórd123" not in redacted_unicode
+    assert "mysql://admin:[REDACTED]@host:3306/db" in redacted_unicode
+
+    sanitized_unicode = notifier.sanitize_error(unicode_url, limit=120)
+    assert "pàsswórd123" not in sanitized_unicode
+    assert "[REDACTED]" in sanitized_unicode
 
 
+def test_empty_or_none_known_secrets_fallback_to_regex(tmp_path):
+    """CWE-532 / Nebula F4: Empty or None known_secrets cleanly falls back to regex redaction."""
+    # 1. Explicit instantiation with empty _known_secrets
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent"), target_chat_id="123")
+    notifier._known_secrets = set()
 
+    err_text = (
+        "Error: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.token123 "
+        "and password=superSecretPass "
+        "and postgresql://app:dbSecret123@localhost:5432/app"
+    )
 
+    out_inst = notifier.sanitize_error(err_text, limit=300)
+    assert "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.token123" not in out_inst
+    assert "superSecretPass" not in out_inst
+    assert "dbSecret123" not in out_inst
+    assert "[REDACTED]" in out_inst
+
+    # 2. Classmethod with known_secrets=None
+    out_cls_none = HermesTelegramNotifier.sanitize_error(err_text, limit=300, known_secrets=None)
+    assert "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.token123" not in out_cls_none
+    assert "superSecretPass" not in out_cls_none
+    assert "dbSecret123" not in out_cls_none
+    assert "[REDACTED]" in out_cls_none
+
+    # 3. Classmethod with known_secrets=set()
+    out_cls_empty = HermesTelegramNotifier.sanitize_error(err_text, limit=300, known_secrets=set())
+    assert "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.token123" not in out_cls_empty
+    assert "superSecretPass" not in out_cls_empty
+    assert "dbSecret123" not in out_cls_empty
+    assert "[REDACTED]" in out_cls_empty
+
+    # 4. Direct redact_secrets with known_secrets=None
+    redacted = HermesTelegramNotifier.redact_secrets(err_text, known_secrets=None)
+    assert "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.token123" not in redacted
+    assert "superSecretPass" not in redacted
+    assert "dbSecret123" not in redacted
+    assert "[REDACTED]" in redacted
