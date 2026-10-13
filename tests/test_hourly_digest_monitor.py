@@ -39,6 +39,8 @@ from tools.hourly_digest_monitor import (
     run_full_scan,
 )
 
+TEST_CHAT_ID = "100000000"  # Synthetic, non-routable placeholder test chat ID
+
 
 # ==============================================================================
 # Fixtures
@@ -558,11 +560,11 @@ def test_composite_health_calculator():
 # ==============================================================================
 def test_hermes_telegram_notifier(tmp_path):
     env_file = tmp_path / ".env"
-    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\nTELEGRAM_ALLOWED_USERS=1431349185\n")
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN=test-token-123\nTELEGRAM_ALLOWED_USERS={TEST_CHAT_ID}\n")
 
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     assert notifier.bot_token == "test-token-123"
-    assert notifier.target_chat_id == "1431349185"
+    assert notifier.target_chat_id == TEST_CHAT_ID
 
     scan_sample = {
         "overall_health_score": 45,
@@ -2233,7 +2235,7 @@ def test_html_entity_escaping_prevents_telegram_parse_errors(tmp_path):
     """CWE-116: User-controlled and error strings in Telegram alerts are escaped with html.escape."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     # Injected strings with HTML tags, ampersands, quotes, and brackets
     malicious_scan = {
@@ -2297,7 +2299,7 @@ def test_truncation_never_splits_html_entities(tmp_path):
     """CWE-116: Truncating before escaping guarantees entities cannot be sliced into dangling fragments."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     scan = {
         "overall_health_score": 30,
         "severity": "CRITICAL",
@@ -2325,7 +2327,7 @@ def test_token_shaped_error_is_redacted(tmp_path):
     """CWE-532: Error strings with Bearer tokens, OAuth access tokens, or secrets are redacted before formatting."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     scan = {
         "overall_health_score": 20,
         "severity": "CRITICAL",
@@ -2356,7 +2358,7 @@ def test_boundary_truncation_entity_integrity(tmp_path, length, special_char):
     """CWE-116: Verify that error messages ending at boundary lengths never produce broken entities or unescaped tags."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     err_text = ("a" * length) + special_char + "tail"
     scan = {
         "overall_health_score": 20,
@@ -2377,7 +2379,7 @@ def test_google_refresh_token_body_fully_redacted(tmp_path):
     """CWE-532: Google OAuth refresh tokens (1//...) are fully redacted without partial leakage."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     secret_body = "04AbCdEfGhIjKlMnOpQrStUvWxYz_1234567890"
     token = f"1//{secret_body}"
     scan = {
@@ -2404,7 +2406,7 @@ def test_base64_token_with_slash_and_plus_redacted(tmp_path):
     """CWE-532: Tokens containing base64 characters (+, /, =) are redacted as a whole."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     frag_slash = "partAfterSlash99"
     frag_plus = "partAfterPlus88"
     b64_token = f"Bearer aHR0cHM6Ly9leGFtcGxl/{frag_slash}+{frag_plus}===="
@@ -2431,7 +2433,7 @@ def test_db_url_password_redacted_cwe259(tmp_path):
     """CWE-259: Database connection URLs have passwords sanitized with [REDACTED]."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     db_pass = "SuperSecret_Passw0rd-2026!"
     scan = {
         "overall_health_score": 20,
@@ -2464,7 +2466,7 @@ def test_long_telegram_bot_token_is_redacted(tmp_path):
     """CWE-532: Long Telegram bot tokens with >10 digit bot IDs (e.g. 13-digit) are redacted."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     secret_part = "AAFlkjdsf098324_lkasdjflkasjdflkj"
     bot_token = f"1234567890123:{secret_part}"
     scan = {
@@ -2491,7 +2493,7 @@ def test_non_string_last_error_does_not_crash(tmp_path):
     """CWE-532: Non-string error values (None, int, dict, Exception) do not crash redaction or formatting."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     for bad_val in [None, 503, {"error": "internal"}, RuntimeError("database offline")]:
         scan = {
             "overall_health_score": 20,
@@ -2523,7 +2525,7 @@ def test_secret_straddling_truncation_boundary(tmp_path):
     """CWE-532 / CWE-116: Secrets straddling the truncation boundary are redacted before truncation."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     prefix = "A" * 110
     secret_token = "ya29.STRADDLE_TOKEN_BODY_BOUNDARY_TEST_1234567890"
     full_err = prefix + " " + secret_token
@@ -2551,7 +2553,7 @@ def test_generic_credentials_and_api_keys_redacted(tmp_path):
     """CWE-532 / CWE-259: Generic credentials, cloud API keys, and KV secrets are redacted."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     aiza_key = "AIzaSyD-1234567890abcdefghijklmnopqrstu"
     aws_key = "AKIAIOSFODNN7EXAMPLE"
@@ -2936,7 +2938,7 @@ class CharClassFuzzTaxonomy:
     @classmethod
     def structural_fingerprint(cls) -> str:
         joined = "\n".join(sorted(cls.generate_patterns()))
-        return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+        return hashlib.sha256(joined.encode("utf-8", errors="surrogatepass")).hexdigest()
 
     @classmethod
     def certified_accept_count(cls):
@@ -3237,14 +3239,19 @@ def test_oracle_desync_guard_fires_on_taxonomy_mismatch():
 
 
 def test_taxonomy_accept_count_matches_live_engine():
-    """Nebula Cycle 26 (R2 / CWE-758): Asserts live re engine accept count matches certified baseline under running CPython."""
+    """Nebula Cycle 26/27 (F2 / CWE-758): Asserts live re engine accept count matches certified baseline under running CPython."""
     baseline = CharClassFuzzTaxonomy.certified_accept_count()
-    if baseline is None:
-        pytest.skip(
-            f"no certified accept-count baseline for CPython "
-            f"{sys.version_info.major}.{sys.version_info.minor}; recertify before trusting oracle"
-        )
     live_accepted, _ = CharClassFuzzTaxonomy.live_accept_split()
+    if baseline is None:
+        msg = (
+            f"no certified accept-count baseline for CPython "
+            f"{sys.version_info.major}.{sys.version_info.minor}; "
+            f"observed live accept-count={live_accepted}. "
+            "Recertify BASELINE_ACCEPTED_COUNT_BY_PY before trusting oracle."
+        )
+        if os.environ.get("HERMES_ALLOW_UNCERTIFIED_INTERPRETER") == "1":
+            pytest.skip(msg)
+        pytest.fail(msg)
     assert live_accepted == baseline, (
         f"re-engine accept-count drift under {sys.version.split()[0]}: "
         f"live={live_accepted} baseline={baseline}"
@@ -3252,25 +3259,55 @@ def test_taxonomy_accept_count_matches_live_engine():
 
 
 def test_taxonomy_structural_fingerprint_is_stable():
-    """Nebula Cycle 26 (R1 / CWE-693): Asserts combinatorial taxonomy SHA256 structural fingerprint is stable."""
-    assert (
-        CharClassFuzzTaxonomy.structural_fingerprint()
-        == CharClassFuzzTaxonomy.BASELINE_FINGERPRINT
+    """Nebula Cycle 26/27 (R1 / CWE-693): Asserts combinatorial taxonomy SHA256 structural fingerprint is stable."""
+    actual = CharClassFuzzTaxonomy.structural_fingerprint()
+    expected = CharClassFuzzTaxonomy.BASELINE_FINGERPRINT
+    assert actual == expected, (
+        f"CharClassFuzzTaxonomy structural fingerprint mutated!\n"
+        f"  Expected: {expected}\n"
+        f"  Actual:   {actual}\n"
+        "If intentional, update BASELINE_FINGERPRINT and recertify accept counts."
     )
 
 
 def test_count_preserving_mutation_is_caught_by_fingerprint():
-    """Nebula Cycle 26 (R1 / CWE-693): Asserts count-preserving mutation is caught by structural fingerprint."""
+    """Nebula Cycle 26/27 (R1 / CWE-693 / F3): Asserts count-preserving mutation is caught by structural fingerprint."""
     class SwappedTaxonomy(CharClassFuzzTaxonomy):
         bodies = CharClassFuzzTaxonomy.bodies[:-1] + ("z",)
 
     assert SwappedTaxonomy.total_cases() == CharClassFuzzTaxonomy.total_cases()
     swap_accepted, _ = SwappedTaxonomy.live_accept_split()
-    assert swap_accepted == CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT
+    baseline = CharClassFuzzTaxonomy.certified_accept_count()
+    assert swap_accepted == (baseline or CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT)
     assert (
         SwappedTaxonomy.structural_fingerprint()
         != CharClassFuzzTaxonomy.BASELINE_FINGERPRINT
     )
+
+
+def test_scalar_baseline_matches_per_version_table():
+    """Nebula Cycle 27 (F3 / CWE-671): Cross-guard invariant ensuring scalar baseline equals per-version map."""
+    assert len(CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT_BY_PY) > 0
+    for ver, count in CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT_BY_PY.items():
+        assert count == CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT == 109, (
+            f"Version table mismatch for {ver}: count={count} vs "
+            f"scalar={CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT}"
+        )
+
+
+def test_baseline_fingerprint_and_count_are_mutually_consistent():
+    """Nebula Cycle 27 (F3 / CWE-671): Mutual consistency across structural fingerprint, case counts, and versioned baseline."""
+    live_accepted, total_generated = CharClassFuzzTaxonomy.live_accept_split()
+    assert total_generated == CharClassFuzzTaxonomy.total_cases() == 168
+    assert (
+        CharClassFuzzTaxonomy.structural_fingerprint()
+        == CharClassFuzzTaxonomy.BASELINE_FINGERPRINT
+    )
+    assert (
+        CharClassFuzzTaxonomy.certified_accept_count()
+        == CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT
+    )
+    assert live_accepted == CharClassFuzzTaxonomy.BASELINE_ACCEPTED_COUNT
 
 
 def test_taxonomy_cardinality_is_product_of_axes():
@@ -3345,7 +3382,7 @@ def test_constant_factor_blowup_is_bounded(tmp_path):
     """Nebula Cycle 14: Feeds 64KB payload to redact_secrets, asserting execution time < 250ms."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     payload = "A" * 65536
     start = time.perf_counter()
@@ -3360,7 +3397,7 @@ def test_adversarial_backtracking_payload(tmp_path):
     """Nebula Cycle 14: Feeds evil near-match string without terminating boundary to redact_secrets, asserting < 250ms."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     evil_payload = "ya29." + "a" * 10000
     start = time.perf_counter()
@@ -3375,7 +3412,7 @@ def test_redos_timing_bound(tmp_path):
     """CWE-1333: redact_secrets completes within reasonable latency and scales sub-quadratically on repeating stress inputs."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     def measure_median(func, payload: str, runs: int = 5) -> float:
         times = []
@@ -3417,12 +3454,25 @@ def test_redos_timing_bound(tmp_path):
         assert not issues, f"Pattern '{pat.pattern}' flagged for ReDoS: {issues}"
 
 
+def test_analyzer_terminates_on_adversarial_length():
+    """Nebula Cycle 27 (CWE-1333): Asserts analyze_redos_vulnerabilities terminates linearly on adversarial lengths."""
+    payload = "A" * 10000
+    start = time.perf_counter()
+    issues = analyze_redos_vulnerabilities(payload)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.250, (
+        f"analyze_redos_vulnerabilities took {elapsed*1000:.2f}ms on 10,000-char input; expected < 250ms"
+    )
+    assert isinstance(issues, list)
+
+
 @pytest.mark.parametrize("limit", [100, 120])
 def test_truncation_boundary_secret_never_leaks_fragment(tmp_path, limit):
     """CWE-532 / CWE-116: Secrets whose tail straddles the truncation boundary never leak fragments >= 6 characters."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     secret_raw = "SUPER_SECRET_PAYLOAD_TOKEN_9876543210"
     # Place secret so its first 10 characters are before limit, and tail crosses limit
@@ -3453,7 +3503,7 @@ def test_escape_redact_ordering_with_html_special_chars(tmp_path):
     """CWE-116 / CWE-532: Passwords with HTML special characters inside DB URLs are redacted before escaping."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     raw_password = "p&ss<w>ord"
     db_url = f"postgresql://user:{raw_password}@db:5432/main"
@@ -3498,7 +3548,7 @@ def test_known_env_value_exact_verbatim_redacted(tmp_path):
     env_file = tmp_path / ".env"
     env_file.write_text(f"TELEGRAM_BOT_TOKEN=test-token-123\nAPP_API_KEY={unique_secret}\n")
 
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
     assert unique_secret in notifier._known_secrets
 
     # Put it completely unformatted into last_error (no prefix, no URL, no password=)
@@ -3535,7 +3585,7 @@ def test_uppercase_jdbc_query_param_basic_auth_redacted(tmp_path):
     """Defense A3: Uppercase JDBC schemes, query parameter credentials, and Basic Authorization are redacted."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     # 1. Uppercase JDBC URL
     jdbc_url = "JDBC:POSTGRESQL://admin:MyPass123@localhost:5432/db"
@@ -3563,18 +3613,19 @@ def test_uppercase_jdbc_query_param_basic_auth_redacted(tmp_path):
 
 
 def test_false_positive_guard_for_clean_identifiers(tmp_path):
-    """Defense B3: Verify legitimate 12-digit numbers, order IDs, chat IDs, and epochs are NOT corrupted."""
+    """Defense B3 / F1: Verify legitimate 12-digit numbers, order IDs, chat IDs, and epochs are NOT corrupted."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
-    chat_id = "1431349185"
+    chat_id = TEST_CHAT_ID
+    secondary_chat_id = "9876543210"
     order_id = "987654321012"
     epoch_ts = "1728848000"
     job_uuid = "46a4a24c-0878-434e-989d-35d64421bbca"
 
     clean_message = (
-        f"Order {order_id} sent to chat {chat_id} at epoch {epoch_ts} for job {job_uuid}"
+        f"Order {order_id} sent to chat {chat_id} (secondary: {secondary_chat_id}) at epoch {epoch_ts} for job {job_uuid}"
     )
 
     out = notifier.redact_secrets(clean_message)
@@ -3584,6 +3635,7 @@ def test_false_positive_guard_for_clean_identifiers(tmp_path):
     sanitized = notifier.sanitize_error(clean_message, limit=200)
     assert order_id in sanitized
     assert chat_id in sanitized
+    assert secondary_chat_id in sanitized
     assert epoch_ts in sanitized
     assert job_uuid in sanitized
     assert "[REDACTED]" not in sanitized
@@ -3593,7 +3645,7 @@ def test_multi_secret_per_line_all_redacted(tmp_path):
     """CWE-532 / Nebula F4: Multiple credentials on a single line are all redacted simultaneously."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     raw_text = (
         'postgresql://user:pass123@host:5432/db with token ya29.A0ARrdaM-12345 and password="fooBarPassword"'
@@ -3618,7 +3670,7 @@ def test_secret_split_across_traceback_newlines(tmp_path):
     """CWE-532 / Nebula F4: Multi-line traceback with distinct credentials across newlines are all redacted."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     traceback_str = (
         "Traceback (most recent call last):\n"
@@ -3648,7 +3700,7 @@ def test_percent_encoded_and_unicode_passwords_in_url(tmp_path):
     """CWE-532 / CWE-259 / Nebula F4: URLs containing percent-encoded and unicode passwords are fully redacted."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     # 1. Percent-encoded password containing %26 (&) and %40 (@)
     percent_url = "postgresql://user:p%26ss%40word123@host:5432/db"
@@ -3712,10 +3764,10 @@ def test_empty_or_none_known_secrets_fallback_to_regex(tmp_path):
 
 
 def test_scanner_and_sanitizer_resilience_on_corrupted_payloads(tmp_path):
-    """Nebula Cycle 26 (R3 / CWE-20): Asserts scanner and sanitizers safely handle malformed/corrupted inputs."""
+    """Nebula Cycle 26/27 (R3 / CWE-20 & Stealth Network Invariant): Asserts scanner and sanitizers safely handle malformed/corrupted inputs."""
     env_file = tmp_path / ".env"
     env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
-    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id="1431349185")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
 
     corrupted_payloads = [
         "foo\x00\x00\x00bar",
@@ -3728,27 +3780,41 @@ def test_scanner_and_sanitizer_resilience_on_corrupted_payloads(tmp_path):
         "",
     ]
 
-    for payload in corrupted_payloads:
-        # 1. _scan_char_class completes without crash and returns valid (int, bool)
-        next_idx, closed = _scan_char_class(payload, 0)
-        assert isinstance(next_idx, int), f"_scan_char_class returned non-int index for {payload!r}"
-        assert isinstance(closed, bool), f"_scan_char_class returned non-bool closed for {payload!r}"
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        for payload in corrupted_payloads:
+            # 1. _scan_char_class completes without crash and returns valid (int, bool)
+            next_idx, closed = _scan_char_class(payload, 0)
+            assert isinstance(next_idx, int), f"_scan_char_class returned non-int index for {payload!r}"
+            assert isinstance(closed, bool), f"_scan_char_class returned non-bool closed for {payload!r}"
+            assert 0 <= next_idx <= len(payload), f"Index out of bounds for {payload!r}: {next_idx}"
 
-        # 2. analyze_redos_vulnerabilities completes without crash and returns list
-        issues = analyze_redos_vulnerabilities(payload)
-        assert isinstance(issues, list), f"analyze_redos_vulnerabilities returned non-list for {payload!r}"
+            # Surrogatepass encoding safety
+            surrogate_encoded = payload.encode("utf-8", errors="surrogatepass")
+            assert isinstance(surrogate_encoded, bytes)
 
-        # 3. HermesTelegramNotifier.redact_secrets and sanitize_error handle all payloads without crashing
-        redacted = notifier.redact_secrets(payload)
-        assert isinstance(redacted, str), f"redact_secrets returned non-str for {payload!r}"
-        sanitized = notifier.sanitize_error(payload)
-        assert isinstance(sanitized, str), f"sanitize_error returned non-str for {payload!r}"
+            # 2. analyze_redos_vulnerabilities completes without crash and returns list
+            issues = analyze_redos_vulnerabilities(payload)
+            assert isinstance(issues, list), f"analyze_redos_vulnerabilities returned non-list for {payload!r}"
 
-        # Also verify classmethods directly
-        redacted_cls = HermesTelegramNotifier.redact_secrets(payload)
-        assert isinstance(redacted_cls, str)
-        sanitized_cls = HermesTelegramNotifier.sanitize_error(payload)
-        assert isinstance(sanitized_cls, str)
+            # 3. HermesTelegramNotifier.redact_secrets and sanitize_error handle all payloads without crashing
+            redacted = notifier.redact_secrets(payload)
+            assert isinstance(redacted, str), f"redact_secrets returned non-str for {payload!r}"
+            sanitized = notifier.sanitize_error(payload)
+            assert isinstance(sanitized, str), f"sanitize_error returned non-str for {payload!r}"
+
+            # Tainted input redaction verification
+            tainted = f"{payload} TELEGRAM_BOT_TOKEN=test-token-123"
+            redacted_tainted = notifier.redact_secrets(tainted)
+            assert "test-token-123" not in redacted_tainted
+
+            # Also verify classmethods directly
+            redacted_cls = HermesTelegramNotifier.redact_secrets(payload)
+            assert isinstance(redacted_cls, str)
+            sanitized_cls = HermesTelegramNotifier.sanitize_error(payload)
+            assert isinstance(sanitized_cls, str)
+
+        # Stealth invariant: verify notifier makes zero outbound network calls
+        mock_urlopen.assert_not_called()
 
 
 def test_production_monitor_ast_sql_and_subprocess_safety():
