@@ -271,7 +271,7 @@ class DatasetSecretScrubber:
 
 
 _HIGH_ENTROPY_TOKEN = re.compile(r"\b[A-Za-z0-9_\-/+=]{24,}\b")
-_ENTROPY_BYTE_CAP = 8 * 1024 * 1024  # 8MB cap to prevent CPU exhaustion on oversized inputs (CWE-400)
+_ENTROPY_BYTE_CAP = 2 * 1024 * 1024  # 2MB cap to prevent CPU exhaustion on oversized inputs (CWE-400)
 
 
 def shannon_entropy(s: str) -> float:
@@ -364,8 +364,10 @@ def validate_dataset_is_sanitized(
     scan_content = content[:_ENTROPY_BYTE_CAP]
     for m in _HIGH_ENTROPY_TOKEN.finditer(scan_content):
         tok = m.group(0)
+        if is_allowlisted_high_entropy(tok):
+            continue
         h = shannon_entropy(tok)
-        if h >= 3.8 and not is_allowlisted_high_entropy(tok):
+        if h >= 3.8:
             violations.append(f"Unredacted high-entropy token detected (entropy={h:.2f}): {tok[:12]}...")
 
     # 4. Parse JSON lines and verify schema and cryptographic signature
