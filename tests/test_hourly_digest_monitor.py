@@ -41,6 +41,8 @@ from tools.hourly_digest_monitor import (
     HermesTelegramNotifier,
     SelfHealingManager,
     SendResult,
+    _safe_int,
+    _validate_fleet_url,
     run_full_scan,
 )
 
@@ -753,6 +755,180 @@ def test_format_hourly_digest_focuses_on_tokens_tasks_and_nodes(tmp_path):
     assert "c6e5ff82" in digest_html
     assert "nebula" in digest_html
     assert "lthn.Ariana" in digest_html
+
+
+# ==============================================================================
+# Nebula Cycle 31 Adversarial Unit Tests: Telemetry Hardening & Prompt Sanitization
+# ==============================================================================
+def test_prompt_with_secrets_and_html_is_sanitized(tmp_path):
+    """Nebula Cycle 31: Prompt sanitization redacts secrets, escapes HTML, and normalizes whitespace in digest."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
+
+    raw_prompt = "ghp_1234567890abcdefghijklmnopqrstuvwxyz12 <script>alert(1)</script> & password=superSecretPass123"
+
+    scan_result = {
+        "overall_health_score": 90,
+        "severity": "HEALTHY",
+        "cron": {
+            "cron_health_score": 100,
+            "clogged_jobs": [],
+            "drift_skipped_jobs": [],
+            "auth_failed_jobs": [],
+            "rate_limited_jobs": [],
+            "overdue_jobs": [],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 5.0},
+        },
+        "entropy": {
+            "entropy_health_score": 85,
+            "streams": [
+                {
+                    "name": "AGY Fleet & Clef Mesh",
+                    "status": "HEALTHY",
+                    "score": 90,
+                    "active_nodes": 18,
+                    "total_nodes": 21,
+                    "consensus_score": 90.0,
+                    "sla_passed": True,
+                    "total_jobs_tokens": 10000,
+                    "total_fleet_tokens": 50000,
+                    "top_3_tasks": [
+                        {
+                            "job_id": "vuln-task-1",
+                            "node_name": "node-1",
+                            "model": "gemini-3.8-flash-high",
+                            "total_tokens": 10000,
+                            "prompt": raw_prompt,
+                        }
+                    ],
+                    "top_5_nodes": [],
+                }
+            ],
+        },
+    }
+
+    digest_html = notifier.format_hourly_digest(scan_result)
+
+    assert "[REDACTED]" in digest_html
+    assert "ghp_1234567890abcdefghijklmnopqrstuvwxyz12" not in digest_html
+    assert "superSecretPass123" not in digest_html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in digest_html
+    assert "<script>" not in digest_html
+
+    # Also directly verify _safe_format_prompt
+    snippet = notifier._safe_format_prompt(raw_prompt, limit=60)
+    assert "[REDACTED]" in snippet
+    assert "superSecretPass123" not in snippet
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in snippet
+    assert "<script>" not in snippet
+
+
+def test_numeric_telemetry_resilience_to_nan_none_negative():
+    """Nebula Cycle 31: Resilience against NaN, None, negative, and invalid numeric values in fleet telemetry."""
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    summary_resp = json.dumps({"online_nodes": 18, "total_nodes": 21}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 90.0, "sla_passed": True}).encode("utf-8")
+
+    nodes_data = {
+        "nodes": [
+            {
+                "name": "chaotic-node",
+                "tier": "pro",
+                "requests_served": -50,
+                "quota_weekly_consumed": None,
+                "active_jobs": "invalid",
+            }
+        ]
+    }
+    nodes_resp = json.dumps(nodes_data).encode("utf-8")
+
+    jobs_data = {
+        "jobs": [
+            {
+                "job_id": "job-nan-tokens",
+                "node_name": "chaotic-node",
+                "model": "gemini-3.8-flash-high",
+                "total_tokens": "NaN",
+                "prompt": "Test prompt",
+            }
+        ]
+    }
+    jobs_resp = json.dumps(jobs_data).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        res = detector.check_stream_5_fleet_mesh()
+
+    assert res["status"] in ("HEALTHY", "DEGRADED", "CRITICAL")
+    assert res["total_fleet_tokens"] >= 0
+    assert res["total_jobs_tokens"] >= 0
+    assert len(res["top_5_nodes"]) == 1
+    node = res["top_5_nodes"][0]
+    assert node["requests_served"] >= 0
+    assert node["tokens_consumed"] >= 0
+    assert node["active_jobs"] >= 0
+    assert len(res["top_3_tasks"]) == 1
+    task = res["top_3_tasks"][0]
+    assert task["total_tokens"] >= 0
+
+
+def test_fleet_url_rejects_dangerous_schemes():
+    """Nebula Cycle 31: Enforce strict URL scheme and hostname validation on fleet endpoints (SSRF defense)."""
+    with pytest.raises(ValueError):
+        _validate_fleet_url("file:///etc/passwd")
+
+    with pytest.raises(ValueError):
+        _validate_fleet_url("gopher://localhost:70")
+
+    assert _validate_fleet_url("http://localhost:7777/api/fleet/nodes") == "http://localhost:7777/api/fleet/nodes"
+    assert _validate_fleet_url("http://mock-summary") == "http://mock-summary"
+
+    with pytest.raises(ValueError):
+        EntropyDegradationDetector(fleet_summary_url="file:///etc/passwd")
+
+    with pytest.raises(ValueError):
+        EntropyDegradationDetector(fleet_council_url="gopher://localhost:70")
+
+
+def test_safe_int_coercion_edge_cases():
+    """Nebula Cycle 31: Unit verification for _safe_int boundary edge cases."""
+    assert _safe_int(None) == 0
+    assert _safe_int("NaN") == 0
+    assert _safe_int("nan") == 0
+    assert _safe_int("inf") == 0
+    assert _safe_int("-inf") == 0
+    assert _safe_int(float("nan")) == 0
+    assert _safe_int(float("inf")) == 0
+    assert _safe_int(-50) == 0
+    assert _safe_int("-50") == 0
+    assert _safe_int("invalid") == 0
+    assert _safe_int(1234) == 1234
+    assert _safe_int("1234") == 1234
+    assert _safe_int("1234.9") == 1234
+    assert _safe_int(-50, min_val=-100) == -50
+    assert _safe_int(None, default=10, min_val=0) == 10
 
 
 # ==============================================================================

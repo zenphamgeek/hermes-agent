@@ -48,6 +48,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -145,6 +146,75 @@ def parse_timestamp(val: Any) -> Optional[datetime]:
             except Exception:
                 continue
     return None
+
+
+def _safe_int(val: Any, default: int = 0, min_val: int = 0) -> int:
+    """Safely coerce any value to an integer, clamped to at least min_val.
+
+    Handles None, strings, floats, NaN, Inf, negatives, and unparseable strings
+    without ever raising TypeError or ValueError.
+    """
+    if val is None:
+        return max(min_val, default)
+    try:
+        if isinstance(val, (int, bool)):
+            res = int(val)
+        elif isinstance(val, float):
+            if math.isnan(val) or math.isinf(val):
+                res = default
+            else:
+                res = int(val)
+        elif isinstance(val, (str, bytes)):
+            v_str = str(val, "utf-8", errors="replace") if isinstance(val, bytes) else str(val)
+            v_str = v_str.strip()
+            if v_str.isdigit():
+                res = int(v_str)
+            else:
+                try:
+                    res = int(v_str)
+                except ValueError:
+                    f = float(v_str)
+                    if math.isnan(f) or math.isinf(f):
+                        res = default
+                    else:
+                        res = int(f)
+        else:
+            f = float(val)
+            if math.isnan(f) or math.isinf(f):
+                res = default
+            else:
+                res = int(f)
+    except (ValueError, TypeError, OverflowError):
+        res = default
+    return max(min_val, res)
+
+
+def _validate_fleet_url(url: str) -> str:
+    """Validate that fleet URL is safe and well-formed (SSRF & scheme injection guard).
+
+    Validates scheme is in ('http', 'https') (rejects file:, ftp:, gopher:, etc. with ValueError).
+    Validates hostname is not empty.
+    Allow hosts: localhost, 127.0.0.1, 0.0.0.0, mock-*, or standard IPs/domains.
+    """
+    if not url or not isinstance(url, str):
+        raise ValueError("Fleet URL must be a non-empty string")
+
+    parsed = urllib.parse.urlparse(url.strip())
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ("http", "https"):
+        raise ValueError(
+            f"Invalid scheme {parsed.scheme!r} in fleet URL: {url!r}. Only http and https are permitted."
+        )
+
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        raise ValueError(f"Missing or invalid hostname in fleet URL: {url!r}")
+
+    # Allow localhost, 127.0.0.1, 0.0.0.0, mock-*, or standard IPs/domains
+    if not re.match(r"^[a-zA-Z0-9_\-\.:\[\]]+$", hostname):
+        raise ValueError(f"Forbidden characters in hostname {hostname!r} of fleet URL: {url!r}")
+
+    return url.strip()
 
 
 # ==============================================================================
@@ -433,10 +503,10 @@ class EntropyDegradationDetector:
         self.legal_dir_path = Path(legal_dir_path)
         self.media_json_path = Path(media_json_path)
         self.median_log_path = Path(median_log_path)
-        self.fleet_summary_url = fleet_summary_url
-        self.fleet_council_url = fleet_council_url
-        self.fleet_nodes_url = fleet_nodes_url
-        self.fleet_jobs_url = fleet_jobs_url
+        self.fleet_summary_url = _validate_fleet_url(fleet_summary_url)
+        self.fleet_council_url = _validate_fleet_url(fleet_council_url)
+        self.fleet_nodes_url = _validate_fleet_url(fleet_nodes_url)
+        self.fleet_jobs_url = _validate_fleet_url(fleet_jobs_url)
 
     def check_stream_1_stock_news(self, now_utc: Optional[datetime] = None) -> Dict[str, Any]:
         """Stream 1: Stock News Feed (stock_news_memory.sqlite)."""
@@ -783,19 +853,19 @@ class EntropyDegradationDetector:
                     raw_data = json.loads(resp.read().decode("utf-8"))
                     nodes_list = raw_data.get("nodes", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
                     valid_nodes = [n for n in nodes_list if isinstance(n, dict)]
-                    total_fleet_tokens = sum(n.get("quota_weekly_consumed", 0) for n in valid_nodes)
+                    total_fleet_tokens = sum(_safe_int(n.get("quota_weekly_consumed")) for n in valid_nodes)
                     sorted_nodes = sorted(
                         valid_nodes,
-                        key=lambda n: (n.get("requests_served", 0), n.get("quota_weekly_consumed", 0)),
+                        key=lambda n: (_safe_int(n.get("requests_served")), _safe_int(n.get("quota_weekly_consumed"))),
                         reverse=True,
                     )
                     for n in sorted_nodes[:5]:
                         top_5_nodes.append({
                             "name": str(n.get("name", "")),
                             "tier": str(n.get("tier", "")),
-                            "requests_served": int(n.get("requests_served", 0)),
-                            "tokens_consumed": int(n.get("quota_weekly_consumed", 0)),
-                            "active_jobs": int(n.get("active_jobs", 0)),
+                            "requests_served": _safe_int(n.get("requests_served")),
+                            "tokens_consumed": _safe_int(n.get("quota_weekly_consumed")),
+                            "active_jobs": _safe_int(n.get("active_jobs")),
                         })
             except Exception as e:
                 logger.debug("Fleet nodes query failed: %s", e)
@@ -806,23 +876,21 @@ class EntropyDegradationDetector:
                     raw_data = json.loads(resp.read().decode("utf-8"))
                     jobs_list = raw_data.get("jobs", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
                     valid_jobs = [j for j in jobs_list if isinstance(j, dict)]
-                    total_jobs_tokens = sum(j.get("total_tokens", 0) for j in valid_jobs)
+                    total_jobs_tokens = sum(_safe_int(j.get("total_tokens")) for j in valid_jobs)
                     sorted_jobs = sorted(
                         valid_jobs,
-                        key=lambda j: j.get("total_tokens", 0),
+                        key=lambda j: _safe_int(j.get("total_tokens")),
                         reverse=True,
                     )
                     for j in sorted_jobs[:3]:
                         jid = str(j.get("job_id", ""))[:8]
                         raw_p = str(j.get("prompt", "")).replace("\r", " ").replace("\n", " ").strip()
                         prompt_clean = " ".join(raw_p.split())
-                        if len(prompt_clean) > 60:
-                            prompt_clean = prompt_clean[:60]
                         top_3_tasks.append({
                             "job_id": jid,
                             "node_name": str(j.get("node_name", "")),
                             "model": str(j.get("model", "")),
-                            "total_tokens": int(j.get("total_tokens", 0)),
+                            "total_tokens": _safe_int(j.get("total_tokens")),
                             "prompt": prompt_clean,
                         })
             except Exception as e:
@@ -1390,6 +1458,31 @@ class HermesTelegramNotifier:
         truncated = redacted[:limit] if limit is not None and limit >= 0 else redacted
         return html.escape(truncated, quote=True)
 
+    @hybridmethod
+    def _safe_format_prompt(
+        cls_or_self,
+        text: Any,
+        limit: int = 60,
+    ) -> str:
+        """Safely format and sanitize a task prompt for HTML output:
+        1. Type coercion to str (or "" if None).
+        2. Redact secrets first: redacted = cls_or_self.redact_secrets(raw).
+        3. Normalize whitespace (remove newlines, collapse spaces): " ".join(redacted.split()).
+        4. Truncate to limit: truncated = normalized[:limit].
+        5. HTML escape: html.escape(truncated, quote=True).
+        """
+        if text is None:
+            raw = ""
+        elif not isinstance(text, str):
+            raw = str(text)
+        else:
+            raw = text
+
+        redacted = cls_or_self.redact_secrets(raw)
+        normalized = " ".join(redacted.split())
+        truncated = normalized[:limit] if limit is not None and limit >= 0 else normalized
+        return html.escape(truncated, quote=True)
+
     def send_alert(self, alert_text: str) -> bool:
         """Send urgent critical anomaly alert."""
         return self._send_payload(alert_text)
@@ -1509,8 +1602,8 @@ class HermesTelegramNotifier:
 
         streams = entropy.get("streams", [])
         fleet_stream = next((s for s in streams if "Fleet" in str(s.get("name", ""))), {})
-        total_jobs_tok = fleet_stream.get("total_jobs_tokens", 0)
-        total_fleet_tok = fleet_stream.get("total_fleet_tokens", 0)
+        total_jobs_tok = _safe_int(fleet_stream.get("total_jobs_tokens", 0))
+        total_fleet_tok = _safe_int(fleet_stream.get("total_fleet_tokens", 0))
         top_tasks = fleet_stream.get("top_3_tasks", [])
         top_nodes = fleet_stream.get("top_5_nodes", [])
 
@@ -1543,8 +1636,8 @@ class HermesTelegramNotifier:
                 jid = html.escape(str(task.get("job_id", "")))
                 node = html.escape(str(task.get("node_name", "")))
                 model = html.escape(str(task.get("model", "")))
-                tok = task.get("total_tokens", 0)
-                prompt_snippet = html.escape(str(task.get("prompt", "")))
+                tok = _safe_int(task.get("total_tokens", 0))
+                prompt_snippet = self._safe_format_prompt(task.get("prompt", ""), limit=60)
                 lines.append(
                     f"{rank_icon} <code>{jid}</code> ({node} / {model}): "
                     f"<b>{tok:,}</b> tokens — <i>\"{prompt_snippet}...\"</i>"
@@ -1558,9 +1651,9 @@ class HermesTelegramNotifier:
                 rank_icon = ranks[idx] if idx < len(ranks) else "•"
                 nname = html.escape(str(node.get("name", "")))
                 ntier = html.escape(str(node.get("tier", "")))
-                reqs = node.get("requests_served", 0)
-                toks = node.get("tokens_consumed", 0)
-                active = node.get("active_jobs", 0)
+                reqs = _safe_int(node.get("requests_served", 0))
+                toks = _safe_int(node.get("tokens_consumed", 0))
+                active = _safe_int(node.get("active_jobs", 0))
                 active_str = f" [⚡ {active} active]" if active > 0 else ""
                 lines.append(
                     f"{rank_icon} <b>{nname}</b> ({ntier}): <code>{reqs:,}</code> reqs | "
