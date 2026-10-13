@@ -5,20 +5,20 @@ tools/modal_jev_finetuning.py
 Autonomous Fine-Tuning Pipeline for Local JEV Decision Model on Modal Multi-GPU Fleet.
 
 Hardened against CWE-200 (Dataset Secret Leakage), CWE-502 (Deserialization RCE),
-and CWE-798/259 (Hardcoded Credentials) per Nebula Adversarial Audit (Cycle 33).
+and CWE-798/259 (Hardcoded Credentials) per Nebula Adversarial Audit (Cycle 33 & Cycle 34).
 
 Key Security Guarantees:
 1. Serialization Boundary & DatasetSecretScrubber:
    - All dataset rows pass through DatasetSecretScrubber (Bearer tokens, DB URLs,
-     passwords, API keys, GitHub PATs, Google refresh tokens, private keys).
-   - Atomic, mode-0600 file creation with advisory locking via fcntl.flock and tempfile os.replace.
+     passwords, API keys, GitHub PATs, Google refresh tokens, private keys, OpenAI keys).
+   - Atomic, mode-0600 file creation with advisory locking via non-blocking fcntl.flock retry and tempfile os.replace.
    - HMAC/SHA-256 integrity signature attached to every scrubbed sample.
    - Sanitization validation gate: Modal upload physically rejects un-scrubbed datasets.
 2. Safe Weight Serialization & Deserialization RCE Guard (CWE-502):
    - Enforces safe_serialization=True (safetensors) for adapter export.
-   - load_safe_model_weights rejects raw pickle formats and enforces weights_only=True.
+   - load_safe_model_weights rejects symlinks, non-whitelisted formats, and raw pickle formats while enforcing weights_only=True.
 3. Modal Credential Sourcing Guard (CWE-798/259):
-   - Only sources credentials via modal.Secret or standard environment variables,
+   - Only sources credentials via modal.Secret or standard environment variables (whitespace-only treated as None),
      never hardcoded.
 """
 
@@ -39,11 +39,13 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 logger = logging.getLogger("modal_jev_finetune")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -132,10 +134,14 @@ class DatasetSecretScrubber:
     _GOOGLE_ACCESS_PATTERN = re.compile(r"\bya29\.[A-Za-z0-9._\-/+=]{10,512}", re.I)
     _RAW_GOOGLE_ACCESS_PATTERN = re.compile(r"\bya29\.(?!\[REDACTED)[A-Za-z0-9._\-/+=]{10,512}", re.I)
     _AWS_KEY_PATTERN = re.compile(r"\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b")
-    _SLACK_TOKEN_PATTERN = re.compile(r"\bxox[baprs]-[0-9A-Za-z]{10,48}\b")
+    _OPENAI_KEY_PATTERN = re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_\-]{20,128}\b")
+    _RAW_OPENAI_KEY_PATTERN = re.compile(r"\bsk-(?:proj-)?(?!\[REDACTED)[A-Za-z0-9_\-]{20,128}\b")
+    _SLACK_TOKEN_PATTERN = re.compile(r"\bxox[baprs]-[0-9A-Za-z\-]{10,72}\b")
+    _RAW_SLACK_TOKEN_PATTERN = re.compile(r"\bxox[baprs]-(?!\[REDACTED)[0-9A-Za-z\-]{10,72}\b")
     _TELEGRAM_TOKEN_PATTERN = re.compile(r"\b[0-9]{6,20}:[A-Za-z0-9_\-]{30,128}\b")
     _MODAL_TOKEN_PATTERN = re.compile(r"\b(?:ak|as)-[A-Za-z0-9]{20,64}\b")
     _JWT_PATTERN = re.compile(r"\beyJ[A-Za-z0-9._\-/+=]{20,1024}")
+    _RAW_JWT_PATTERN = re.compile(r"\beyJ(?!\[REDACTED)[A-Za-z0-9._\-/+=]{20,1024}")
 
     def __init__(
         self,
@@ -205,6 +211,7 @@ class DatasetSecretScrubber:
         text = self._GOOGLE_REFRESH_PATTERN.sub("[REDACTED_GOOGLE_REFRESH_TOKEN]", text)
         text = self._GOOGLE_ACCESS_PATTERN.sub("[REDACTED_GOOGLE_ACCESS_TOKEN]", text)
         text = self._AWS_KEY_PATTERN.sub("[REDACTED_AWS_KEY]", text)
+        text = self._OPENAI_KEY_PATTERN.sub("[REDACTED_OPENAI_KEY]", text)
         text = self._SLACK_TOKEN_PATTERN.sub("[REDACTED_SLACK_TOKEN]", text)
         text = self._TELEGRAM_TOKEN_PATTERN.sub("[REDACTED_TELEGRAM_TOKEN]", text)
         text = self._MODAL_TOKEN_PATTERN.sub("[REDACTED_MODAL_TOKEN]", text)
@@ -264,6 +271,7 @@ class DatasetSecretScrubber:
 
 
 _HIGH_ENTROPY_TOKEN = re.compile(r"\b[A-Za-z0-9_\-/+=]{24,}\b")
+_ENTROPY_BYTE_CAP = 8 * 1024 * 1024  # 8MB cap to prevent CPU exhaustion on oversized inputs (CWE-400)
 
 
 def shannon_entropy(s: str) -> float:
@@ -294,6 +302,11 @@ def is_allowlisted_high_entropy(token: str) -> bool:
         "TransactionCase",
         "DatasetSecretScrubber",
         "instruction",
+        "content_sha256",
+        "provenance_signature",
+        "integrity_hash",
+        "generated_at",
+        "dataset_filename",
     )
     if any(sub in token for sub in allowlisted_substrings):
         return True
@@ -335,9 +348,11 @@ def validate_dataset_is_sanitized(
         ("Google Refresh Token", DatasetSecretScrubber._RAW_GOOGLE_REFRESH_PATTERN),
         ("Google Access Token", DatasetSecretScrubber._RAW_GOOGLE_ACCESS_PATTERN),
         ("AWS Key", DatasetSecretScrubber._AWS_KEY_PATTERN),
-        ("Slack Token", DatasetSecretScrubber._SLACK_TOKEN_PATTERN),
+        ("OpenAI API Key", DatasetSecretScrubber._RAW_OPENAI_KEY_PATTERN),
+        ("Slack Token", DatasetSecretScrubber._RAW_SLACK_TOKEN_PATTERN),
         ("Telegram Bot Token", DatasetSecretScrubber._TELEGRAM_TOKEN_PATTERN),
         ("Modal Token", DatasetSecretScrubber._MODAL_TOKEN_PATTERN),
+        ("JWT Token", DatasetSecretScrubber._RAW_JWT_PATTERN),
     ]
 
     for name, pat in raw_patterns:
@@ -345,8 +360,9 @@ def validate_dataset_is_sanitized(
         if m:
             violations.append(f"Unredacted {name} detected: {m.group(0)[:40]}")
 
-    # 3. Independent High-Entropy Token Scan (Non-Circular Defense against novel token shapes)
-    for m in _HIGH_ENTROPY_TOKEN.finditer(content):
+    # 3. Independent High-Entropy Token Scan (Non-Circular Defense, bounded for CWE-400)
+    scan_content = content[:_ENTROPY_BYTE_CAP]
+    for m in _HIGH_ENTROPY_TOKEN.finditer(scan_content):
         tok = m.group(0)
         h = shannon_entropy(tok)
         if h >= 3.8 and not is_allowlisted_high_entropy(tok):
@@ -384,7 +400,7 @@ def validate_dataset_is_sanitized(
 # 1. SAFE WEIGHT SERIALIZATION & DESERIALIZATION (CWE-502)
 # =============================================================================
 
-_PICKLE_OPCODES = (b"\x80\x02", b"\x80\x03", b"\x80\x04", b"\x80\x05")
+_PICKLE_OPCODES = (b"\x80\x00", b"\x80\x01", b"\x80\x02", b"\x80\x03", b"\x80\x04", b"\x80\x05")
 
 
 def load_safe_model_weights(
@@ -393,10 +409,17 @@ def load_safe_model_weights(
 ) -> Any:
     """
     Safely loads model weights enforcing CWE-502 RCE deserialization guards.
-    Rejects raw pickle formats (.pkl, .pickle) and enforces safetensors or weights_only=True.
+    Rejects symlinks, unwhitelisted extensions, raw pickle formats (.pkl, .pickle)
+    and enforces safetensors or weights_only=True for PyTorch checkpoints.
     Inspects magic bytes to prevent renamed pickle or zip container bypasses.
     """
     path = Path(weights_path)
+    if path.is_symlink():
+        raise ValueError(
+            f"Refusing symlinked weight file: {path} (CWE-502). "
+            "Symlinks prohibited in model weights path."
+        )
+
     if not path.exists():
         raise FileNotFoundError(f"Weights path does not exist: {path}")
 
@@ -422,11 +445,17 @@ def load_safe_model_weights(
                     )
                 raise FileNotFoundError(f"No safe weights found in directory: {path}")
 
+        if path.is_symlink():
+            raise ValueError(
+                f"Refusing symlinked weight file: {path} (CWE-502). "
+                "Symlinks prohibited in model weights path."
+            )
+
     suffix = path.suffix.lower()
-    if suffix in (".pkl", ".pickle"):
+    if suffix not in (".safetensors", ".pt", ".pth", ".bin"):
         raise ValueError(
-            f"Insecure pickle serialization format '{suffix}' rejected (CWE-502). "
-            "Use safetensors (.safetensors) or torch.load with weights_only=True."
+            f"Insecure or unsupported weight file format '{suffix}' rejected (CWE-502). "
+            "Only .safetensors or authenticated PyTorch checkpoints permitted."
         )
 
     # File permissions & magic byte inspection
@@ -493,8 +522,8 @@ def get_modal_credentials(require: bool = False) -> Dict[str, Optional[str]]:
     Safely source Modal credentials from environment variables or modal configuration (CWE-798/259).
     Never hardcodes credentials or echoes secret values in error messages.
     """
-    token_id = os.environ.get("MODAL_TOKEN_ID")
-    token_secret = os.environ.get("MODAL_TOKEN_SECRET")
+    token_id = (os.environ.get("MODAL_TOKEN_ID") or "").strip() or None
+    token_secret = (os.environ.get("MODAL_TOKEN_SECRET") or "").strip() or None
 
     modal_toml = Path.home() / ".modal.toml"
     if modal_toml.exists():
@@ -570,70 +599,108 @@ def generate_dataset_manifest(
     return manifest
 
 
+@contextmanager
+def advisory_file_lock(lock_path: Path, timeout: float = 10.0):
+    """
+    Acquires an exclusive advisory file lock using fcntl.flock with non-blocking retry and timeout (CWE-362/400).
+    Opens lock file with mode 0600, retries with 0.1s sleep until timeout deadline,
+    and guarantees release and cleanup in finally.
+    """
+    lock_path = Path(lock_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+    deadline = time.monotonic() + timeout
+    acquired = False
+    try:
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except (BlockingIOError, OSError) as e:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"Advisory lock timeout ({timeout}s) on {lock_path}; possible stale lock or contention"
+                    ) from e
+                time.sleep(0.1)
+        yield
+    finally:
+        if acquired:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        if acquired and lock_path.exists():
+            try:
+                lock_path.unlink()
+            except OSError:
+                pass
+
+
+def _coerce_timestamp(val: Any) -> Optional[float]:
+    """
+    Normalizes numeric or ISO-8601 strings into POSIX timestamp float (CWE-367/613).
+    Returns None on missing, invalid or corrupt timestamps to fail closed.
+    """
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        val = val.strip()
+        if not val:
+            return None
+        try:
+            return float(val)
+        except ValueError:
+            pass
+        try:
+            iso_val = val.replace("Z", "+00:00")
+            return datetime.fromisoformat(iso_val).timestamp()
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
 def write_dataset_manifest(dataset_path: Path, manifest: Dict[str, Any]) -> Path:
     """
     Writes the dataset manifest file atomically alongside the dataset (e.g. dataset.jsonl.manifest.json).
-    Uses advisory locking and atomic temporary file replacement (os.replace) to prevent torn writes
-    under concurrent writers (CWE-362).
+    Uses advisory locking and atomic temporary file replacement (os.replace) with unique per-writer
+    temporary file paths to prevent torn writes under concurrent writers (CWE-362).
 
     NOTE: fcntl.flock is per-host. For cross-node distributed swarm storage,
     an external distributed lock or conditional put (e.g. S3 If-Match / lease) must be used.
     """
     manifest_path = dataset_path.with_name(f"{dataset_path.name}.manifest.json")
     manifest_content = json.dumps(manifest, indent=2, sort_keys=True)
+    payload = manifest_content.encode("utf-8")
+
+    # Unique temporary filename per pid, thread ID, and UUID (CWE-362)
+    tmp_name = f".{manifest_path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
+    tmp_path = manifest_path.parent / tmp_name
 
     lock_file = manifest_path.with_name(f".{manifest_path.name}.lock")
-    lock_fd = None
-    try:
+    with advisory_file_lock(lock_file):
         try:
-            lock_fd = os.open(str(lock_file), os.O_CREAT | os.O_RDWR, 0o600)
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        except (OSError, AttributeError):
-            lock_fd = None
-
-        tmp_file = tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=manifest_path.parent,
-            prefix=f".{manifest_path.name}.",
-            suffix=".tmp",
-            delete=False,
-        )
-        tmp_path = Path(tmp_file.name)
-        try:
+            fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             try:
-                os.chmod(tmp_path, 0o600)
-            except OSError:
-                pass
-            tmp_file.write(manifest_content)
-            tmp_file.flush()
-            os.fsync(tmp_file.fileno())
-            tmp_file.close()
+                os.write(fd, payload)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
             os.replace(tmp_path, manifest_path)
             try:
                 os.chmod(manifest_path, 0o600)
             except OSError:
                 pass
-        except Exception:
+        finally:
             if tmp_path.exists():
                 try:
                     tmp_path.unlink()
-                except OSError:
-                    pass
-            raise
-    finally:
-        if lock_fd is not None:
-            try:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            except OSError:
-                pass
-            try:
-                os.close(lock_fd)
-            except OSError:
-                pass
-            if lock_file.exists():
-                try:
-                    lock_file.unlink()
                 except OSError:
                     pass
     return manifest_path
@@ -646,7 +713,7 @@ def verify_dataset_manifest(
 ) -> Tuple[bool, List[str]]:
     """
     Verifies that the dataset matches its provenance manifest and has not been altered or replaced.
-    Fails closed if manifest is missing, corrupt, hash mismatches, or clock skew exceeds bounds (CWE-367/613).
+    Fails closed if manifest is missing, corrupt, hash mismatches, or clock skew/expiry exceeds bounds (CWE-367/613).
     """
     violations: List[str] = []
 
@@ -669,28 +736,23 @@ def verify_dataset_manifest(
 
         content = dataset_path.read_text(encoding="utf-8")
 
-    # 1. Clock skew and expiration validation (CWE-367 / CWE-613)
+    # 1. Clock skew and expiration validation with single timestamp normalizer (CWE-367 / CWE-613)
     gen_at_raw = manifest.get("generated_at")
-    if gen_at_raw:
-        try:
-            if isinstance(gen_at_raw, (int, float)):
-                gen_ts = float(gen_at_raw)
-            else:
-                gen_dt = datetime.fromisoformat(gen_at_raw)
-                gen_ts = gen_dt.timestamp()
+    gen_ts = _coerce_timestamp(gen_at_raw)
+    now_ts = time.time()
 
-            now_ts = time.time()
-            if gen_ts - now_ts > max_clock_skew_s:
-                violations.append(
-                    f"Clock skew violation: manifest generated_at is {gen_ts - now_ts:.1f}s in the future "
-                    f"(exceeds max_clock_skew_s={max_clock_skew_s}s)."
-                )
-            if max_age_s is not None and now_ts - gen_ts > max_age_s:
-                violations.append(
-                    f"Manifest expired: age is {now_ts - gen_ts:.1f}s (exceeds max_age_s={max_age_s}s)."
-                )
-        except Exception as e:
-            violations.append(f"Invalid generated_at timestamp in manifest: {e}")
+    if gen_ts is None:
+        violations.append(f"Invalid or missing generated_at in manifest: '{gen_at_raw}' (fail-closed)")
+    else:
+        if gen_ts - now_ts > max_clock_skew_s:
+            violations.append(
+                f"Clock skew violation: manifest generated_at is {gen_ts - now_ts:.1f}s in the future "
+                f"(exceeds max_clock_skew_s={max_clock_skew_s}s)."
+            )
+        if max_age_s is not None and now_ts - gen_ts > max_age_s:
+            violations.append(
+                f"Manifest expired: age is {now_ts - gen_ts:.1f}s (exceeds max_age_s={max_age_s}s) (replay guard)."
+            )
 
     # 2. Content integrity and HMAC signature validation
     if content is not None:
@@ -715,16 +777,68 @@ def verify_dataset_manifest(
 
 
 def is_tombstoned(
-    tombstone_tx_time: Union[float, int, datetime],
+    tombstone_tx_time: Optional[Union[float, int, datetime]],
     reader_now: Optional[Union[float, int, datetime]] = None,
     valid_to: Optional[Union[float, int, datetime]] = None,
 ) -> bool:
     """
-    Bi-Temporal Invariant (Zero-Resurrection): A tombstone is immutable once written.
-    Evaluates tombstone status based on transaction_time rather than reader's local wall clock.
-    A lagging or drifting reader clock CANNOT resurrect a tombstoned entity (CWE-367/613).
+    Bi-Temporal Invariant (Zero-Resurrection): A tombstone is an immutable monotonic fact.
+    Once written, tombstone existence is permanent: neither a lagging nor a leading
+    reader wall-clock can resurrect a deleted/tombstoned entity (CWE-367/613).
     """
-    return True
+    return tombstone_tx_time is not None
+
+
+class QuotaBreaker:
+    """
+    Circuit breaker preventing retry-storm amplification under compute/quota exhaustion (CWE-400).
+    Surfaced by Nebula Adversarial Audit What-If ("compute quota cut by 80%").
+    Applies bounded exponential backoff for transient quota/rate throttling (429/503),
+    and fails closed immediately without retry on terminal/non-quota errors.
+    """
+
+    def __init__(
+        self,
+        max_attempts: int = 3,
+        base_backoff_s: float = 2.0,
+        max_backoff_s: float = 30.0,
+    ):
+        self.max_attempts = max_attempts
+        self.base_backoff_s = base_backoff_s
+        self.max_backoff_s = max_backoff_s
+
+    @staticmethod
+    def is_quota_error(exc: Exception) -> bool:
+        msg = str(exc).lower()
+        return any(k in msg for k in (
+            "429",
+            "quota",
+            "resource_exhausted",
+            "rate limit",
+            "too many requests",
+            "capacity",
+            "overloaded",
+            "concurrency limit",
+            "throttled",
+        ))
+
+    def execute(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        last_exc = None
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as e:
+                last_exc = e
+                if not self.is_quota_error(e) or attempt >= self.max_attempts:
+                    raise
+                backoff = min(self.base_backoff_s * (2 ** (attempt - 1)), self.max_backoff_s)
+                logger.warning(
+                    "Quota throttling detected (attempt %d/%d). Backing off for %.1fs: %s",
+                    attempt, self.max_attempts, backoff, e,
+                )
+                time.sleep(backoff)
+        if last_exc:
+            raise last_exc
 
 
 # =============================================================================
@@ -887,57 +1001,30 @@ def harvest_dataset_from_ledgers(
 
     # 3. Write atomic mode-0600 file with advisory flock
     lock_file = out_file.with_name(f".{out_file.name}.lock")
-    lock_fd = None
-    try:
-        if fcntl:
-            try:
-                lock_fd = os.open(str(lock_file), os.O_CREAT | os.O_RDWR, 0o600)
-                fcntl.flock(lock_fd, fcntl.LOCK_EX)
-            except OSError:
-                lock_fd = None
-
-        tmp_file = tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=out_file.parent,
-            prefix=f".{out_file.name}.",
-            suffix=".tmp",
-            delete=False,
-        )
-        tmp_path = Path(tmp_file.name)
+    with advisory_file_lock(lock_file):
+        tmp_path = out_file.parent / f".{out_file.name}.{uuid.uuid4().hex}.tmp"
+        tmp_fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
-            try:
-                os.chmod(tmp_path, 0o600)
-            except OSError:
-                pass
-
-            if fcntl:
-                try:
-                    fcntl.flock(tmp_file.fileno(), fcntl.LOCK_EX)
-                except OSError:
-                    pass
-
-            for r in records:
-                tmp_file.write(json.dumps(r, ensure_ascii=False) + "\n")
-            tmp_file.flush()
-            os.fsync(tmp_file.fileno())
+            with open(tmp_fd, "w", encoding="utf-8", closefd=True) as tmp_file:
+                for r in records:
+                    tmp_file.write(json.dumps(r, ensure_ascii=False) + "\n")
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())
 
             # Double-barrier post-harvest sanitization check before atomic publish
             written_content = tmp_path.read_text(encoding="utf-8")
             is_valid, violations = validate_dataset_is_sanitized(written_content)
             if not is_valid:
+                if tmp_path.exists():
+                    try:
+                        tmp_path.unlink()
+                    except OSError:
+                        pass
                 raise ValueError(
                     f"Dataset post-harvest sanitization gate failed (CWE-200): {violations}. "
                     "Refusing to write unsanitized dataset."
                 )
 
-            if fcntl:
-                try:
-                    fcntl.flock(tmp_file.fileno(), fcntl.LOCK_UN)
-                except OSError:
-                    pass
-
-            tmp_file.close()
             os.replace(tmp_path, out_file)
             try:
                 os.chmod(out_file, 0o600)
@@ -958,22 +1045,6 @@ def harvest_dataset_from_ledgers(
                 except OSError:
                     pass
             raise
-    finally:
-        if lock_fd is not None:
-            if fcntl:
-                try:
-                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
-                except OSError:
-                    pass
-            try:
-                os.close(lock_fd)
-            except OSError:
-                pass
-            if lock_file.exists():
-                try:
-                    lock_file.unlink()
-                except OSError:
-                    pass
 
     logger.info("Harvested, scrubbed and signed %d JEV training samples into %s", len(records), out_file)
     return records
@@ -1253,9 +1324,14 @@ def main():
         if not (creds.get("MODAL_TOKEN_ID") and creds.get("MODAL_TOKEN_SECRET")) and not os.environ.get("MODAL_PROFILE"):
             logger.info("Using Modal profile/environment token sourcing.")
 
-        print(f"🚀 Dispatching JEV Fine-Tuning to Modal GPU...")
+        breaker = QuotaBreaker(max_attempts=3, base_backoff_s=2.0)
+        print("🚀 Dispatching JEV Fine-Tuning to Modal GPU (Quota-Breaker Protected)...")
         with app.run():
-            result = train_jev_modal.remote(dataset_jsonl_content=content, base_model_name=args.base_model)
+            result = breaker.execute(
+                train_jev_modal.remote,
+                dataset_jsonl_content=content,
+                base_model_name=args.base_model,
+            )
             print("🎉 Modal Training Completed Successfully:")
             print(json.dumps(result, indent=2))
 

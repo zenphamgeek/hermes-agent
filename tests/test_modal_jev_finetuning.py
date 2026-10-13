@@ -16,6 +16,7 @@ import pickle
 import stat
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 import pytest
@@ -26,6 +27,8 @@ from tools.modal_jev_finetuning import (
     JEV_SYSTEM_INSTRUCTION,
     DatasetSecretScrubber,
     ModalCredentialError,
+    QuotaBreaker,
+    advisory_file_lock,
     generate_dataset_manifest,
     get_modal_credentials,
     harvest_dataset_from_ledgers,
@@ -222,7 +225,7 @@ def test_safetensors_and_weights_only_deserialization_guard(tmp_path):
     with open(pkl_path, "wb") as f:
         pickle.dump(tensors, f)
 
-    with pytest.raises(ValueError, match="Insecure pickle serialization format"):
+    with pytest.raises(ValueError, match="Insecure or unsupported weight file format"):
         load_safe_model_weights(pkl_path)
 
     # 5. Deserialization of untrusted code payload via .bin is blocked by weights_only=True
@@ -267,7 +270,7 @@ def test_dataset_harvesting_atomic_and_locked(tmp_path, monkeypatch):
     assert file_mode == 0o600
 
     # Verify advisory locking was executed (exclusive lock and unlock)
-    assert fcntl.LOCK_EX in flock_calls
+    assert any(op & fcntl.LOCK_EX for op in flock_calls)
     assert fcntl.LOCK_UN in flock_calls
 
     # Verify no temporary files remain
@@ -353,7 +356,8 @@ def test_metadata_integrity_tamper_detection():
 
 def test_get_modal_credentials_sourcing(monkeypatch):
     """
-    Verifies modal credentials helper sources from environment.
+    Verifies modal credentials helper sources from environment and
+    treats empty or whitespace-only variables as None (CWE-798/259).
     """
     monkeypatch.setenv("MODAL_TOKEN_ID", "ak-test-token-id-123")
     monkeypatch.setenv("MODAL_TOKEN_SECRET", "as-test-token-secret-456")
@@ -361,6 +365,13 @@ def test_get_modal_credentials_sourcing(monkeypatch):
     creds = get_modal_credentials()
     assert creds["MODAL_TOKEN_ID"] == "ak-test-token-id-123"
     assert creds["MODAL_TOKEN_SECRET"] == "as-test-token-secret-456"
+
+    # Whitespace-only must be stripped to None
+    monkeypatch.setenv("MODAL_TOKEN_ID", "   ")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "\t\n")
+    creds_ws = get_modal_credentials(require=False)
+    assert creds_ws["MODAL_TOKEN_ID"] is None
+    assert creds_ws["MODAL_TOKEN_SECRET"] is None
 
 
 def test_load_safe_model_weights_rejects_renamed_pickle(tmp_path):
@@ -569,5 +580,314 @@ def test_validator_catches_unredacted_high_entropy_token():
     is_valid, violations = validate_dataset_is_sanitized(content, enforce_signature=False)
     assert is_valid is False
     assert any("high-entropy" in v.lower() for v in violations)
+
+
+def test_symlink_weight_file_rejected(tmp_path):
+    """
+    F1 (CWE-502): Symlinks in model weights path must be strictly refused.
+    """
+    tensors = {"weight": torch.randn(2, 2)}
+    valid_file = tmp_path / "valid_model.safetensors"
+    save_file(tensors, str(valid_file))
+
+    symlink_file = tmp_path / "symlink_model.safetensors"
+    symlink_file.symlink_to(valid_file)
+
+    with pytest.raises(ValueError, match=r"Refusing symlinked weight file.*CWE-502"):
+        load_safe_model_weights(symlink_file)
+
+
+def test_crafted_pickle_sentinel_never_executed(tmp_path):
+    """
+    F1 (CWE-502): Crafted malicious pickle opcode that attempts RCE
+    via file write is blocked by weights_only=True and NEVER executed.
+    """
+    sentinel_path = Path(f"/tmp/sentinel_exploit_{uuid.uuid4().hex}.txt")
+
+    # Raw pickle protocol 0 payload invoking os.system
+    exploit_payload = b"cos\nsystem\n(S'touch " + str(sentinel_path).encode("utf-8") + b"'\ntR."
+
+    exploit_pt = tmp_path / "crafted_exploit.pt"
+    exploit_pt.write_bytes(exploit_payload)
+
+    try:
+        with pytest.raises(Exception):
+            load_safe_model_weights(exploit_pt)
+        assert not sentinel_path.exists(), (
+            "CWE-502 Critical RCE: Malicious payload executed during load_safe_model_weights (.pt)!"
+        )
+    finally:
+        if sentinel_path.exists():
+            sentinel_path.unlink()
+
+    exploit_bin = tmp_path / "crafted_exploit.bin"
+    exploit_bin.write_bytes(exploit_payload)
+
+    try:
+        with pytest.raises(Exception):
+            load_safe_model_weights(exploit_bin)
+        assert not sentinel_path.exists(), (
+            "CWE-502 Critical RCE: Malicious payload executed during load_safe_model_weights (.bin)!"
+        )
+    finally:
+        if sentinel_path.exists():
+            sentinel_path.unlink()
+
+
+def test_honeytoken_canary_recall_harness(tmp_path):
+    """
+    F2 (CWE-200 / CWE-259): Seeds an action ledger entry with 14 distinct synthetic honeytokens.
+    Verifies scrubber recall == 1.0 (100% recall) and validate_dataset_is_sanitized passes with 0 violations.
+    """
+    output_ds = tmp_path / "honeytoken_export.sanitized.jsonl"
+    ledger_p = tmp_path / "honeytoken_ledger.jsonl"
+
+    honeytokens = [
+        "sk-proj-abc1234567890abcdefghijklmnopqrstuvwxyz",
+        "ghp_1234567890abcdefghijklmnopqrstuvwxyz12",
+        "github_pat_11AABCDEF0123456789_abcdefghijklmnopqrstuvwxyz1234567890",
+        "1//04testGoogleOAuthRefreshToken1234567890",
+        "ya29.a0ARrdaM_test_access_token_1234567890",
+        "AIzaSyD_TestGoogleApiKey_12345678901",
+        "AKIAIOSFODNN7EXAMPLE",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.doNotLeakThisSecretSignature",
+        "Bearer superSecretBearerTokenValue12345678",
+        "postgresql://db_admin:UltraSecretPassword2026!@pg-cluster.internal:5432/main",
+        "xoxb-" + "1234567890-1234567890123-abcdefghijklmnopqrstuvwx",
+        "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_1234567890",
+        "ak-testModalTokenId1234567890",
+        "https://api.internal/data?token=super_secret_query_param_token_12345",
+    ]
+
+    ledger_lines = []
+    for idx, token in enumerate(honeytokens):
+        ledger_lines.append(
+            json.dumps({
+                "action": "jev_decision_evaluation",
+                "domain": "security_canary_domain",
+                "payload_sha256": f"Canary {idx}: {token}",
+                "status": "PERMITTED",
+                "details": {
+                    "complexity": 1.2,
+                    "tier": "PRO",
+                    "canary_secret": token,
+                },
+            })
+        )
+
+    ledger_p.write_text("\n".join(ledger_lines) + "\n", encoding="utf-8")
+
+    records = harvest_dataset_from_ledgers(
+        action_ledger_path=ledger_p,
+        output_path=output_ds,
+    )
+
+    assert output_ds.exists()
+    exported_content = output_ds.read_text(encoding="utf-8")
+
+    total_canaries = len(honeytokens)
+    leaked_canaries = sum(1 for token in honeytokens if token in exported_content)
+    scrubber_recall = (total_canaries - leaked_canaries) / total_canaries
+
+    assert scrubber_recall == 1.0, f"Canary leakage detected! Leaked: {leaked_canaries}/{total_canaries}"
+
+    is_valid, violations = validate_dataset_is_sanitized(exported_content)
+    assert is_valid is True, f"Sanitization gate failed with violations: {violations}"
+    assert len(violations) == 0
+
+
+def test_advisory_lock_timeout_on_contention(tmp_path):
+    """
+    F5 (CWE-362/400): Non-blocking fcntl retry with timeout.
+    Acquires lock in thread; second attempt with timeout=0.2s raises TimeoutError.
+    """
+    lock_file = tmp_path / "contention_test.lock"
+    holder_acquired = threading.Event()
+    release_holder = threading.Event()
+
+    def lock_holder():
+        with advisory_file_lock(lock_file, timeout=5.0):
+            holder_acquired.set()
+            release_holder.wait(timeout=5.0)
+
+    t = threading.Thread(target=lock_holder)
+    t.start()
+    try:
+        assert holder_acquired.wait(timeout=2.0), "Holder failed to acquire lock"
+
+        t0 = time.monotonic()
+        with pytest.raises(TimeoutError, match=r"Advisory lock timeout \(0.2s\)"):
+            with advisory_file_lock(lock_file, timeout=0.2):
+                pass
+        elapsed = time.monotonic() - t0
+        assert 0.15 <= elapsed <= 1.0, f"Timeout took unexpected duration: {elapsed:.3f}s"
+    finally:
+        release_holder.set()
+        t.join(timeout=2.0)
+
+
+def test_kill_between_tmp_and_rename_leaves_no_torn_manifest(tmp_path, monkeypatch):
+    """
+    CWE-362: If a crash, kill, or filesystem error occurs between writing the temp file
+    and os.replace, the target manifest is never left in a torn or corrupted state,
+    and temporary files are cleaned up.
+    """
+    target_ds = tmp_path / "crash_test.jsonl"
+    target_ds.write_text('{"sample": 1}\n', encoding="utf-8")
+    m = generate_dataset_manifest(target_ds, '{"sample": 1}\n', 1)
+
+    def failing_replace(src, dst):
+        raise OSError("Simulated crash/power-loss before rename")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+
+    with pytest.raises(OSError, match="Simulated crash"):
+        write_dataset_manifest(target_ds, m)
+
+    manifest_p = target_ds.with_name(f"{target_ds.name}.manifest.json")
+    assert not manifest_p.exists(), "Torn manifest appeared after simulated crash!"
+
+    # Ensure no lingering .tmp files
+    tmp_files = list(tmp_path.glob(".*.tmp"))
+    assert len(tmp_files) == 0, f"Lingering temporary files found: {tmp_files}"
+
+
+def test_tombstone_resurrection_with_leading_reader_clock():
+    """
+    Bi-Temporal Invariant: A reader whose wall clock leads the tombstone transaction time
+    (clock ahead by 5 minutes) must also treat the record as tombstoned.
+    Neither lagging nor leading reader clocks can resurrect deleted data.
+    """
+    tombstone_tx_time = time.time()
+    reader_now = tombstone_tx_time + 300  # Reader 5 minutes ahead
+    assert is_tombstoned(tombstone_tx_time, reader_now=reader_now) is True
+    assert is_tombstoned(None) is False
+
+
+def test_skew_gate_rejects_ancient_manifest_replay(tmp_path):
+    """
+    CWE-367/613 Replay Guard: A manifest with a generated_at timestamp older than
+    max_age_s (7 days / 604800s) must be rejected to prevent replay attacks.
+    """
+    m = generate_dataset_manifest(
+        dataset_path=tmp_path / "replay_dataset.jsonl",
+        dataset_content='{"sample": 1}\n',
+        sample_count=1,
+    )
+    # Set timestamp to 8 days in the past
+    m["generated_at"] = time.time() - (8 * 86400)
+
+    ok, violations = verify_dataset_manifest(m, max_age_s=604800.0)
+    assert ok is False
+    assert any("expired" in v.lower() for v in violations)
+
+
+def test_skew_gate_fails_closed_on_unparseable_timestamp(tmp_path):
+    """
+    CWE-367/613 Fail-Closed: Manifests with non-numeric, corrupt or unparseable
+    generated_at values must fail validation gracefully without unhandled exceptions.
+    """
+    m = generate_dataset_manifest(
+        dataset_path=tmp_path / "corrupt_ts_dataset.jsonl",
+        dataset_content='{"sample": 1}\n',
+        sample_count=1,
+    )
+    m["generated_at"] = "invalid_not_a_timestamp_2026-99-99"
+
+    ok, violations = verify_dataset_manifest(m)
+    assert ok is False
+    assert any("invalid or missing generated_at" in v.lower() for v in violations)
+
+
+def test_entropy_scan_is_bounded_on_large_input():
+    """
+    CWE-400 CPU Exhaustion Guard: Entropy evaluation on 4MB of benign content
+    must execute within bounded time (< 4.0s) using the _ENTROPY_BYTE_CAP limit.
+    """
+    sample_line = json.dumps({
+        "instruction": JEV_SYSTEM_INSTRUCTION,
+        "input": {"prompt": "Routine enterprise ERP evaluation" * 10},
+        "output": {"domain": "enterprise_erp", "complexity_score": 1.0, "requires_cloud_escalation": False, "verdict": "PERMITTED", "target_tier": "PRO", "test_runner": "pytest"},
+    }) + "\n"
+    # Create ~4MB of payload
+    multiplier = (4 * 1024 * 1024) // len(sample_line)
+    large_content = sample_line * multiplier
+
+    t0 = time.monotonic()
+    is_valid, violations = validate_dataset_is_sanitized(large_content, enforce_signature=False)
+    elapsed = time.monotonic() - t0
+
+    assert is_valid is True, f"Valid large content failed: {violations}"
+    assert elapsed < 4.0, f"Entropy scan took too long on large input: {elapsed:.2f}s (CWE-400 risk)"
+
+
+def test_entropy_whitelist_does_not_flag_manifest_sha256():
+    """
+    CWE-200/400 False-Positive Guard: Legitimate hex digests (64-char SHA-256,
+    32-char HMAC) and manifest structural tags must NOT be flagged as secret leaks.
+    """
+    legit_record = {
+        "instruction": JEV_SYSTEM_INSTRUCTION,
+        "input": {"prompt": "Task hash: a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"},
+        "output": {
+            "domain": "enterprise_erp",
+            "complexity_score": 1.2,
+            "requires_cloud_escalation": False,
+            "verdict": "PERMITTED",
+            "target_tier": "PRO",
+            "test_runner": "pytest",
+            "content_sha256": "46b42b4229cd7a39c564e780bb665a8bde4fdf722007e8473f167fe53ed4b995",
+        },
+    }
+    content = json.dumps(legit_record) + "\n"
+    is_valid, violations = validate_dataset_is_sanitized(content, enforce_signature=False)
+    assert is_valid is True, f"Legitimate SHA-256 hash was falsely flagged: {violations}"
+
+
+def test_retry_storm_is_bounded_under_quota_exhaustion():
+    """
+    CWE-400 Quota Retry-Storm Guard (What-If: Compute Quota Cut by 80%):
+    QuotaBreaker strictly caps retries under 429/quota exhaustion, uses exponential backoff,
+    and fails closed immediately without retries for terminal non-quota exceptions.
+    """
+    breaker = QuotaBreaker(max_attempts=3, base_backoff_s=0.01, max_backoff_s=0.05)
+    call_count = 0
+
+    def quota_failing_fn():
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError("HTTP 429: Resource exhausted: quota exceeded")
+
+    with pytest.raises(RuntimeError, match="quota exceeded"):
+        breaker.execute(quota_failing_fn)
+
+    # Must be called exactly max_attempts times, never unbounded
+    assert call_count == 3, f"Expected 3 attempts, got {call_count}"
+
+    # Non-quota error must fail immediately on attempt 1
+    call_count_fatal = 0
+
+    def fatal_fn():
+        nonlocal call_count_fatal
+        call_count_fatal += 1
+        raise ValueError("Fatal syntax error in prompt")
+
+    with pytest.raises(ValueError, match="Fatal syntax error"):
+        breaker.execute(fatal_fn)
+
+    assert call_count_fatal == 1, f"Fatal error retried unexpectedly! count={call_count_fatal}"
+
+
+def test_no_manifest_for_incomplete_artifact(tmp_path):
+    """
+    Manifest-After-Artifact Ordering: Verifies that verify_dataset_manifest fails closed
+    if the underlying artifact is missing, and that incomplete artifacts cannot produce
+    a valid provenance manifest.
+    """
+    missing_ds = tmp_path / "nonexistent_dataset.jsonl"
+    ok, violations = verify_dataset_manifest(missing_ds)
+    assert ok is False
+    assert any("does not exist" in v.lower() for v in violations)
+
 
 
