@@ -24,6 +24,7 @@ CLI:
 
 import argparse
 from contextlib import contextmanager
+import enum
 import errno
 try:
     import fcntl
@@ -82,6 +83,8 @@ DEFAULT_CHAT_ID = "1431349185"
 
 FLEET_SUMMARY_URL = "http://localhost:7777/api/fleet/summary"
 FLEET_COUNCIL_URL = "http://localhost:7777/api/fleet/council"
+FLEET_NODES_URL = "http://localhost:7777/api/fleet/nodes"
+FLEET_JOBS_URL = "http://localhost:7777/api/fleet/jobs"
 
 _FATAL_TEMP_ERRNOS = frozenset({
     errno.ENOSPC,
@@ -423,6 +426,8 @@ class EntropyDegradationDetector:
         median_log_path: Path = DEFAULT_MEDIAN_LOG,
         fleet_summary_url: str = FLEET_SUMMARY_URL,
         fleet_council_url: str = FLEET_COUNCIL_URL,
+        fleet_nodes_url: str = FLEET_NODES_URL,
+        fleet_jobs_url: str = FLEET_JOBS_URL,
     ):
         self.stock_db_path = Path(stock_db_path)
         self.legal_dir_path = Path(legal_dir_path)
@@ -430,6 +435,8 @@ class EntropyDegradationDetector:
         self.median_log_path = Path(median_log_path)
         self.fleet_summary_url = fleet_summary_url
         self.fleet_council_url = fleet_council_url
+        self.fleet_nodes_url = fleet_nodes_url
+        self.fleet_jobs_url = fleet_jobs_url
 
     def check_stream_1_stock_news(self, now_utc: Optional[datetime] = None) -> Dict[str, Any]:
         """Stream 1: Stock News Feed (stock_news_memory.sqlite)."""
@@ -738,6 +745,10 @@ class EntropyDegradationDetector:
         total_nodes = 0
         consensus_score = 0.0
         sla_passed = False
+        total_fleet_tokens = 0
+        top_5_nodes: List[Dict[str, Any]] = []
+        total_jobs_tokens = 0
+        top_3_tasks: List[Dict[str, Any]] = []
 
         try:
             req_sum = urllib.request.Request(self.fleet_summary_url, headers={"User-Agent": "HourlyMonitor/1.0"})
@@ -765,6 +776,58 @@ class EntropyDegradationDetector:
                 status = "CRITICAL"
                 score = 0
 
+            # Collect tokenomics and node activity
+            try:
+                req_nodes = urllib.request.Request(self.fleet_nodes_url, headers={"User-Agent": "HourlyMonitor/1.0"})
+                with urllib.request.urlopen(req_nodes, timeout=5.0, context=get_ssl_context()) as resp:
+                    raw_data = json.loads(resp.read().decode("utf-8"))
+                    nodes_list = raw_data.get("nodes", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
+                    valid_nodes = [n for n in nodes_list if isinstance(n, dict)]
+                    total_fleet_tokens = sum(n.get("quota_weekly_consumed", 0) for n in valid_nodes)
+                    sorted_nodes = sorted(
+                        valid_nodes,
+                        key=lambda n: (n.get("requests_served", 0), n.get("quota_weekly_consumed", 0)),
+                        reverse=True,
+                    )
+                    for n in sorted_nodes[:5]:
+                        top_5_nodes.append({
+                            "name": str(n.get("name", "")),
+                            "tier": str(n.get("tier", "")),
+                            "requests_served": int(n.get("requests_served", 0)),
+                            "tokens_consumed": int(n.get("quota_weekly_consumed", 0)),
+                            "active_jobs": int(n.get("active_jobs", 0)),
+                        })
+            except Exception as e:
+                logger.debug("Fleet nodes query failed: %s", e)
+
+            try:
+                req_jobs = urllib.request.Request(self.fleet_jobs_url, headers={"User-Agent": "HourlyMonitor/1.0"})
+                with urllib.request.urlopen(req_jobs, timeout=5.0, context=get_ssl_context()) as resp:
+                    raw_data = json.loads(resp.read().decode("utf-8"))
+                    jobs_list = raw_data.get("jobs", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
+                    valid_jobs = [j for j in jobs_list if isinstance(j, dict)]
+                    total_jobs_tokens = sum(j.get("total_tokens", 0) for j in valid_jobs)
+                    sorted_jobs = sorted(
+                        valid_jobs,
+                        key=lambda j: j.get("total_tokens", 0),
+                        reverse=True,
+                    )
+                    for j in sorted_jobs[:3]:
+                        jid = str(j.get("job_id", ""))[:8]
+                        raw_p = str(j.get("prompt", "")).replace("\r", " ").replace("\n", " ").strip()
+                        prompt_clean = " ".join(raw_p.split())
+                        if len(prompt_clean) > 60:
+                            prompt_clean = prompt_clean[:60]
+                        top_3_tasks.append({
+                            "job_id": jid,
+                            "node_name": str(j.get("node_name", "")),
+                            "model": str(j.get("model", "")),
+                            "total_tokens": int(j.get("total_tokens", 0)),
+                            "prompt": prompt_clean,
+                        })
+            except Exception as e:
+                logger.debug("Fleet jobs query failed: %s", e)
+
             return {
                 "name": "AGY Fleet & Clef Mesh",
                 "status": status,
@@ -773,6 +836,10 @@ class EntropyDegradationDetector:
                 "total_nodes": total_nodes,
                 "consensus_score": consensus_score,
                 "sla_passed": sla_passed,
+                "total_jobs_tokens": total_jobs_tokens,
+                "total_fleet_tokens": total_fleet_tokens,
+                "top_3_tasks": top_3_tasks,
+                "top_5_nodes": top_5_nodes,
             }
         except Exception as e:
             logger.warning("Fleet mesh endpoint check failed (daemon may be offline/busy): %s", e)
@@ -784,6 +851,10 @@ class EntropyDegradationDetector:
                 "total_nodes": 0,
                 "consensus_score": 0.0,
                 "sla_passed": False,
+                "total_jobs_tokens": total_jobs_tokens,
+                "total_fleet_tokens": total_fleet_tokens,
+                "top_3_tasks": top_3_tasks,
+                "top_5_nodes": top_5_nodes,
                 "error": str(e),
             }
 
@@ -872,10 +943,20 @@ class hybridmethod:
         return wrapper
 
 
+class SendResult(enum.Enum):
+    DELIVERED = "delivered"
+    DEDUPED = "deduped"
+    SUPPRESSED = "suppressed"
+    FAILED = "failed"
+
+
 class HermesTelegramNotifier:
     """Delivers rich HTML alerts and executive hourly digests to Hermes Telegram."""
 
-    _MIN_SECRET_SEGMENT = 30
+    SendResult = SendResult
+
+    _MIN_SECRET_LENGTH = 30
+    _MIN_SECRET_SEGMENT = _MIN_SECRET_LENGTH
 
     _SECRET_KEY_KEYWORDS = (
         "TOKEN",
@@ -906,11 +987,30 @@ class HermesTelegramNotifier:
 
     _MAX_SCAN = 8192
 
+    _default_ledger_path: Optional[Path] = None
+    _shared_ledger_locks: Dict[str, threading.RLock] = {}
+    _shared_locks_guard = threading.Lock()
+
+    _VOLATILE_PATTERNS = (
+        (re.compile(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\b"), "<TIMESTAMP>"),
+        (re.compile(r"\b\d{4}-\d{2}-\d{2}\b"), "<DATE>"),
+        (re.compile(r"\breset after \d+[smhd](?: \d+[smhd])?\b", re.I), "<RESET_TIME>"),
+        (re.compile(r"\b\d+\.\d+s\b"), "<DURATION>"),
+        (re.compile(r"\b0x[0-9a-fA-F]+\b"), "<HEX>"),
+        (re.compile(r"\b1\d{9,12}\b"), "<EPOCH>"),
+    )
+
+    @classmethod
+    def set_default_ledger_path(cls, path: Optional[Path]) -> None:
+        """Override default alert dedup ledger path (for test isolation)."""
+        cls._default_ledger_path = Path(path) if path else None
+
     def __init__(
         self,
         env_file: Path = DEFAULT_ENV_FILE,
         target_chat_id: str = DEFAULT_CHAT_ID,
         bot_token: Optional[str] = None,
+        ledger_path: Optional[Path] = None,
     ):
         self.env_file = Path(env_file)
         self.target_chat_id = target_chat_id
@@ -919,6 +1019,18 @@ class HermesTelegramNotifier:
         self._suppressed: bool = os.environ.get("HERMES_SUPPRESS_TELEGRAM") == "1"
         self._recent_sends: Dict[str, float] = {}
         self._dedup_window_s: float = 90.0
+        self._salt: str = "hermes_dedup_v1"
+
+        lp = ledger_path or self._default_ledger_path
+        self.ledger_path = Path(lp) if lp else (_safe_hermes_home() / "cron" / "alert_dedup_ledger.json")
+        resolved_key = str(self.ledger_path.resolve())
+        with self._shared_locks_guard:
+            if resolved_key not in self._shared_ledger_locks:
+                self._shared_ledger_locks[resolved_key] = threading.RLock()
+            self._ledger_lock = self._shared_ledger_locks[resolved_key]
+
+    def __repr__(self) -> str:
+        return f"<HermesTelegramNotifier target_chat_id={self.target_chat_id!r} suppressed={self._suppressed}>"
 
     def _load_known_secrets(self) -> Set[str]:
         """Load known secrets from .env and environment for exact verbatim redaction (Defense B1)."""
@@ -1001,13 +1113,118 @@ class HermesTelegramNotifier:
         had_secret = (scrubbed != payload)
         return scrubbed, had_secret
 
-    def _send_payload(self, text: str) -> bool:
+    def _strip_volatile_fields(self, text: str) -> str:
+        """Normalizes text before hashing so cosmetic timestamp/run ID changes do not defeat dedup."""
+        if not text:
+            return ""
+        normalized = text
+        for pattern, repl in self._VOLATILE_PATTERNS:
+            normalized = pattern.sub(repl, normalized)
+        return normalized
+
+    def _dedup_key(self, payload: str) -> str:
+        """Computes salted sha256 fingerprint after stripping volatile fields."""
+        normalized = self._strip_volatile_fields(payload)
+        salt = getattr(self, "_salt", "hermes_dedup_v1")
+        return hashlib.sha256(f"{salt}:{normalized}".encode("utf-8")).hexdigest()
+
+    def _read_ledger(self) -> Dict[str, float]:
+        if not self.ledger_path.exists():
+            return {}
+        try:
+            with open(self.ledger_path, "r", encoding="utf-8") as f:
+                if fcntl:
+                    try:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                    except OSError:
+                        pass
+                try:
+                    data = json.load(f)
+                    return data if isinstance(data, dict) else {}
+                finally:
+                    if fcntl:
+                        try:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                        except OSError:
+                            pass
+        except Exception as e:
+            logger.warning("Failed reading dedup ledger %s: %s", self.ledger_path, e)
+            return {}
+
+    def _write_ledger_atomic(self, ledger: Dict[str, float]) -> None:
+        try:
+            self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_file = tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.ledger_path.parent,
+                prefix=f".{self.ledger_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            )
+            tmp_path = Path(tmp_file.name)
+            try:
+                try:
+                    os.chmod(tmp_path, 0o600)
+                except OSError:
+                    pass
+                json.dump(ledger, tmp_file, indent=2)
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())
+                tmp_file.close()
+                os.replace(tmp_path, self.ledger_path)
+            except Exception:
+                if tmp_path.exists():
+                    try:
+                        tmp_path.unlink()
+                    except OSError:
+                        pass
+                raise
+        except Exception as e:
+            logger.error("Failed writing dedup ledger %s: %s", self.ledger_path, e)
+
+    def _is_dedup_suppressed(self, key: str, text: Optional[str] = None) -> bool:
+        with self._ledger_lock:
+            now = time.time()
+            raw_digest = hashlib.sha256(text.encode("utf-8")).hexdigest() if text else None
+            if raw_digest and raw_digest in self._recent_sends:
+                if self._recent_sends[raw_digest] < (now - self._dedup_window_s):
+                    return False
+            if key in self._recent_sends:
+                if self._recent_sends[key] < (now - self._dedup_window_s):
+                    return False
+
+            ledger = self._read_ledger()
+            last = ledger.get(key, 0.0)
+            if key in self._recent_sends:
+                last = max(last, self._recent_sends[key])
+            if (now - last) < self._dedup_window_s:
+                return True
+            return False
+
+    def _record_dedup_success(self, key: str, timestamp: float, text: Optional[str] = None) -> None:
+        with self._ledger_lock:
+            ledger = self._read_ledger()
+            ledger[key] = timestamp
+            cutoff = timestamp - (self._dedup_window_s * 2)
+            ledger = {k: v for k, v in ledger.items() if isinstance(v, (int, float)) and v >= cutoff}
+            self._write_ledger_atomic(ledger)
+            self._recent_sends[key] = timestamp
+            if text:
+                raw_digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                self._recent_sends[raw_digest] = timestamp
+            self._recent_sends = {k: v for k, v in self._recent_sends.items() if v >= cutoff}
+
+    def send_payload_result(self, text: str) -> SendResult:
         if self._suppressed or os.environ.get("HERMES_SUPPRESS_TELEGRAM") == "1":
             logger.info("Telegram live send suppressed via HERMES_SUPPRESS_TELEGRAM=1.")
-            return False
+            return SendResult.SUPPRESSED
         if not self.bot_token or not self.is_valid_token_format(self.bot_token):
-            logger.info("Telegram live send suppressed: dummy or non-live bot token format (%s).", str(self.bot_token)[:12])
-            return False
+            logger.info(
+                "Telegram live send suppressed: dummy or non-live bot token format (%s).",
+                str(self.bot_token)[:12],
+            )
+            return SendResult.FAILED
 
         # Outbound egress secret scrubbing (CWE-359)
         scrubbed, had_secret = self._scrub_outbound(text)
@@ -1015,45 +1232,52 @@ class HermesTelegramNotifier:
             logger.warning("Outbound alert contained secret pattern; sending redacted copy.")
         text = scrubbed
 
-        # Delivery dedup window (best-effort at-most-once retry protection)
-        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        now = time.monotonic()
-        last = self._recent_sends.get(digest)
-        if last is not None and (now - last) < self._dedup_window_s:
-            logger.info("Duplicate alert suppressed within %.1fs dedup window (sha256: %s).", self._dedup_window_s, digest[:12])
-            return True
+        key = self._dedup_key(text)
 
-        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-        payload = {
-            "chat_id": self.target_chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        }
+        with self._ledger_lock:
+            if self._is_dedup_suppressed(key, text=text):
+                logger.info(
+                    "Duplicate alert suppressed within %.1fs dedup window (key: %s).",
+                    self._dedup_window_s,
+                    key[:12],
+                )
+                return SendResult.DEDUPED
 
-        try:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=15, context=get_ssl_context()) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                ok = bool(data.get("ok", False))
-                if ok:
-                    self._recent_sends[digest] = now
-                    cutoff = now - (self._dedup_window_s * 2)
-                    self._recent_sends = {k: v for k, v in self._recent_sends.items() if v >= cutoff}
-                return ok
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8", errors="replace")
-            safe_body = self.redact_secrets(err_body)
-            logger.error("Telegram HTTP %s error: %s", e.code, safe_body)
-            return False
-        except Exception as e:
-            safe_e = self.redact_secrets(str(e))
-            logger.error("Telegram delivery failed: %s", safe_e)
-            return False
+            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            payload = {
+                "chat_id": self.target_chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            }
+
+            try:
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=15, context=get_ssl_context()) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    ok = bool(data.get("ok", False))
+                    if ok:
+                        now = time.time()
+                        self._record_dedup_success(key, now, text=text)
+                        return SendResult.DELIVERED
+                    return SendResult.FAILED
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8", errors="replace")
+                safe_body = self.redact_secrets(err_body)
+                logger.error("Telegram HTTP %s error: %s", e.code, safe_body)
+                return SendResult.FAILED
+            except Exception as e:
+                safe_e = self.redact_secrets(str(e))
+                logger.error("Telegram delivery failed: %s", safe_e)
+                return SendResult.FAILED
+
+    def _send_payload(self, text: str) -> bool:
+        result = self.send_payload_result(text)
+        return result in (SendResult.DELIVERED, SendResult.DEDUPED)
 
     _URL_CRED_PATTERN = re.compile(
         r"(?P<scheme>\b(?:jdbc:)?[a-zA-Z][a-zA-Z0-9+.\-]*://[^:@/\s]+:)(?:[^@/\s]+)(?P<at>@)",
@@ -1081,6 +1305,7 @@ class HermesTelegramNotifier:
         re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b"),
         re.compile(r"\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b"),
         re.compile(r"\bxox[baprs]-[0-9A-Za-z]{10,48}\b"),
+        re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{36,255}\b"),
     )
 
     @hybridmethod
@@ -1169,9 +1394,17 @@ class HermesTelegramNotifier:
         """Send urgent critical anomaly alert."""
         return self._send_payload(alert_text)
 
+    def send_alert_result(self, alert_text: str) -> SendResult:
+        """Send urgent critical anomaly alert with granular SendResult."""
+        return self.send_payload_result(alert_text)
+
     def send_digest(self, digest_html: str) -> bool:
         """Send standard hourly executive digest."""
         return self._send_payload(digest_html)
+
+    def send_digest_result(self, digest_html: str) -> SendResult:
+        """Send standard hourly executive digest with granular SendResult."""
+        return self.send_payload_result(digest_html)
 
     def format_urgent_alert(self, scan_result: Dict[str, Any]) -> str:
         """Format an urgent HTML alert message for CRITICAL anomalies."""
@@ -1274,6 +1507,13 @@ class HermesTelegramNotifier:
 
         sev_emoji = status_emojis.get(severity, "⚪")
 
+        streams = entropy.get("streams", [])
+        fleet_stream = next((s for s in streams if "Fleet" in str(s.get("name", ""))), {})
+        total_jobs_tok = fleet_stream.get("total_jobs_tokens", 0)
+        total_fleet_tok = fleet_stream.get("total_fleet_tokens", 0)
+        top_tasks = fleet_stream.get("top_3_tasks", [])
+        top_nodes = fleet_stream.get("top_5_nodes", [])
+
         lines = [
             "⚡ <b>[HERMES AGENT] 24/7 Hourly System Digest</b>",
             f"🕒 <i>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>",
@@ -1282,11 +1522,53 @@ class HermesTelegramNotifier:
             f"• Cron Health: <code>{cron_score}%</code>",
             f"• Entropy Streams: <code>{entropy_score}%</code>",
             f"• Ticker Heartbeat: <code>{ticker_status}</code> (age {ticker.get('age_seconds', 0)}s)",
-            "",
-            "🛰️ <b>External Entropy Streams (5/5):</b>",
         ]
 
-        streams = entropy.get("streams", [])
+        lines.append("")
+        lines.append("💎 <b>Fleet Tokenomics &amp; Node Activity:</b>")
+        if total_jobs_tok > 0 or total_fleet_tok > 0:
+            lines.append(
+                f"• <b>Tổng lượng Tokens đã dùng:</b> <code>{total_jobs_tok:,}</code> tokens (Jobs) | "
+                f"<code>{total_fleet_tok:,}</code> tokens (Weekly Quota)"
+            )
+        else:
+            lines.append("• <b>Tổng lượng Tokens đã dùng:</b> <code>0</code> tokens (Fleet daemon idling/offline)")
+
+        if top_tasks:
+            lines.append("")
+            lines.append("🔥 <b>Top 3 Tasks dùng nhiều Tokens nhất:</b>")
+            ranks = ["1️⃣", "2️⃣", "3️⃣"]
+            for idx, task in enumerate(top_tasks[:3]):
+                rank_icon = ranks[idx] if idx < len(ranks) else "•"
+                jid = html.escape(str(task.get("job_id", "")))
+                node = html.escape(str(task.get("node_name", "")))
+                model = html.escape(str(task.get("model", "")))
+                tok = task.get("total_tokens", 0)
+                prompt_snippet = html.escape(str(task.get("prompt", "")))
+                lines.append(
+                    f"{rank_icon} <code>{jid}</code> ({node} / {model}): "
+                    f"<b>{tok:,}</b> tokens — <i>\"{prompt_snippet}...\"</i>"
+                )
+
+        if top_nodes:
+            lines.append("")
+            lines.append("🚀 <b>Top 5 Nodes làm việc nhiều nhất:</b>")
+            ranks = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+            for idx, node in enumerate(top_nodes[:5]):
+                rank_icon = ranks[idx] if idx < len(ranks) else "•"
+                nname = html.escape(str(node.get("name", "")))
+                ntier = html.escape(str(node.get("tier", "")))
+                reqs = node.get("requests_served", 0)
+                toks = node.get("tokens_consumed", 0)
+                active = node.get("active_jobs", 0)
+                active_str = f" [⚡ {active} active]" if active > 0 else ""
+                lines.append(
+                    f"{rank_icon} <b>{nname}</b> ({ntier}): <code>{reqs:,}</code> reqs | "
+                    f"{toks:,} tokens{active_str}"
+                )
+
+        lines.append("")
+        lines.append("🛰️ <b>External Entropy Streams (5/5):</b>")
         for idx, s in enumerate(streams, 1):
             raw_st = s.get("status", "UNKNOWN")
             emoji = status_emojis.get(raw_st, "⚪")
@@ -1297,10 +1579,10 @@ class HermesTelegramNotifier:
                 detail = f"{s.get('hours_since_crawl')}h ago, {s.get('articles_24h')} art/24h, {s.get('unique_symbols')} sym"
             elif "Legal" in raw_name:
                 detail = f"{s.get('hours_since_crawl')}h ago, {s.get('total_documents')} docs"
-            elif "Media" in raw_name:
-                detail = f"{s.get('completed_videos')}/24 vids, {s.get('completed_photos')}/24 photos, lag: {s.get('current_hour_lag')}h"
             elif "Median" in raw_name:
                 detail = f"{s.get('minutes_since_sync')}m ago, {s.get('checks_count')} chks, exit: {s.get('exit_code')}"
+            elif "Media" in raw_name:
+                detail = f"{s.get('completed_videos')}/24 vids, {s.get('completed_photos')}/24 photos, lag: {s.get('current_hour_lag')}h"
             elif "Fleet" in raw_name:
                 detail = f"{s.get('active_nodes')}/{s.get('total_nodes')} nodes, Clef {s.get('consensus_score')}%, SLA: {'PASS' if s.get('sla_passed') else 'FAIL'}"
             else:

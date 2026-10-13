@@ -4,6 +4,7 @@ Entropy Stream Degradation Scanner, Composite Health Calculator, and Self-Healin
 """
 
 import ast
+import concurrent.futures
 import errno
 try:
     import fcntl
@@ -39,6 +40,7 @@ from tools.hourly_digest_monitor import (
     EntropyDegradationDetector,
     HermesTelegramNotifier,
     SelfHealingManager,
+    SendResult,
     run_full_scan,
 )
 
@@ -529,6 +531,230 @@ def test_entropy_stream_5_fleet_mesh(tmp_path):
         assert res_down["score"] == 0
 
 
+def test_fleet_tokenomics_and_activity_collection(tmp_path):
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    summary_resp = json.dumps({"online_nodes": 20, "total_nodes": 21}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 95.0, "sla_passed": True}).encode("utf-8")
+
+    # Nodes mock: 6 nodes, total_fleet_tokens = 68838970, nebula has highest requests_served
+    nodes_data = {
+        "nodes": [
+            {
+                "name": "nebula",
+                "tier": "ultra",
+                "requests_served": 500,
+                "quota_weekly_consumed": 30000000,
+                "active_jobs": 1,
+            },
+            {
+                "name": "lthn.Ariana",
+                "tier": "ultra",
+                "requests_served": 400,
+                "quota_weekly_consumed": 20000000,
+                "active_jobs": 0,
+            },
+            {
+                "name": "pro-1",
+                "tier": "pro",
+                "requests_served": 300,
+                "quota_weekly_consumed": 10000000,
+                "active_jobs": 0,
+            },
+            {
+                "name": "pro-2",
+                "tier": "pro",
+                "requests_served": 200,
+                "quota_weekly_consumed": 5000000,
+                "active_jobs": 0,
+            },
+            {
+                "name": "pro-3",
+                "tier": "pro",
+                "requests_served": 100,
+                "quota_weekly_consumed": 3838970,
+                "active_jobs": 0,
+            },
+            {
+                "name": "pro-4",
+                "tier": "pro",
+                "requests_served": 50,
+                "quota_weekly_consumed": 0,
+                "active_jobs": 0,
+            },
+        ]
+    }
+    nodes_resp = json.dumps(nodes_data).encode("utf-8")
+
+    # Jobs mock: 4 jobs, total_jobs_tokens = 347802
+    jobs_data = {
+        "jobs": [
+            {
+                "job_id": "c6e5ff82-abcd-1111",
+                "node_name": "nebula",
+                "model": "claude-opus-4.8",
+                "total_tokens": 200000,
+                "prompt": "Refactor architecture and audit tokenomics across all nodes in the fleet",
+            },
+            {
+                "job_id": "a1b2c3d4-ef56-2222",
+                "node_name": "lthn.Ariana",
+                "model": "gemini-3.1-pro-high",
+                "total_tokens": 100000,
+                "prompt": "Perform deep math proof on median-0 animation pipeline",
+            },
+            {
+                "job_id": "f9e8d7c6-ba54-3333",
+                "node_name": "pro-1",
+                "model": "gemini-3.8-flash-high",
+                "total_tokens": 47802,
+                "prompt": "Generate unit tests for entropy degradation detector",
+            },
+            {
+                "job_id": "12345678-0000-4444",
+                "node_name": "pro-2",
+                "model": "gemini-3.8-flash-high",
+                "total_tokens": 0,
+                "prompt": "Ping check",
+            },
+        ]
+    }
+    jobs_resp = json.dumps(jobs_data).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        res = detector.check_stream_5_fleet_mesh()
+        assert res["total_jobs_tokens"] == 347802
+        assert res["total_fleet_tokens"] == 68838970
+        assert len(res["top_3_tasks"]) == 3
+        assert len(res["top_5_nodes"]) == 5
+        assert res["top_5_nodes"][0]["name"] == "nebula"
+
+
+def test_format_hourly_digest_focuses_on_tokens_tasks_and_nodes(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
+
+    scan_result = {
+        "overall_health_score": 95,
+        "severity": "HEALTHY",
+        "cron": {
+            "cron_health_score": 100,
+            "clogged_jobs": [],
+            "drift_skipped_jobs": [],
+            "auth_failed_jobs": [],
+            "rate_limited_jobs": [],
+            "overdue_jobs": [],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 10.0},
+        },
+        "entropy": {
+            "entropy_health_score": 90,
+            "streams": [
+                {
+                    "name": "AGY Fleet & Clef Mesh",
+                    "status": "HEALTHY",
+                    "score": 95,
+                    "active_nodes": 20,
+                    "total_nodes": 21,
+                    "consensus_score": 95.0,
+                    "sla_passed": True,
+                    "total_jobs_tokens": 347802,
+                    "total_fleet_tokens": 68838970,
+                    "top_3_tasks": [
+                        {
+                            "job_id": "c6e5ff82",
+                            "node_name": "nebula",
+                            "model": "claude-opus-4.8",
+                            "total_tokens": 200000,
+                            "prompt": "Refactor architecture and audit tokenomics across all nodes",
+                        },
+                        {
+                            "job_id": "a1b2c3d4",
+                            "node_name": "lthn.Ariana",
+                            "model": "gemini-3.1-pro-high",
+                            "total_tokens": 100000,
+                            "prompt": "Perform deep math proof on median-0 animation pipeline",
+                        },
+                        {
+                            "job_id": "f9e8d7c6",
+                            "node_name": "pro-1",
+                            "model": "gemini-3.8-flash-high",
+                            "total_tokens": 47802,
+                            "prompt": "Generate unit tests for entropy degradation detector",
+                        },
+                    ],
+                    "top_5_nodes": [
+                        {
+                            "name": "nebula",
+                            "tier": "ultra",
+                            "requests_served": 500,
+                            "tokens_consumed": 30000000,
+                            "active_jobs": 1,
+                        },
+                        {
+                            "name": "lthn.Ariana",
+                            "tier": "ultra",
+                            "requests_served": 400,
+                            "tokens_consumed": 20000000,
+                            "active_jobs": 0,
+                        },
+                        {
+                            "name": "pro-1",
+                            "tier": "pro",
+                            "requests_served": 300,
+                            "tokens_consumed": 10000000,
+                            "active_jobs": 0,
+                        },
+                        {
+                            "name": "pro-2",
+                            "tier": "pro",
+                            "requests_served": 200,
+                            "tokens_consumed": 5000000,
+                            "active_jobs": 0,
+                        },
+                        {
+                            "name": "pro-3",
+                            "tier": "pro",
+                            "requests_served": 100,
+                            "tokens_consumed": 3838970,
+                            "active_jobs": 0,
+                        },
+                    ],
+                }
+            ],
+        },
+    }
+
+    digest_html = notifier.format_hourly_digest(scan_result)
+    assert "Tổng lượng Tokens đã dùng" in digest_html
+    assert "Top 3 Tasks dùng nhiều Tokens nhất" in digest_html
+    assert "Top 5 Nodes làm việc nhiều nhất" in digest_html
+    assert "c6e5ff82" in digest_html
+    assert "nebula" in digest_html
+    assert "lthn.Ariana" in digest_html
+
+
 # ==============================================================================
 # 3. Tests: CompositeHealthCalculator
 # ==============================================================================
@@ -842,6 +1068,220 @@ def test_retry_within_window_dispatches_once(tmp_path):
         res4 = notifier._send_payload(payload1)
         assert res4 is True
         assert mock_urlopen.call_count == 3
+
+
+def test_dedup_persists_across_notifier_instances(tmp_path):
+    """Nebula Cycle 30: Dedup ledger persists on disk across separate notifier instances."""
+    env_file = tmp_path / ".env"
+    bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN={bot_token}\n")
+    ledger_path = tmp_path / "alert_dedup_ledger.json"
+
+    notifier_a = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        bot_token=bot_token,
+        ledger_path=ledger_path,
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps({"ok": True}).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    payload = "<b>Critical Anomaly Detected</b>"
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        res_a = notifier_a.send_payload_result(payload)
+        assert res_a == SendResult.DELIVERED
+        assert mock_urlopen.call_count == 1
+        assert ledger_path.exists()
+
+        # Destroy instance A
+        del notifier_a
+
+        # Construct instance B with same ledger_path
+        notifier_b = HermesTelegramNotifier(
+            env_file=env_file,
+            target_chat_id=TEST_CHAT_ID,
+            bot_token=bot_token,
+            ledger_path=ledger_path,
+        )
+
+        res_b = notifier_b.send_payload_result(payload)
+        assert res_b == SendResult.DEDUPED
+        assert notifier_b._send_payload(payload) is True
+        assert mock_urlopen.call_count == 1
+
+
+def test_dedup_fingerprint_ignores_timestamp(tmp_path):
+    """Nebula Cycle 30: Dedup key normalizes timestamps so cosmetic timestamp changes do not defeat dedup."""
+    env_file = tmp_path / ".env"
+    bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN={bot_token}\n")
+    ledger_path = tmp_path / "alert_dedup_ledger.json"
+
+    notifier = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        bot_token=bot_token,
+        ledger_path=ledger_path,
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps({"ok": True}).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    msg1 = "<b>Failure at 2026-10-13T07:00:00Z</b>: Database deadlock"
+    msg2 = "<b>Failure at 2026-10-13T08:00:00Z</b>: Database deadlock"
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        res1 = notifier.send_payload_result(msg1)
+        assert res1 == SendResult.DELIVERED
+        assert mock_urlopen.call_count == 1
+
+        res2 = notifier.send_payload_result(msg2)
+        assert res2 == SendResult.DEDUPED
+        assert mock_urlopen.call_count == 1
+
+
+def test_rotated_secret_not_in_known_set_is_still_scrubbed(tmp_path):
+    """Nebula Cycle 30: GitHub PAT not present in known_secrets (.env) is redacted by regex."""
+    empty_env = tmp_path / ".env"
+    empty_env.write_text("# No secrets configured\n")
+    bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
+
+    notifier = HermesTelegramNotifier(
+        env_file=empty_env,
+        target_chat_id=TEST_CHAT_ID,
+        bot_token=bot_token,
+    )
+
+    rotated_pat = "ghp_1234567890abcdefghijklmnopqrstuvwxyz12"
+    assert rotated_pat not in notifier._known_secrets
+
+    raw_text = f"Auth failed with token: {rotated_pat}"
+    redacted = notifier.redact_secrets(raw_text)
+    assert rotated_pat not in redacted
+    assert "[REDACTED]" in redacted
+    assert redacted == "Auth failed with token: [REDACTED]"
+
+
+def test_send_result_distinguishes_deduped_from_delivered(tmp_path, monkeypatch):
+    """Nebula Cycle 30: SendResult enum distinctly identifies delivered, deduped, suppressed, and failed."""
+    env_file = tmp_path / ".env"
+    bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN={bot_token}\n")
+    ledger_path = tmp_path / "alert_dedup_ledger.json"
+
+    notifier = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        bot_token=bot_token,
+        ledger_path=ledger_path,
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps({"ok": True}).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        payload = "<b>Status Check OK</b>"
+
+        # 1. First send returns SendResult.DELIVERED
+        res1 = notifier.send_payload_result(payload)
+        assert res1 == SendResult.DELIVERED
+
+        # 2. Second send within window returns SendResult.DEDUPED
+        res2 = notifier.send_payload_result(payload)
+        assert res2 == SendResult.DEDUPED
+
+    # 3. Suppressed send returns SendResult.SUPPRESSED
+    monkeypatch.setenv("HERMES_SUPPRESS_TELEGRAM", "1")
+    suppressed_notifier = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        bot_token=bot_token,
+        ledger_path=tmp_path / "suppressed_ledger.json",
+    )
+    res_supp = suppressed_notifier.send_payload_result("<b>Suppressed Alert</b>")
+    assert res_supp == SendResult.SUPPRESSED
+
+    # 4. Invalid token send returns SendResult.FAILED
+    monkeypatch.delenv("HERMES_SUPPRESS_TELEGRAM", raising=False)
+    invalid_notifier = HermesTelegramNotifier(
+        env_file=tmp_path / "empty.env",
+        target_chat_id=TEST_CHAT_ID,
+        bot_token="invalid-token",
+        ledger_path=tmp_path / "invalid_ledger.json",
+    )
+    res_failed = invalid_notifier.send_payload_result("<b>Test Alert</b>")
+    assert res_failed == SendResult.FAILED
+
+
+def test_concurrent_sends_same_payload_dispatch_once(tmp_path):
+    """Nebula Cycle 30: 5 concurrent threads attempting to send the same payload dispatch once."""
+    env_file = tmp_path / ".env"
+    bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN={bot_token}\n")
+    ledger_path = tmp_path / "concurrent_ledger.json"
+
+    notifiers = [
+        HermesTelegramNotifier(
+            env_file=env_file,
+            target_chat_id=TEST_CHAT_ID,
+            bot_token=bot_token,
+            ledger_path=ledger_path,
+        )
+        for _ in range(5)
+    ]
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps({"ok": True}).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    payload = "<b>Concurrent Storm Alert</b>: Database connection pool exhausted"
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        def _send(idx: int):
+            time.sleep(0.005)
+            inst = notifiers[idx]
+            result = inst.send_payload_result(payload)
+            success_bool = inst._send_payload(payload)
+            return result, success_bool
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(_send, i) for i in range(5)]
+            results = [f.result() for f in futures]
+
+        assert mock_urlopen.call_count == 1
+        send_results = [r[0] for r in results]
+        bool_results = [r[1] for r in results]
+        assert all(b is True for b in bool_results)
+        assert send_results.count(SendResult.DELIVERED) == 1
+        assert send_results.count(SendResult.DEDUPED) == 4
+
+
+def test_notifier_repr_does_not_leak_secrets(tmp_path):
+    """Nebula Cycle 30: __repr__ does not leak bot_token, api_secret, or credentials."""
+    env_file = tmp_path / ".env"
+    bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
+    api_secret = "sk_live_super_secret_high_entropy_token_999"
+    env_file.write_text(
+        f"TELEGRAM_BOT_TOKEN={bot_token}\n"
+        f"OPENAI_API_KEY={api_secret}\n"
+    )
+
+    notifier = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        bot_token=bot_token,
+    )
+
+    repr_str = repr(notifier)
+    assert bot_token not in repr_str
+    assert "ABCdef" not in repr_str
+    assert api_secret not in repr_str
+    assert "HermesTelegramNotifier" in repr_str
+    assert TEST_CHAT_ID in repr_str
 
 
 # ==============================================================================
