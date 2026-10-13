@@ -17,10 +17,11 @@
 | [**05_modal_gpu_fleet_and_token_invariants.md**](file:///home/zen/hermes-agent/.agents/rules/05_modal_gpu_fleet_and_token_invariants.md) | Modal Multi-GPU Fleet Management, 15-Workspace Registry, Round-Robin 9x Parallelism, Token Immutability & Zombie Worker Guard | Kỹ Sư Trưởng Hạ Tầng Đám Mây GPU |
 | [**05_fleet_delegation_enforcement.md**](file:///home/zen/hermes-agent/.agents/rules/05_fleet_delegation_enforcement.md) | AGY Fleet Mandatory Delegation, Fleet-First Code Generation >20 lines, fleet_run vs invoke_subagent Decision Tree, Anti-Inline-Code-Generation | Kiến Trúc Sư Fleet Tự Hành |
 | [**06_autonomous_action_and_odoo_owl_ui_standards.md**](file:///home/zen/hermes-agent/.agents/rules/06_autonomous_action_and_odoo_owl_ui_standards.md) | Autonomous Proactive Action (Kích Hoạt Không Cần Hỏi), Single Destruction Boundary, Universal Odoo 20 Owl & QWeb Convergence, Rule 29 Parity | Kiến Trúc Sư Trưởng Giao Diện Odoo Owl & Chỉ Huy Trưởng Fleet Tự Hành |
+| [**07_local_jev_clef_cloud_and_memory_consolidation.md**](file:///home/zen/hermes-agent/.agents/rules/07_local_jev_clef_cloud_and_memory_consolidation.md) | Local JEV + Clef Cloud Dual-Engine Synergy, Magentic-UI Action Ledger, Tri-Tier Memory Lifecycle (L1/L2/L3), Bi-Temporal Tombstones, Modal JEV Fine-Tuning | Hội đồng Cố vấn & Kiểm định Đa ngành |
 
 ---
 
-## The 12 Sovereign Invariants (Never Violated)
+## The 13 Sovereign Invariants (Never Violated)
 
 1. **Evidence-First Verification**: Every claim of completion or audit MUST be backed by genuine console execution logs in the active session.
 2. **Zero-Fake-Pass & Zero-Fabricated-Audit**: Never report tests passed or invent LUFS / timestamp / Whisper metrics without measurement.
@@ -34,3 +35,4 @@
 10. **Autonomous Action (Kích Hoạt Không Cần Hỏi)**: Execute proactively without asking passive confirmation questions ("Report After, Not Ask Before"). Sense $\to$ Plan $\to$ Execute $\to$ Verify $\to$ Report. Stop and ask only on irreversible catastrophic data deletion.
 11. **Universal Odoo QWeb & Owl UI/UX Convergence**: All internal tool interfaces, telemetry HUDs, and operational cockpits must be architected for frictionless porting into Odoo 20 (Insilos Enterprise) as native Owl Components (`@odoo/owl`, `class X extends Component`, `useState`) and semantic QWeb templates (`t-out`, `t-key`).
 12. **Clef Swarm Mandatory Participation (Sự Tham Gia Bắt Buộc Của Clef Swarm)**: Clef Swarm participation is 100% mandatory across all fleet jobs (sync, async, parallel, smart, DAG enqueue). Every job must traverse the 4-stage Clef lifecycle (Tri-Tier cognitive pre-routing, dialect metaprompt expansion, anomaly self-gate, and automated UAT verification). Zero-Output-Tokens invariant ($0.00 cost) is strictly enforced. Any unmonitored execution fails closed immediately (`JobStatus.FAILED`).
+13. **Local JEV + Clef Cloud Synergy & Bi-Temporal Memory Tombstones Invariant**: Fast-path tasks (complexity < 2.2) must resolve locally on Local JEV (<20ms, $0.00 cost). Tasks >= 2.2 escalate to Clef Cloud. Every external action writes to the Magentic-UI Action Ledger (`action_ledger.jsonl`). Deprecated L3 rules must never be silently deleted, but retired with bi-temporal tombstones in `resources/l3_tombstones.jsonl`. JEV is fine-tuned periodically on Modal GPU.

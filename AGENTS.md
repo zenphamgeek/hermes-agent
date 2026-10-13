@@ -113,6 +113,12 @@ Clef Swarm participation is **STRICTLY AND ABSOLUTELY MANDATORY** across 100% of
 4. **Automated UAT Specification & Sentinel Anti-Fabrication (`PDCAEvolutionEngine` & `clef_sentinel`)**: Enforces **Zero-Fake-Pass** by generating deterministic, testable verification commands (file existence, python compilation, AST integrity, and targeted pytest suites). Scans completed outputs for hallucination or fabrication; detects defects and triggers automatic failover retry.
 - **Fail-Closed Sovereign Mandate**: Any job dispatched without Clef telemetry or failing to establish Clef verification MUST fail closed immediately (`JobStatus.FAILED`). Bypassing Clef participation is a critical operational invariant violation.
 
+### 1.16. Local JEV + Clef Cloud Synergy & Bi-Temporal Memory Tombstones Invariant
+- **Dual-Engine Routing**: Standard tasks with cognitive complexity $C < 2.2$ must resolve on **Local JEV** (<20ms, zero-token cost, on-device fast path) after passing AST syntax and prompt hash deduplication. Tasks with $C \ge 2.2$, multi-step DAGs, or security audits escalate to **Clef Cloud**.
+- **Action Ledger (Magentic-UI Pattern)**: Every external execution, file synthesis, or cloud fleet dispatch MUST be appended to `~/.gemini/antigravity/action_ledger.jsonl` with sha256 payload digest and scrubbed parameters (`SecretScrubber`).
+- **Bi-Temporal Tombstone Invariant (Zero Silent Deletion)**: L3 agent rules, system prompts, and memory entities can NEVER be silently truncated or deleted. Deprecations must be archived with bi-temporal markers (`valid_from`, `valid_to`, `superseded_by`, `reason`) in `resources/l3_tombstones.jsonl`.
+- **Continuous Modal GPU Fine-Tuning**: Periodically harvest gold execution pairs from the action ledger and fine-tune Local JEV on Modal GPU (`modal_jev_finetuning.py`) to minimize cloud token expenditure.
+
 ---
 
 ## 2. Hermes Agent Core Principles
@@ -153,3 +159,4 @@ For comprehensive operational guidelines, consult the Master Pillars in `.agents
 - [**05_modal_gpu_fleet_and_token_invariants.md**](file:///home/zen/hermes-agent/.agents/rules/05_modal_gpu_fleet_and_token_invariants.md) — Modal Multi-GPU Fleet & Token Invariants
 - [**05_fleet_delegation_enforcement.md**](file:///home/zen/hermes-agent/.agents/rules/05_fleet_delegation_enforcement.md) — AGY Fleet Mandatory Delegation & Anti-Inline Generation
 - [**06_autonomous_action_and_odoo_owl_ui_standards.md**](file:///home/zen/hermes-agent/.agents/rules/06_autonomous_action_and_odoo_owl_ui_standards.md) — Autonomous Proactive Action & Universal Odoo QWeb/Owl Convergence
+- [**07_local_jev_clef_cloud_and_memory_consolidation.md**](file:///home/zen/hermes-agent/.agents/rules/07_local_jev_clef_cloud_and_memory_consolidation.md) — Local JEV + Clef Cloud Dual-Engine Synergy, Memory Consolidation & Modal Fine-Tuning
