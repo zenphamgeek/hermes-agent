@@ -157,7 +157,7 @@ def collect_fleet_telemetry() -> Dict[str, Any]:
             "total_workers_active": total_workers,
             "total_deployed_apps": total_apps_deployed,
             "total_month_cost_usd": round(total_cost, 2),
-            "active_default_profile": next((p["profile"] for p in telemetry_profiles if p["is_active_default"]), "r2rgraph")
+            "active_default_profile": next((p["profile"] for p in telemetry_profiles if p["is_active_default"]), "pvvsf")
         },
         "toml_profiles": telemetry_profiles,
         "all_workspace_registry": md_records
