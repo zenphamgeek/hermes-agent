@@ -912,6 +912,59 @@ def test_fleet_url_rejects_dangerous_schemes():
         EntropyDegradationDetector(fleet_council_url="gopher://localhost:70")
 
 
+def test_rejects_cloud_metadata():
+    """Nebula Cycle 32: Reject AWS/GCP/Azure cloud metadata endpoint (169.254.169.254)."""
+    with pytest.raises(ValueError, match="blocked address class"):
+        _validate_fleet_url("http://169.254.169.254/latest/meta-data/")
+
+
+def test_rejects_private_range():
+    """Nebula Cycle 32: Reject RFC1918 private IP ranges (10.0.0.5, 192.168.x)."""
+    with pytest.raises(ValueError, match="blocked address class"):
+        _validate_fleet_url("http://10.0.0.5/nodes")
+
+
+def test_rejects_non_http_scheme():
+    """Nebula Cycle 32: Reject non-http schemes."""
+    with pytest.raises(ValueError, match="Invalid scheme"):
+        _validate_fleet_url("file:///etc/passwd")
+
+
+def test_rejects_bad_port():
+    """Nebula Cycle 32: Reject ports not in allowlist (e.g. SSH port 22)."""
+    with pytest.raises(ValueError, match="Forbidden port"):
+        _validate_fleet_url("http://example.com:22/nodes")
+
+
+def test_redacts_credentials_in_error():
+    """Nebula Cycle 32: Ensure embedded credentials are redacted from ValueError messages (CWE-532/209)."""
+    try:
+        _validate_fleet_url("ftp://user:SECRET@example.com/x")
+    except ValueError as e:
+        assert "SECRET" not in str(e)
+        assert "redacted" in str(e)
+
+
+def test_allows_mock_fixture():
+    """Nebula Cycle 32: Allow mock test fixture hostnames and ports."""
+    assert _validate_fleet_url("http://mock-fleet:8080/summary").startswith("http://mock-fleet")
+
+
+def test_allows_localhost():
+    """Nebula Cycle 32: Allow localhost on approved ports."""
+    assert _validate_fleet_url("http://localhost:8080/nodes") == "http://localhost:8080/nodes"
+    assert _validate_fleet_url("http://localhost:7777/api/fleet/nodes") == "http://localhost:7777/api/fleet/nodes"
+
+
+@pytest.mark.parametrize("val,expected", [
+    (None, 0), ("12", 12), ("-5", 0), (float("nan"), 0),
+    (float("inf"), 0), ("abc", 0), (True, 1), ([], 0),
+])
+def test_safe_int_boundaries(val, expected):
+    """Nebula Cycle 32: Test boundary conditions for _safe_int."""
+    assert _safe_int(val) == expected
+
+
 def test_safe_int_coercion_edge_cases():
     """Nebula Cycle 31: Unit verification for _safe_int boundary edge cases."""
     assert _safe_int(None) == 0

@@ -32,6 +32,7 @@ except ImportError:
     fcntl = None
 import hashlib
 import html
+import ipaddress
 import json
 import logging
 import math
@@ -39,6 +40,7 @@ import os
 import re
 import secrets
 import shlex
+import socket
 import sqlite3
 import ssl
 import stat
@@ -189,32 +191,88 @@ def _safe_int(val: Any, default: int = 0, min_val: int = 0) -> int:
     return max(min_val, res)
 
 
+_ALLOW_LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+_ALLOW_PORTS = {80, 443, 6768, 7777, 8000, 8080, 8443, 8888, 9090} | set(range(20128, 20144))
+
+
+def _redact_url(url: str) -> str:
+    """Strip userinfo (user:pass@) from a URL before it enters logs/errors (CWE-532/209)."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.username or parsed.password:
+            host = parsed.hostname or ""
+            port = f":{parsed.port}" if parsed.port else ""
+            netloc = f"***redacted***@{host}{port}"
+            parsed = parsed._replace(netloc=netloc)
+        return urllib.parse.urlunparse(parsed)
+    except Exception:
+        return "***unparseable-url***"
+
+
 def _validate_fleet_url(url: str) -> str:
     """Validate that fleet URL is safe and well-formed (SSRF & scheme injection guard).
 
-    Validates scheme is in ('http', 'https') (rejects file:, ftp:, gopher:, etc. with ValueError).
-    Validates hostname is not empty.
-    Allow hosts: localhost, 127.0.0.1, 0.0.0.0, mock-*, or standard IPs/domains.
+    Enforces (not just documents):
+      - scheme in ('http', 'https') (rejects file:, ftp:, gopher:, etc. with ValueError).
+      - non-empty hostname with safe characters
+      - port in an explicit allowlist (standard web, fleet :7777, gateway :6768, proxy slots :20128-20143)
+      - the resolved IP is NOT private/loopback/link-local/reserved/multicast/unspecified,
+        unless the host is an explicit local fixture (localhost/mock-*) or HERMES_FLEET_ALLOW_PRIVATE=1
+    All error text is redacted of embedded credentials (CWE-532/259).
     """
     if not url or not isinstance(url, str):
         raise ValueError("Fleet URL must be a non-empty string")
 
-    parsed = urllib.parse.urlparse(url.strip())
+    stripped = url.strip()
+    safe = _redact_url(stripped)
+    parsed = urllib.parse.urlparse(stripped)
+
     scheme = (parsed.scheme or "").lower()
     if scheme not in ("http", "https"):
         raise ValueError(
-            f"Invalid scheme {parsed.scheme!r} in fleet URL: {url!r}. Only http and https are permitted."
+            f"Invalid scheme {scheme!r} in fleet URL: {safe!r}. Only http and https are permitted."
         )
 
     hostname = (parsed.hostname or "").lower()
     if not hostname:
-        raise ValueError(f"Missing or invalid hostname in fleet URL: {url!r}")
+        raise ValueError(f"Missing or invalid hostname in fleet URL: {safe!r}")
 
-    # Allow localhost, 127.0.0.1, 0.0.0.0, mock-*, or standard IPs/domains
     if not re.match(r"^[a-zA-Z0-9_\-\.:\[\]]+$", hostname):
-        raise ValueError(f"Forbidden characters in hostname {hostname!r} of fleet URL: {url!r}")
+        raise ValueError(f"Forbidden characters in hostname {hostname!r} of fleet URL: {safe!r}")
 
-    return url.strip()
+    port = parsed.port
+    if port is not None and port not in _ALLOW_PORTS:
+        raise ValueError(f"Forbidden port {port} in fleet URL: {safe!r}")
+
+    allow_private = os.environ.get("HERMES_FLEET_ALLOW_PRIVATE") == "1"
+    is_local_fixture = hostname in _ALLOW_LOCAL_HOSTS or hostname.startswith("mock-")
+
+    if not (is_local_fixture or allow_private):
+        # Resolve and classify every candidate address. Fail closed on error.
+        try:
+            infos = socket.getaddrinfo(hostname, port or (443 if scheme == "https" else 80))
+        except socket.gaierror as exc:
+            raise ValueError(f"Could not resolve hostname in fleet URL: {safe!r}") from exc
+
+        for info in infos:
+            try:
+                ip = ipaddress.ip_address(info[4][0])
+            except ValueError:
+                continue
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+                or ip.is_unspecified
+            ):
+                raise ValueError(
+                    f"Fleet URL resolves to blocked address class ({ip}): {safe!r}. "
+                    "Set HERMES_FLEET_ALLOW_PRIVATE=1 to override for trusted internal endpoints."
+                )
+
+    return stripped
 
 
 # ==============================================================================
