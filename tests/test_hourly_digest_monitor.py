@@ -5839,3 +5839,125 @@ def test_untrusted_stored_injection_in_fleet_jobs_and_nodes_escaped(tmp_path):
     assert "<script" not in safe_digest
 
 
+def test_epoch_ceiling_classifies_astronomical_finite_timestamp_as_malformed():
+    """Nebula Cycle 36 Guard: Finite astronomical timestamps > EPOCH_CEILING (2100-01-01)
+    must be classified as malformed_rejected rather than future_rejected.
+    """
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    now = 1770000000.0  # ~2026
+
+    summary_resp = json.dumps({"online_nodes": 10, "total_nodes": 10}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 95.0, "sla_passed": True}).encode("utf-8")
+    nodes_resp = json.dumps({"nodes": [{"name": "n1", "tier": "pro", "requests_served": 1, "quota_weekly_consumed": 1000, "active_jobs": 0}]}).encode("utf-8")
+
+    jobs_list = [
+        # Normal job within 1h
+        {"job_id": "normal-1", "node_name": "n1", "model": "m", "total_tokens": 100, "created_at": now - 300.0},
+        # Legitimate future within 60s slack: now + 30.0 -> accepted
+        {"job_id": "slack-ok", "node_name": "n1", "model": "m", "total_tokens": 200, "created_at": now + 30.0},
+        # Future clock skew beyond slack (e.g. 2 hours in future): now + 7200.0 (< EPOCH_CEILING) -> future_rejected
+        {"job_id": "skew-future", "node_name": "n1", "model": "m", "total_tokens": 400, "created_at": now + 7200.0},
+        # Astronomical finite timestamp (year 2150): 4733510400.0 > EPOCH_CEILING -> malformed_rejected
+        {"job_id": "astronomical-year-2150", "node_name": "n1", "model": "m", "total_tokens": 800, "created_at": 4733510400.0},
+    ]
+    jobs_resp = json.dumps({"jobs": jobs_list}).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        res = detector.check_stream_5_fleet_mesh(now_ts=now)
+
+    anomalies = res.get("window_anomalies", {})
+    assert anomalies["future_rejected"] == 1  # skew-future
+    assert anomalies["malformed_rejected"] == 1  # astronomical-year-2150
+    assert res["total_jobs_tokens_1h"] == 300  # normal-1 (100) + slack-ok (200)
+
+
+def test_double_entry_token_reconciliation_telemetry():
+    """Double-Entry Ledger Invariant (Nebula Cycle 36 Recommendation):
+    When reconcile_tokens=True, cross-check jobs ledger against node quota counterparty account
+    and emit reconciliation divergence metrics without breaking existing behavior.
+    """
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    now = 1770000000.0
+
+    summary_resp = json.dumps({"online_nodes": 5, "total_nodes": 5}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 90.0, "sla_passed": True}).encode("utf-8")
+    nodes_resp = json.dumps({
+        "nodes": [
+            {"name": "balanced-node", "tier": "pro", "requests_served": 5, "quota_weekly_consumed": 50000, "active_jobs": 0},
+            {"name": "divergent-node", "tier": "pro", "requests_served": 2, "quota_weekly_consumed": 0, "active_jobs": 0},
+        ]
+    }).encode("utf-8")
+
+    jobs_list = [
+        {"job_id": "j1", "node_name": "balanced-node", "model": "m", "total_tokens": 1500, "created_at": now - 100.0},
+        {"job_id": "j2", "node_name": "divergent-node", "model": "m", "total_tokens": 2500, "created_at": now - 200.0},
+    ]
+    jobs_resp = json.dumps({"jobs": jobs_list}).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        # 1. By default reconcile_tokens is False -> res["reconciliation"] is None
+        res_default = detector.check_stream_5_fleet_mesh(now_ts=now)
+        assert res_default["reconciliation"] is None
+
+        # 2. When reconcile_tokens=True -> res["reconciliation"] is populated
+        res_reconciled = detector.check_stream_5_fleet_mesh(now_ts=now, reconcile_tokens=True)
+        rec = res_reconciled["reconciliation"]
+        assert rec is not None
+        assert rec["jobs_stream_tokens_1h"] == 4000
+        assert rec["fleet_weekly_tokens"] == 50000
+
+        div = rec["reconciliation_divergence"]
+        assert div["balanced-node"]["jobs_1h_tokens"] == 1500
+        assert div["balanced-node"]["weekly_tokens"] == 50000
+        assert div["balanced-node"]["divergence"] is False
+
+        assert div["divergent-node"]["jobs_1h_tokens"] == 2500
+        assert div["divergent-node"]["weekly_tokens"] == 0
+        assert div["divergent-node"]["divergence"] is True
+
+
+

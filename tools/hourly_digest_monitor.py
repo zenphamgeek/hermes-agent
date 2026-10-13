@@ -918,7 +918,11 @@ class EntropyDegradationDetector:
                 "error": str(e),
             }
 
-    def check_stream_5_fleet_mesh(self, now_ts: Optional[float] = None) -> Dict[str, Any]:
+    def check_stream_5_fleet_mesh(
+        self,
+        now_ts: Optional[float] = None,
+        reconcile_tokens: bool = False,
+    ) -> Dict[str, Any]:
         """Stream 5: AGY Fleet & Clef Mesh (REST query to localhost:7777)."""
         active_nodes = 0
         total_nodes = 0
@@ -980,6 +984,8 @@ class EntropyDegradationDetector:
             except Exception as e:
                 logger.debug("Fleet jobs query failed: %s", e)
 
+            EPOCH_CEILING = 4102444800.0  # 2100-01-01 00:00:00 UTC (Plausible contemporary ceiling)
+
             def _get_job_ts(j: Dict[str, Any]) -> Optional[float]:
                 for field in ("completed_at", "started_at", "created_at"):
                     val = j.get(field)
@@ -992,6 +998,8 @@ class EntropyDegradationDetector:
                             try:
                                 ts = dt.timestamp()
                                 if not (math.isnan(ts) or math.isinf(ts)):
+                                    if ts > EPOCH_CEILING:
+                                        return None
                                     return ts
                             except Exception:
                                 pass
@@ -1159,6 +1167,26 @@ class EntropyDegradationDetector:
                 "verdict": pro_verdict,
             }
 
+            reconciliation: Optional[Dict[str, Any]] = None
+            if reconcile_tokens:
+                reconciliation_divergence = {}
+                for nname in candidate_names:
+                    j_tok = tokens_1h.get(nname, 0)
+                    j_req = reqs_1h.get(nname, 0)
+                    w_tok = node_weekly_tokens.get(nname, 0)
+                    underreporting = bool(j_tok > 0 and w_tok == 0)
+                    reconciliation_divergence[nname] = {
+                        "jobs_1h_tokens": j_tok,
+                        "jobs_1h_requests": j_req,
+                        "weekly_tokens": w_tok,
+                        "divergence": underreporting,
+                    }
+                reconciliation = {
+                    "jobs_stream_tokens_1h": total_jobs_tokens_1h,
+                    "fleet_weekly_tokens": total_fleet_tokens,
+                    "reconciliation_divergence": reconciliation_divergence,
+                }
+
             return {
                 "name": "AGY Fleet & Clef Mesh",
                 "status": status,
@@ -1178,6 +1206,7 @@ class EntropyDegradationDetector:
                     "malformed_rejected": malformed_jobs_rejected,
                     "stale_filtered": stale_jobs_filtered,
                 },
+                "reconciliation": reconciliation,
             }
         except Exception as e:
             logger.warning("Fleet mesh endpoint check failed (daemon may be offline/busy): %s", e)
@@ -1200,6 +1229,7 @@ class EntropyDegradationDetector:
                     "malformed_rejected": malformed_jobs_rejected,
                     "stale_filtered": stale_jobs_filtered,
                 },
+                "reconciliation": None,
                 "error": str(e),
             }
 
