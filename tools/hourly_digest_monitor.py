@@ -191,6 +191,30 @@ def _safe_int(val: Any, default: int = 0, min_val: int = 0) -> int:
     return max(min_val, res)
 
 
+def _safe_float(val: Any, default: float = 0.0, min_val: float = 0.0) -> float:
+    """Safely coerce any value to float, clamped to at least min_val."""
+    if val is None:
+        return max(min_val, default)
+    try:
+        if isinstance(val, (int, float, bool)):
+            f = float(val)
+            return max(min_val, default if (math.isnan(f) or math.isinf(f)) else f)
+        v_str = str(val, "utf-8", errors="replace") if isinstance(val, bytes) else str(val)
+        f = float(v_str.strip())
+        return max(min_val, default if (math.isnan(f) or math.isinf(f)) else f)
+    except Exception:
+        return max(min_val, default)
+
+
+def _safe_pct(part: Any, whole: Any, digits: int = 1) -> float:
+    """Safely calculate percentage (part / whole * 100), bounded and protected against ZeroDivisionError and NaN/Inf."""
+    p = _safe_float(part, default=0.0, min_val=0.0)
+    w = _safe_float(whole, default=0.0, min_val=0.0)
+    if w <= 0.0 or math.isnan(w) or math.isinf(w) or math.isnan(p) or math.isinf(p):
+        return 0.0
+    return round(100.0 * p / w, digits)
+
+
 _ALLOW_LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 _ALLOW_PORTS = {80, 443, 6768, 7777, 8000, 8080, 8443, 8888, 9090} | set(range(20128, 20144))
 
@@ -273,6 +297,25 @@ def _validate_fleet_url(url: str) -> str:
                 )
 
     return stripped
+
+
+MAX_FLEET_BYTES = 8 * 1024 * 1024  # 8 MiB ceiling to prevent memory DoS (CWE-400)
+
+
+def _safe_fetch_json(
+    url: str,
+    timeout: float = 10.0,
+    max_bytes: int = MAX_FLEET_BYTES,
+    user_agent: str = "HourlyMonitor/1.0",
+) -> Any:
+    """Fetch JSON from a validated HTTP/HTTPS URL with strict size and timeout bounds (CWE-400 & CWE-918)."""
+    safe_url = _validate_fleet_url(url)
+    req = urllib.request.Request(safe_url, headers={"User-Agent": user_agent})
+    with urllib.request.urlopen(req, timeout=timeout, context=get_ssl_context()) as resp:
+        raw = resp.read(max_bytes + 1)
+        if len(raw) > max_bytes:
+            raise ValueError(f"Endpoint response exceeds size ceiling of {max_bytes} bytes (CWE-400)")
+        return json.loads(raw.decode("utf-8"))
 
 
 # ==============================================================================
@@ -877,22 +920,20 @@ class EntropyDegradationDetector:
         top_5_nodes: List[Dict[str, Any]] = []
         total_jobs_tokens = 0
         top_3_tasks: List[Dict[str, Any]] = []
+        valid_nodes: List[Dict[str, Any]] = []
+        valid_jobs: List[Dict[str, Any]] = []
 
         try:
-            req_sum = urllib.request.Request(self.fleet_summary_url, headers={"User-Agent": "HourlyMonitor/1.0"})
-            with urllib.request.urlopen(req_sum, timeout=10.0, context=get_ssl_context()) as resp:
-                sum_data = json.loads(resp.read().decode("utf-8"))
-                active_nodes = sum_data.get("online_nodes") or sum_data.get("active_nodes") or 0
-                total_nodes = sum_data.get("total_nodes", 0)
+            sum_data = _safe_fetch_json(self.fleet_summary_url, timeout=10.0)
+            active_nodes = sum_data.get("online_nodes") or sum_data.get("active_nodes") or 0
+            total_nodes = sum_data.get("total_nodes", 0)
 
-            req_ccl = urllib.request.Request(self.fleet_council_url, headers={"User-Agent": "HourlyMonitor/1.0"})
-            with urllib.request.urlopen(req_ccl, timeout=10.0, context=get_ssl_context()) as resp:
-                ccl_data = json.loads(resp.read().decode("utf-8"))
-                consensus_score = float(
-                    ccl_data.get("composite_consensus_score")
-                    or ccl_data.get("metrics", {}).get("consensus_score", 0.0)
-                )
-                sla_passed = bool(ccl_data.get("sla_passed", False))
+            ccl_data = _safe_fetch_json(self.fleet_council_url, timeout=10.0)
+            consensus_score = float(
+                ccl_data.get("composite_consensus_score")
+                or ccl_data.get("metrics", {}).get("consensus_score", 0.0)
+            )
+            sla_passed = bool(ccl_data.get("sla_passed", False))
 
             if active_nodes >= 15 and consensus_score >= 80.0 and sla_passed:
                 status = "HEALTHY"
@@ -906,53 +947,113 @@ class EntropyDegradationDetector:
 
             # Collect tokenomics and node activity
             try:
-                req_nodes = urllib.request.Request(self.fleet_nodes_url, headers={"User-Agent": "HourlyMonitor/1.0"})
-                with urllib.request.urlopen(req_nodes, timeout=5.0, context=get_ssl_context()) as resp:
-                    raw_data = json.loads(resp.read().decode("utf-8"))
-                    nodes_list = raw_data.get("nodes", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
-                    valid_nodes = [n for n in nodes_list if isinstance(n, dict)]
-                    total_fleet_tokens = sum(_safe_int(n.get("quota_weekly_consumed")) for n in valid_nodes)
-                    sorted_nodes = sorted(
-                        valid_nodes,
-                        key=lambda n: (_safe_int(n.get("requests_served")), _safe_int(n.get("quota_weekly_consumed"))),
-                        reverse=True,
-                    )
-                    for n in sorted_nodes[:5]:
-                        top_5_nodes.append({
-                            "name": str(n.get("name", "")),
-                            "tier": str(n.get("tier", "")),
-                            "requests_served": _safe_int(n.get("requests_served")),
-                            "tokens_consumed": _safe_int(n.get("quota_weekly_consumed")),
-                            "active_jobs": _safe_int(n.get("active_jobs")),
-                        })
+                raw_data = _safe_fetch_json(self.fleet_nodes_url, timeout=5.0)
+                nodes_list = raw_data.get("nodes", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
+                valid_nodes = [n for n in nodes_list if isinstance(n, dict)]
+                total_fleet_tokens = sum(_safe_int(n.get("quota_weekly_consumed")) for n in valid_nodes)
+                sorted_nodes = sorted(
+                    valid_nodes,
+                    key=lambda n: (_safe_int(n.get("requests_served")), _safe_int(n.get("quota_weekly_consumed"))),
+                    reverse=True,
+                )
+                for n in sorted_nodes[:5]:
+                    top_5_nodes.append({
+                        "name": str(n.get("name", "")),
+                        "tier": str(n.get("tier", "")),
+                        "requests_served": _safe_int(n.get("requests_served")),
+                        "tokens_consumed": _safe_int(n.get("quota_weekly_consumed")),
+                        "active_jobs": _safe_int(n.get("active_jobs")),
+                    })
             except Exception as e:
                 logger.debug("Fleet nodes query failed: %s", e)
 
             try:
-                req_jobs = urllib.request.Request(self.fleet_jobs_url, headers={"User-Agent": "HourlyMonitor/1.0"})
-                with urllib.request.urlopen(req_jobs, timeout=5.0, context=get_ssl_context()) as resp:
-                    raw_data = json.loads(resp.read().decode("utf-8"))
-                    jobs_list = raw_data.get("jobs", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
-                    valid_jobs = [j for j in jobs_list if isinstance(j, dict)]
-                    total_jobs_tokens = sum(_safe_int(j.get("total_tokens")) for j in valid_jobs)
-                    sorted_jobs = sorted(
-                        valid_jobs,
-                        key=lambda j: _safe_int(j.get("total_tokens")),
-                        reverse=True,
-                    )
-                    for j in sorted_jobs[:3]:
-                        jid = str(j.get("job_id", ""))[:8]
-                        raw_p = str(j.get("prompt", "")).replace("\r", " ").replace("\n", " ").strip()
-                        prompt_clean = " ".join(raw_p.split())
-                        top_3_tasks.append({
-                            "job_id": jid,
-                            "node_name": str(j.get("node_name", "")),
-                            "model": str(j.get("model", "")),
-                            "total_tokens": _safe_int(j.get("total_tokens")),
-                            "prompt": prompt_clean,
-                        })
+                raw_data = _safe_fetch_json(self.fleet_jobs_url, timeout=5.0)
+                jobs_list = raw_data.get("jobs", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
+                valid_jobs = [j for j in jobs_list if isinstance(j, dict)]
+                total_jobs_tokens = sum(_safe_int(j.get("total_tokens")) for j in valid_jobs)
+                sorted_jobs = sorted(
+                    valid_jobs,
+                    key=lambda j: _safe_int(j.get("total_tokens")),
+                    reverse=True,
+                )
+                for j in sorted_jobs[:3]:
+                    jid = str(j.get("job_id", ""))[:8]
+                    raw_p = str(j.get("prompt", "")).replace("\r", " ").replace("\n", " ").strip()
+                    prompt_clean = " ".join(raw_p.split())
+                    top_3_tasks.append({
+                        "job_id": jid,
+                        "node_name": str(j.get("node_name", "")),
+                        "model": str(j.get("model", "")),
+                        "total_tokens": _safe_int(j.get("total_tokens")),
+                        "prompt": prompt_clean,
+                    })
             except Exception as e:
                 logger.debug("Fleet jobs query failed: %s", e)
+
+            # Pro-First Quota Exhaustion & Workload Evaluation
+            pro_nodes = [
+                n for n in valid_nodes
+                if str(n.get("tier", "")).lower() == "pro" and str(n.get("name", "")).lower() != "nebula"
+            ]
+            non_pro_nodes = [n for n in valid_nodes if n not in pro_nodes]
+
+            total_pro_nodes = len(pro_nodes)
+            pro_capacity_tokens = sum(_safe_int(n.get("quota_weekly_capacity", 2500000)) for n in pro_nodes)
+            pro_consumed_tokens = sum(_safe_int(n.get("quota_weekly_consumed", 0)) for n in pro_nodes)
+            pro_burn_pct = _safe_pct(pro_consumed_tokens, pro_capacity_tokens)
+
+            pro_requests = sum(_safe_int(n.get("requests_served", 0)) for n in pro_nodes)
+            non_pro_requests = sum(_safe_int(n.get("requests_served", 0)) for n in non_pro_nodes)
+            total_requests = pro_requests + non_pro_requests
+            pro_request_share_pct = _safe_pct(pro_requests, total_requests)
+
+            # Starved Pro nodes: Pro nodes with >75% remaining weekly quota and < 10 requests served
+            starved_pro_nodes = [
+                str(n.get("name", ""))
+                for n in pro_nodes
+                if _safe_float(n.get("quota_weekly_percent", 100.0)) > 75.0 and _safe_int(n.get("requests_served", 0)) < 10
+            ]
+
+            # Recent jobs distribution (from valid_jobs)
+            pro_node_names = {str(n.get("name", "")) for n in pro_nodes}
+            recent_pro_jobs = sum(1 for j in valid_jobs if str(j.get("node_name", "")) in pro_node_names)
+            recent_total_jobs = len(valid_jobs)
+            recent_pro_share_pct = _safe_pct(recent_pro_jobs, recent_total_jobs) if recent_total_jobs > 0 else pro_request_share_pct
+
+            # Evaluation logic for Pro-First Quality Criterion
+            if recent_pro_share_pct >= 80.0 or (pro_burn_pct >= 80.0 and len(starved_pro_nodes) <= 2):
+                pro_quality_grade = "OPTIMAL"
+                pro_quality_status = "PASS"
+                pro_quality_badge = "🟢 ĐẠT CHUẨN"
+                pro_verdict = "Toàn bộ tải đang được ưu tiên đốt cạn Quota Pro qua Round-Robin."
+            elif recent_pro_share_pct >= 40.0 or pro_burn_pct >= 40.0:
+                pro_quality_grade = "ACCEPTABLE"
+                pro_quality_status = "WARNING"
+                pro_quality_badge = "🟡 CẦN TỐI ƯU"
+                pro_verdict = f"Còn {len(starved_pro_nodes)}/{total_pro_nodes} nodes Pro tồn nhiều Quota; cần dồn thêm task Gemini 3.8."
+            else:
+                pro_quality_grade = "DEFICIT"
+                pro_quality_status = "CRITICAL"
+                pro_quality_badge = "🔴 LỆCH TIÊU CHÍ"
+                pro_verdict = "Tỷ trọng tải Pro quá thấp so với Nebula/Ultra; vi phạm nguyên tắc Pro-First."
+
+            pro_first_criterion = {
+                "status": pro_quality_status,
+                "grade": pro_quality_grade,
+                "badge": pro_quality_badge,
+                "pro_burn_pct": pro_burn_pct,
+                "pro_consumed_tokens": pro_consumed_tokens,
+                "pro_capacity_tokens": pro_capacity_tokens,
+                "pro_requests": pro_requests,
+                "total_requests": total_requests,
+                "pro_request_share_pct": pro_request_share_pct,
+                "recent_pro_share_pct": recent_pro_share_pct,
+                "total_pro_nodes": total_pro_nodes,
+                "starved_pro_nodes": starved_pro_nodes,
+                "starved_count": len(starved_pro_nodes),
+                "verdict": pro_verdict,
+            }
 
             return {
                 "name": "AGY Fleet & Clef Mesh",
@@ -966,6 +1067,7 @@ class EntropyDegradationDetector:
                 "total_fleet_tokens": total_fleet_tokens,
                 "top_3_tasks": top_3_tasks,
                 "top_5_nodes": top_5_nodes,
+                "pro_first_criterion": pro_first_criterion,
             }
         except Exception as e:
             logger.warning("Fleet mesh endpoint check failed (daemon may be offline/busy): %s", e)
@@ -981,6 +1083,7 @@ class EntropyDegradationDetector:
                 "total_fleet_tokens": total_fleet_tokens,
                 "top_3_tasks": top_3_tasks,
                 "top_5_nodes": top_5_nodes,
+                "pro_first_criterion": {},
                 "error": str(e),
             }
 
@@ -1384,7 +1487,8 @@ class HermesTelegramNotifier:
                     headers={"Content-Type": "application/json"},
                 )
                 with urllib.request.urlopen(req, timeout=15, context=get_ssl_context()) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
+                    raw_resp = resp.read(65536)
+                    data = json.loads(raw_resp.decode("utf-8"))
                     ok = bool(data.get("ok", False))
                     if ok:
                         now = time.time()
@@ -1392,7 +1496,7 @@ class HermesTelegramNotifier:
                         return SendResult.DELIVERED
                     return SendResult.FAILED
             except urllib.error.HTTPError as e:
-                err_body = e.read().decode("utf-8", errors="replace")
+                err_body = e.read(65536).decode("utf-8", errors="replace")
                 safe_body = self.redact_secrets(err_body)
                 logger.error("Telegram HTTP %s error: %s", e.code, safe_body)
                 return SendResult.FAILED
@@ -1664,6 +1768,7 @@ class HermesTelegramNotifier:
         total_fleet_tok = _safe_int(fleet_stream.get("total_fleet_tokens", 0))
         top_tasks = fleet_stream.get("top_3_tasks", [])
         top_nodes = fleet_stream.get("top_5_nodes", [])
+        pro_first = fleet_stream.get("pro_first_criterion", {})
 
         lines = [
             "⚡ <b>[HERMES AGENT] 24/7 Hourly System Digest</b>",
@@ -1674,6 +1779,39 @@ class HermesTelegramNotifier:
             f"• Entropy Streams: <code>{entropy_score}%</code>",
             f"• Ticker Heartbeat: <code>{ticker_status}</code> (age {ticker.get('age_seconds', 0)}s)",
         ]
+
+        if pro_first:
+            badge = pro_first.get("badge", "⚪ CHƯA RÕ")
+            grade = html.escape(str(pro_first.get("grade", "UNKNOWN")))
+            p_burn = pro_first.get("pro_burn_pct", 0.0)
+            p_cons = pro_first.get("pro_consumed_tokens", 0)
+            p_cap = pro_first.get("pro_capacity_tokens", 0)
+            p_share = pro_first.get("pro_request_share_pct", 0.0)
+            rec_share = pro_first.get("recent_pro_share_pct", 0.0)
+            p_reqs = pro_first.get("pro_requests", 0)
+            tot_reqs = pro_first.get("total_requests", 0)
+            starved_cnt = pro_first.get("starved_count", 0)
+            tot_pro = pro_first.get("total_pro_nodes", 0)
+            starved_list = pro_first.get("starved_pro_nodes", [])
+            starved_preview = f" (gồm: {', '.join(starved_list[:3])}{'...' if len(starved_list) > 3 else ''})" if starved_list else ""
+            verdict = html.escape(str(pro_first.get("verdict", "")))
+
+            lines.append("")
+            lines.append("🎯 <b>Tiêu Chí Quality Hàng Giờ: Dùng Quota Pro Agy First:</b>")
+            lines.append(f"• <b>Đánh giá Tiêu chí:</b> {badge} (Grade: <b>{grade}</b>)")
+            lines.append(
+                f"• <b>Tỷ lệ Đốt Quota Pro Fleet:</b> <code>{p_burn}%</code> "
+                f"({p_cons:,} / {p_cap:,} tokens)"
+            )
+            lines.append(
+                f"• <b>Tỷ trọng Tải Pro Nodes:</b> <code>{p_share}%</code> "
+                f"(Tổng: <code>{p_reqs:,}/{tot_reqs:,}</code> reqs | Gần đây: <code>{rec_share}%</code>)"
+            )
+            lines.append(
+                f"• <b>Nodes Pro còn dồi dào (&gt;75% tồn):</b> <code>{starved_cnt}/{tot_pro}</code> nodes"
+                f"<i>{starved_preview}</i>"
+            )
+            lines.append(f"• <b>Kết luận Vận hành:</b> <i>{verdict}</i>")
 
         lines.append("")
         lines.append("💎 <b>Fleet Tokenomics &amp; Node Activity:</b>")

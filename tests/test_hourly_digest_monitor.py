@@ -41,7 +41,11 @@ from tools.hourly_digest_monitor import (
     HermesTelegramNotifier,
     SelfHealingManager,
     SendResult,
+    MAX_FLEET_BYTES,
+    _safe_fetch_json,
+    _safe_float,
     _safe_int,
+    _safe_pct,
     _validate_fleet_url,
     run_full_scan,
 )
@@ -651,6 +655,207 @@ def test_fleet_tokenomics_and_activity_collection(tmp_path):
         assert len(res["top_3_tasks"]) == 3
         assert len(res["top_5_nodes"]) == 5
         assert res["top_5_nodes"][0]["name"] == "nebula"
+        assert "pro_first_criterion" in res
+        pfc = res["pro_first_criterion"]
+        assert pfc["status"] in ("PASS", "WARNING", "CRITICAL")
+        assert "pro_burn_pct" in pfc
+        assert "pro_request_share_pct" in pfc
+        assert pfc["total_pro_nodes"] == 4
+        assert "starved_count" in pfc
+
+
+def test_pro_first_quota_exhaustion_quality_criterion(tmp_path):
+    """Test explicit Pro-First Quota Exhaustion & Workload Quality Criterion evaluation and digest formatting."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-token-123\n")
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
+
+    # 1. Optimal Scenario: Pro nodes heavily utilized (recent_pro_share_pct >= 80%)
+    detector_optimal = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    summary_resp = json.dumps({"online_nodes": 20, "total_nodes": 21}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 95.0, "sla_passed": True}).encode("utf-8")
+
+    optimal_nodes = {
+        "nodes": [
+            {"name": "pro-1", "tier": "pro", "requests_served": 150, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 2200000, "quota_weekly_percent": 12.0, "active_jobs": 0},
+            {"name": "pro-2", "tier": "pro", "requests_served": 140, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 2100000, "quota_weekly_percent": 16.0, "active_jobs": 0},
+            {"name": "pro-3", "tier": "pro", "requests_served": 130, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 2000000, "quota_weekly_percent": 20.0, "active_jobs": 0},
+            {"name": "nebula", "tier": "ultra", "requests_served": 20, "quota_weekly_capacity": 10000000, "quota_weekly_consumed": 500000, "quota_weekly_percent": 95.0, "active_jobs": 0},
+        ]
+    }
+    optimal_jobs = {
+        "jobs": [
+            {"job_id": "job-1", "node_name": "pro-1", "model": "gemini-3.8-flash-high", "total_tokens": 10000, "prompt": "Task 1"},
+            {"job_id": "job-2", "node_name": "pro-2", "model": "gemini-3.8-flash-high", "total_tokens": 12000, "prompt": "Task 2"},
+            {"job_id": "job-3", "node_name": "pro-3", "model": "gemini-3.8-flash-high", "total_tokens": 8000, "prompt": "Task 3"},
+            {"job_id": "job-4", "node_name": "pro-1", "model": "gemini-3.8-flash-high", "total_tokens": 9000, "prompt": "Task 4"},
+            {"job_id": "job-5", "node_name": "nebula", "model": "claude-opus-4.8", "total_tokens": 15000, "prompt": "Task 5"},
+        ]
+    }
+
+    def mock_urlopen_optimal(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = json.dumps(optimal_nodes).encode("utf-8")
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = json.dumps(optimal_jobs).encode("utf-8")
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen_optimal):
+        res_optimal = detector_optimal.check_stream_5_fleet_mesh()
+        criterion = res_optimal["pro_first_criterion"]
+        assert criterion["grade"] == "OPTIMAL"
+        assert criterion["status"] == "PASS"
+        assert criterion["badge"] == "🟢 ĐẠT CHUẨN"
+        assert criterion["recent_pro_share_pct"] == 80.0
+        assert criterion["starved_count"] == 0
+        assert "Round-Robin" in criterion["verdict"]
+
+        # Test formatting in hourly digest
+        scan_result = {
+            "overall_health_score": 98,
+            "severity": "HEALTHY",
+            "cron": {"cron_health_score": 100, "clogged_jobs": [], "drift_skipped_jobs": [], "ticker_heartbeat": {"is_stale": False, "age_seconds": 12.0}},
+            "entropy": {"entropy_health_score": 95, "streams": [res_optimal]},
+        }
+        digest_html = notifier.format_hourly_digest(scan_result)
+        assert "🎯 <b>Tiêu Chí Quality Hàng Giờ: Dùng Quota Pro Agy First:</b>" in digest_html
+        assert "• <b>Tỷ lệ Đốt Quota Pro Fleet:</b>" in digest_html
+        assert "• <b>Tỷ trọng Tải Pro Nodes:</b>" in digest_html
+        assert "• <b>Nodes Pro còn dồi dào (&gt;75% tồn):</b>" in digest_html
+        assert "• <b>Kết luận Vận hành:</b>" in digest_html
+        assert "🟢 ĐẠT CHUẨN" in digest_html
+        assert "OPTIMAL" in digest_html
+        assert "Toàn bộ tải đang được ưu tiên đốt cạn Quota Pro qua Round-Robin." in digest_html
+
+    # 2. Deficit Scenario: Pro nodes starved and underutilized (recent_pro_share_pct < 40%)
+    detector_deficit = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    deficit_nodes = {
+        "nodes": [
+            {"name": "pro-1", "tier": "pro", "requests_served": 1, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 50000, "quota_weekly_percent": 98.0, "active_jobs": 0},
+            {"name": "pro-2", "tier": "pro", "requests_served": 2, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 70000, "quota_weekly_percent": 97.2, "active_jobs": 0},
+            {"name": "pro-3", "tier": "pro", "requests_served": 0, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 0, "quota_weekly_percent": 100.0, "active_jobs": 0},
+            {"name": "nebula", "tier": "ultra", "requests_served": 500, "quota_weekly_capacity": 10000000, "quota_weekly_consumed": 8000000, "quota_weekly_percent": 20.0, "active_jobs": 2},
+            {"name": "lthn.Ariana", "tier": "ultra", "requests_served": 400, "quota_weekly_capacity": 10000000, "quota_weekly_consumed": 7000000, "quota_weekly_percent": 30.0, "active_jobs": 1},
+        ]
+    }
+    deficit_jobs = {
+        "jobs": [
+            {"job_id": "job-d1", "node_name": "nebula", "model": "claude-opus-4.8", "total_tokens": 50000, "prompt": "Audit 1"},
+            {"job_id": "job-d2", "node_name": "lthn.Ariana", "model": "gemini-3.1-pro-high", "total_tokens": 40000, "prompt": "Audit 2"},
+            {"job_id": "job-d3", "node_name": "nebula", "model": "claude-opus-4.8", "total_tokens": 30000, "prompt": "Audit 3"},
+        ]
+    }
+
+    def mock_urlopen_deficit(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = json.dumps(deficit_nodes).encode("utf-8")
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = json.dumps(deficit_jobs).encode("utf-8")
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen_deficit):
+        res_deficit = detector_deficit.check_stream_5_fleet_mesh()
+        criterion_d = res_deficit["pro_first_criterion"]
+        assert criterion_d["grade"] == "DEFICIT"
+        assert criterion_d["status"] == "CRITICAL"
+        assert criterion_d["badge"] == "🔴 LỆCH TIÊU CHÍ"
+        assert criterion_d["starved_count"] == 3
+        assert set(criterion_d["starved_pro_nodes"]) == {"pro-1", "pro-2", "pro-3"}
+
+        scan_result_d = {
+            "overall_health_score": 65,
+            "severity": "WARNING",
+            "cron": {"cron_health_score": 100, "clogged_jobs": [], "drift_skipped_jobs": [], "ticker_heartbeat": {"is_stale": False, "age_seconds": 15.0}},
+            "entropy": {"entropy_health_score": 60, "streams": [res_deficit]},
+        }
+        digest_html_d = notifier.format_hourly_digest(scan_result_d)
+        assert "🔴 LỆCH TIÊU CHÍ" in digest_html_d
+        assert "DEFICIT" in digest_html_d
+        assert "Tỷ trọng tải Pro quá thấp so với Nebula/Ultra; vi phạm nguyên tắc Pro-First." in digest_html_d
+
+    # 3. Acceptable Scenario: Pro nodes with intermediate share (recent_pro_share_pct == 50%)
+    detector_acceptable = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+    acceptable_nodes = {
+        "nodes": [
+            {"name": "pro-1", "tier": "pro", "requests_served": 50, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 1000000, "quota_weekly_percent": 60.0, "active_jobs": 0},
+            {"name": "pro-2", "tier": "pro", "requests_served": 2, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 50000, "quota_weekly_percent": 98.0, "active_jobs": 0},
+            {"name": "nebula", "tier": "ultra", "requests_served": 50, "quota_weekly_capacity": 10000000, "quota_weekly_consumed": 2000000, "quota_weekly_percent": 80.0, "active_jobs": 0},
+        ]
+    }
+    acceptable_jobs = {
+        "jobs": [
+            {"job_id": "job-a1", "node_name": "pro-1", "model": "gemini-3.8-flash-high", "total_tokens": 10000, "prompt": "Task 1"},
+            {"job_id": "job-a2", "node_name": "nebula", "model": "claude-opus-4.8", "total_tokens": 10000, "prompt": "Task 2"},
+        ]
+    }
+
+    def mock_urlopen_acceptable(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = json.dumps(acceptable_nodes).encode("utf-8")
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = json.dumps(acceptable_jobs).encode("utf-8")
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen_acceptable):
+        res_acceptable = detector_acceptable.check_stream_5_fleet_mesh()
+        criterion_a = res_acceptable["pro_first_criterion"]
+        assert criterion_a["grade"] == "ACCEPTABLE"
+        assert criterion_a["status"] == "WARNING"
+        assert criterion_a["badge"] == "🟡 CẦN TỐI ƯU"
+        assert criterion_a["recent_pro_share_pct"] == 50.0
+
+    # 4. _safe_float edge case tests
+    assert _safe_float(None) == 0.0
+    assert _safe_float("12.34") == 12.34
+    assert _safe_float(float("nan"), default=5.0) == 5.0
+    assert _safe_float(float("inf"), default=5.0) == 5.0
+    assert _safe_float("-5.0", min_val=0.0) == 0.0
+    assert _safe_float("invalid", default=10.0) == 10.0
+    assert _safe_float(b" 42.5 ") == 42.5
 
 
 def test_format_hourly_digest_focuses_on_tokens_tasks_and_nodes(tmp_path):
@@ -4786,3 +4991,108 @@ def test_production_monitor_ast_sql_and_subprocess_safety():
     # Sanity checks: ensure we actually inspected calls and didn't trivially pass
     assert execute_calls_inspected > 0, "Zero .execute() calls found; AST walk failed or file mutated"
     assert subprocess_calls_inspected > 0, "Zero subprocess calls found; AST walk failed or file mutated"
+
+
+# ==============================================================================
+# Nebula Cycle 34 Adversarial Security Suite (CWE-400, CWE-918, CWE-116, Zero-Div)
+# ==============================================================================
+
+def test_safe_pct_division_and_bounds():
+    """Verify _safe_pct never raises ZeroDivisionError and safely bounds NaN, Inf, and negatives."""
+    assert _safe_pct(50, 100) == 50.0
+    assert _safe_pct(1, 3, digits=2) == 33.33
+    # Division by zero
+    assert _safe_pct(50, 0) == 0.0
+    assert _safe_pct(0, 0) == 0.0
+    # Negative whole or part
+    assert _safe_pct(-5, 100) == 0.0
+    assert _safe_pct(50, -100) == 0.0
+    # Non-finite inputs
+    assert _safe_pct(float("nan"), 100) == 0.0
+    assert _safe_pct(50, float("nan")) == 0.0
+    assert _safe_pct(float("inf"), 100) == 0.0
+    assert _safe_pct(50, float("inf")) == 0.0
+    # Type coercion resilience
+    assert _safe_pct(None, 100) == 0.0
+    assert _safe_pct("25", "100") == 25.0
+    assert _safe_pct("invalid", "invalid") == 0.0
+
+
+def test_safe_fetch_json_enforces_url_validation():
+    """CWE-918: _safe_fetch_json must reject file://, gopher://, and cloud metadata schemes."""
+    with pytest.raises(ValueError, match="Invalid scheme"):
+        _safe_fetch_json("file:///home/zen/.env")
+
+    with pytest.raises(ValueError, match="blocked address class"):
+        _safe_fetch_json("http://169.254.169.254/latest/meta-data/")
+
+
+def test_safe_fetch_json_rejects_oversized_payload(monkeypatch):
+    """CWE-400: _safe_fetch_json must reject payloads exceeding max_bytes ceiling to prevent memory DoS."""
+    class MockOversizedResponse:
+        def __init__(self, size: int):
+            self.size = size
+
+        def read(self, n=-1):
+            read_len = n if n > 0 else self.size
+            return b"{" + b" " * read_len
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: MockOversizedResponse(MAX_FLEET_BYTES + 1024),
+    )
+
+    with pytest.raises(ValueError, match="exceeds size ceiling"):
+        _safe_fetch_json("http://mock-fleet:8080/nodes", max_bytes=MAX_FLEET_BYTES)
+
+
+def test_canary_poison_fleet_endpoint_fails_safe(tmp_path):
+    """Adversarial Canary Test: Poisoned fleet endpoint returning an oversize body fails closed."""
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary:8080",
+        fleet_council_url="http://mock-council:8080",
+        fleet_nodes_url="http://mock-nodes:8080",
+        fleet_jobs_url="http://mock-jobs:8080",
+    )
+
+    class MockPoisonResponse:
+        def read(self, n=-1):
+            return b"A" * (MAX_FLEET_BYTES + 2048)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    with patch("urllib.request.urlopen", return_value=MockPoisonResponse()):
+        res = detector.check_stream_5_fleet_mesh()
+        assert res["status"] == "CRITICAL"
+        assert res["score"] == 0
+        assert "exceeds size ceiling" in res.get("error", "")
+
+
+def test_safe_format_prompt_xss_and_injection_resilience():
+    """CWE-116: Verify prompt formatting thoroughly neutralizes HTML and injection payloads."""
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+
+    # 1. XSS payloads
+    payload = "<script>alert('pwn')</script>"
+    formatted = notifier._safe_format_prompt(payload, limit=100)
+    assert "<script>" not in formatted
+    assert "&lt;script&gt;" in formatted
+
+    # 2. Markdown / URL injection attempts
+    md_payload = "*pwn*](http://evil.com/leak)"
+    formatted_md = notifier._safe_format_prompt(md_payload, limit=100)
+    assert "<" not in formatted_md and ">" not in formatted_md
+
+    # 3. Newline stripping and multi-space collapsing
+    multiline = "line1\n\n\rline2   with   spaces"
+    assert notifier._safe_format_prompt(multiline) == "line1 line2 with spaces"
