@@ -42,6 +42,7 @@ from tools.hourly_digest_monitor import (
     SelfHealingManager,
     SendResult,
     MAX_FLEET_BYTES,
+    MAX_TELEMETRY_VALUE,
     _safe_fetch_json,
     _safe_float,
     _safe_int,
@@ -5958,6 +5959,132 @@ def test_double_entry_token_reconciliation_telemetry():
         assert div["divergent-node"]["jobs_1h_tokens"] == 2500
         assert div["divergent-node"]["weekly_tokens"] == 0
         assert div["divergent-node"]["divergence"] is True
+
+
+def test_numeric_validation_and_saturating_ceiling_cwe20():
+    """Nebula Cycle 37 Remediation:
+    - Scientific notation overflow (e.g. '1e500') must return 0, not raise, not become inf.
+    - Negative values must be clamped to min_val (default 0).
+    - NaN and Inf must return default (0).
+    - Extreme astronomical values (e.g. 10**50) must saturate at MAX_TELEMETRY_VALUE (1<<40).
+    """
+    assert _safe_int("1e500") == 0
+    assert _safe_int("1e-5") == 0
+    assert _safe_int("-100") == 0
+    assert _safe_int(-500) == 0
+    assert _safe_int(float("nan")) == 0
+    assert _safe_int(float("inf")) == 0
+    assert _safe_int(float("-inf")) == 0
+    assert _safe_int("not_a_number") == 0
+
+    # Saturating ceiling
+    assert _safe_int(10**50) == MAX_TELEMETRY_VALUE
+    assert _safe_int(1 << 45) == MAX_TELEMETRY_VALUE
+    assert _safe_int(1000) == 1000
+
+    # Float counterpart
+    assert _safe_float("1e500") == 0.0
+    assert _safe_float("-10.5") == 0.0
+    assert _safe_float(float("nan")) == 0.0
+    assert _safe_float(float("inf")) == 0.0
+    assert _safe_float(10**50) == float(MAX_TELEMETRY_VALUE)
+
+
+def test_fetch_rejects_file_scheme_and_applies_timeout():
+    """Nebula Cycle 37 Remediation:
+    - URL scheme validation must strictly allow only http/https, rejecting file:, ftp:, etc. (CWE-918).
+    - urlopen must be invoked with an explicit bounded timeout (CWE-400).
+    """
+    # 1. Scheme rejection
+    with pytest.raises(ValueError, match="Only http and https are permitted"):
+        _validate_fleet_url("file:///etc/passwd")
+
+    with pytest.raises(ValueError, match="Only http and https are permitted"):
+        _validate_fleet_url("ftp://example.com/test")
+
+    with pytest.raises(ValueError, match="Fleet URL must be a non-empty string"):
+        _validate_fleet_url("")
+
+    # 2. Timeout verification
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b'{"status": "ok"}'
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        res = _safe_fetch_json("http://localhost:7777/test", timeout=12.5)
+        assert res == {"status": "ok"}
+        assert mock_urlopen.called
+        _, kwargs = mock_urlopen.call_args
+        assert kwargs.get("timeout") == 12.5
+
+
+def test_reconciliation_divergence_above_threshold_flags():
+    """Nebula Cycle 37 Remediation:
+    Assert that divergence (underreporting tokens when jobs exist) produces actionable flags
+    divergence_flagged, divergent_nodes, and window_anomalies['reconciliation_divergence'].
+    """
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    now = 1770000000.0
+
+    summary_resp = json.dumps({"online_nodes": 5, "total_nodes": 5}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 90.0, "sla_passed": True}).encode("utf-8")
+    nodes_resp = json.dumps({
+        "nodes": [
+            {"name": "clean-node", "tier": "pro", "requests_served": 5, "quota_weekly_consumed": 50000, "active_jobs": 0},
+            {"name": "divergent-node", "tier": "pro", "requests_served": 2, "quota_weekly_consumed": 0, "active_jobs": 0},
+        ]
+    }).encode("utf-8")
+
+    jobs_list = [
+        # Normal job
+        {"job_id": "j1", "node_name": "clean-node", "model": "m", "total_tokens": 1500, "created_at": now - 100.0},
+        # Divergent job: non-zero job tokens, but node reported 0 weekly quota
+        {"job_id": "j2", "node_name": "divergent-node", "model": "m", "total_tokens": 2500, "created_at": now - 200.0},
+        # Poison payload: scientific notation overflow & negative tokens
+        {"job_id": "j3", "node_name": "clean-node", "model": "m", "total_tokens": "1e500", "created_at": now - 300.0},
+        {"job_id": "j4", "node_name": "clean-node", "model": "m", "total_tokens": -9999, "created_at": now - 400.0},
+    ]
+    jobs_resp = json.dumps({"jobs": jobs_list}).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        res = detector.check_stream_5_fleet_mesh(now_ts=now, reconcile_tokens=True)
+
+    # 1. Total tokens in 1h correctly filters/clamps poisoned payloads (1500 + 2500 + 0 + 0 = 4000)
+    assert res["total_jobs_tokens_1h"] == 4000
+
+    # 2. Reconciliation divergence flagged
+    rec = res["reconciliation"]
+    assert rec is not None
+    assert rec["divergence_flagged"] is True
+    assert rec["divergence_count"] == 1
+    assert rec["divergent_nodes"] == ["divergent-node"]
+
+    # 3. window_anomalies includes reconciliation_divergence
+    anomalies = res.get("window_anomalies", {})
+    assert anomalies["reconciliation_divergence"] == 1
+
 
 
 

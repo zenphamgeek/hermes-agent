@@ -158,17 +158,29 @@ def parse_timestamp(val: Any) -> Optional[datetime]:
     return None
 
 
-def _safe_int(val: Any, default: int = 0, min_val: int = 0) -> int:
-    """Safely coerce any value to an integer, clamped to at least min_val.
+MAX_TELEMETRY_VALUE = 1 << 40  # Saturating ceiling (1,099,511,627,776 tokens / requests; CWE-20)
 
-    Handles None, strings, floats, NaN, Inf, negatives, and unparseable strings
-    without ever raising TypeError or ValueError.
+
+def _safe_int(
+    val: Any,
+    default: int = 0,
+    min_val: int = 0,
+    max_val: Optional[int] = MAX_TELEMETRY_VALUE,
+) -> int:
+    """Safely coerce any value to an integer, clamped to [min_val, max_val] (CWE-20).
+
+    Guarantees:
+      1. Rejects non-numeric, NaN, Inf, and scientific notation overflow (e.g. '1e500') by returning default.
+      2. Clamps/saturates to min_val and max_val (default 1<<40) preventing numeric poisoning.
+      3. Never raises TypeError, ValueError, or OverflowError.
     """
     if val is None:
         return max(min_val, default)
     try:
-        if isinstance(val, (int, bool)):
+        if isinstance(val, bool):
             res = int(val)
+        elif isinstance(val, int):
+            res = val
         elif isinstance(val, float):
             if math.isnan(val) or math.isinf(val):
                 res = default
@@ -183,33 +195,55 @@ def _safe_int(val: Any, default: int = 0, min_val: int = 0) -> int:
                 try:
                     res = int(v_str)
                 except ValueError:
-                    f = float(v_str)
-                    if math.isnan(f) or math.isinf(f):
+                    try:
+                        f = float(v_str)
+                        if math.isnan(f) or math.isinf(f):
+                            res = default
+                        else:
+                            res = int(f)
+                    except (ValueError, OverflowError):
                         res = default
-                    else:
-                        res = int(f)
         else:
-            f = float(val)
-            if math.isnan(f) or math.isinf(f):
+            try:
+                f = float(val)
+                if math.isnan(f) or math.isinf(f):
+                    res = default
+                else:
+                    res = int(f)
+            except (ValueError, TypeError, OverflowError):
                 res = default
-            else:
-                res = int(f)
     except (ValueError, TypeError, OverflowError):
         res = default
-    return max(min_val, res)
+
+    if res < min_val:
+        res = min_val
+    if max_val is not None and res > max_val:
+        res = max_val
+    return res
 
 
-def _safe_float(val: Any, default: float = 0.0, min_val: float = 0.0) -> float:
-    """Safely coerce any value to float, clamped to at least min_val."""
+def _safe_float(
+    val: Any,
+    default: float = 0.0,
+    min_val: float = 0.0,
+    max_val: Optional[float] = float(MAX_TELEMETRY_VALUE),
+) -> float:
+    """Safely coerce any value to float, clamped to [min_val, max_val] (CWE-20)."""
     if val is None:
         return max(min_val, default)
     try:
         if isinstance(val, (int, float, bool)):
             f = float(val)
-            return max(min_val, default if (math.isnan(f) or math.isinf(f)) else f)
-        v_str = str(val, "utf-8", errors="replace") if isinstance(val, bytes) else str(val)
-        f = float(v_str.strip())
-        return max(min_val, default if (math.isnan(f) or math.isinf(f)) else f)
+        else:
+            v_str = str(val, "utf-8", errors="replace") if isinstance(val, bytes) else str(val)
+            f = float(v_str.strip())
+        if math.isnan(f) or math.isinf(f):
+            return max(min_val, default)
+        if f < min_val:
+            return min_val
+        if max_val is not None and f > max_val:
+            return max_val
+        return f
     except Exception:
         return max(min_val, default)
 
@@ -1168,6 +1202,7 @@ class EntropyDegradationDetector:
             }
 
             reconciliation: Optional[Dict[str, Any]] = None
+            divergent_nodes = []
             if reconcile_tokens:
                 reconciliation_divergence = {}
                 for nname in candidate_names:
@@ -1181,10 +1216,16 @@ class EntropyDegradationDetector:
                         "weekly_tokens": w_tok,
                         "divergence": underreporting,
                     }
+                divergent_nodes = sorted([
+                    nname for nname, d in reconciliation_divergence.items() if d.get("divergence")
+                ])
                 reconciliation = {
                     "jobs_stream_tokens_1h": total_jobs_tokens_1h,
                     "fleet_weekly_tokens": total_fleet_tokens,
                     "reconciliation_divergence": reconciliation_divergence,
+                    "divergent_nodes": divergent_nodes,
+                    "divergence_flagged": len(divergent_nodes) > 0,
+                    "divergence_count": len(divergent_nodes),
                 }
 
             return {
@@ -1205,6 +1246,7 @@ class EntropyDegradationDetector:
                     "future_rejected": future_jobs_rejected,
                     "malformed_rejected": malformed_jobs_rejected,
                     "stale_filtered": stale_jobs_filtered,
+                    "reconciliation_divergence": len(divergent_nodes),
                 },
                 "reconciliation": reconciliation,
             }
@@ -1228,6 +1270,7 @@ class EntropyDegradationDetector:
                     "future_rejected": future_jobs_rejected,
                     "malformed_rejected": malformed_jobs_rejected,
                     "stale_filtered": stale_jobs_filtered,
+                    "reconciliation_divergence": 0,
                 },
                 "reconciliation": None,
                 "error": str(e),
