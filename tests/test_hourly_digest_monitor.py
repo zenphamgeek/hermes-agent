@@ -11,8 +11,10 @@ except ImportError:
     fcntl = None
 import hashlib
 import html
+import io
 import itertools
 import json
+import logging
 import math
 import os
 import re
@@ -23,6 +25,7 @@ import statistics
 import subprocess
 import sys
 import time
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Tuple
@@ -39,7 +42,7 @@ from tools.hourly_digest_monitor import (
     run_full_scan,
 )
 
-TEST_CHAT_ID = "100000000"  # Synthetic, non-routable placeholder test chat ID
+TEST_CHAT_ID = "100000000"  # Synthetic test ID. Safety comes from test TELEGRAM_BOT_TOKEN and fail-closed send guard, never from this value alone.
 
 
 # ==============================================================================
@@ -598,6 +601,12 @@ def test_hermes_telegram_notifier(tmp_path):
     assert "Composite Health" in digest_html
 
     # Test delivery mock
+    # Before providing a routable format token, fail-closed send guard suppresses delivery
+    assert notifier.send_alert(alert_html) is False
+    assert notifier.send_digest(digest_html) is False
+
+    # With routable bot token structure, delivery is dispatched to urlopen
+    notifier.bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
     mock_resp = MagicMock()
     mock_resp.read.return_value = json.dumps({"ok": True}).encode("utf-8")
     mock_resp.__enter__.return_value = mock_resp
@@ -605,6 +614,115 @@ def test_hermes_telegram_notifier(tmp_path):
     with patch("urllib.request.urlopen", return_value=mock_resp):
         assert notifier.send_alert(alert_html) is True
         assert notifier.send_digest(digest_html) is True
+
+
+def test_notifier_fail_closed_send_guard(tmp_path):
+    """Cycle 28: Fail-closed guard strictly validates token format and suppresses non-live/test sends."""
+    # Token format structural validation
+    assert HermesTelegramNotifier.is_valid_token_format("test-token-123") is False
+    assert HermesTelegramNotifier.is_valid_token_format("dummy") is False
+    assert HermesTelegramNotifier.is_valid_token_format("placeholder") is False
+    assert HermesTelegramNotifier.is_valid_token_format("none") is False
+    assert HermesTelegramNotifier.is_valid_token_format(None) is False
+    assert HermesTelegramNotifier.is_valid_token_format("") is False
+    assert HermesTelegramNotifier.is_valid_token_format("12345") is False
+    assert HermesTelegramNotifier.is_valid_token_format("test-123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345") is False
+    assert HermesTelegramNotifier.is_valid_token_format("123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345") is True
+    assert HermesTelegramNotifier.is_valid_token_format('"123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"') is True
+
+    # Assert calling _send_payload with dummy token returns False immediately and calls 0 network requests
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN=dummy\nTELEGRAM_ALLOWED_USERS={TEST_CHAT_ID}\n")
+    notifier_dummy = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
+
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        sent = notifier_dummy._send_payload("<b>Test Alert</b>")
+        assert sent is False
+        mock_urlopen.assert_not_called()
+
+    # Assert calling with test-token returns False immediately and calls 0 network requests
+    notifier_test = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID, bot_token="test-token-123")
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        sent = notifier_test._send_payload("<b>Test Alert</b>")
+        assert sent is False
+        mock_urlopen.assert_not_called()
+
+    # Assert HERMES_SUPPRESS_TELEGRAM=1 suppresses send even with a valid token format
+    notifier_valid = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        bot_token="123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345",
+    )
+    with patch.dict(os.environ, {"HERMES_SUPPRESS_TELEGRAM": "1"}):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            sent = notifier_valid._send_payload("<b>Test Alert</b>")
+            assert sent is False
+            mock_urlopen.assert_not_called()
+
+
+def test_retry_is_idempotent_and_never_reexposes_secrets(tmp_path, caplog):
+    """Cycle 28: Retries on send_payload flakiness/drops are idempotent and never emit secrets to logs (CWE-532)."""
+    env_file = tmp_path / ".env"
+    bot_token = "123456789:SECRET_BOT_TOKEN_RETRY_1234567890123"
+    api_secret = "SUPER_SECRET_PAYLOAD_CREDENTIAL_9999"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN={bot_token}\nAPI_SECRET={api_secret}\n")
+
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
+
+    raw_payload = f"<b>Alert</b>: Cron job failed with secret {api_secret}"
+    original_payload = str(raw_payload)
+
+    # Simulate network drop / flakiness raising an exception containing token or credentials
+    net_err = ConnectionResetError(f"Connection reset by peer while contacting telegram with token {bot_token}")
+
+    with patch("urllib.request.urlopen", side_effect=net_err):
+        for _ in range(3):
+            caplog.clear()
+            with caplog.at_level(logging.INFO):
+                success = notifier._send_payload(raw_payload)
+                assert success is False
+
+                # Verifies secrets are never emitted to logs during failures
+                assert bot_token not in caplog.text
+                assert api_secret not in caplog.text
+                assert "[REDACTED]" in caplog.text
+
+    # Verifies payloads remain clean / unmutated
+    assert raw_payload == original_payload
+
+
+def test_send_payload_redacts_secrets_in_http_error_logging(tmp_path, caplog):
+    """Cycle 28: HTTPError response body echoing secrets is redacted before logging (CWE-532)."""
+    env_file = tmp_path / ".env"
+    bot_token = "987654321:LIVE_BOT_TOKEN_HTTP_ERR_1234567890"
+    oauth_secret = "SENSITIVE_OAUTH_TOKEN_BEARER_88888"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN={bot_token}\nOAUTH_SECRET={oauth_secret}\n")
+
+    notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID)
+
+    err_body = (
+        f'{{"ok": false, "error_code": 401, "description": "Unauthorized token: {bot_token} and {oauth_secret}"}}'
+    ).encode("utf-8")
+
+    http_error = urllib.error.HTTPError(
+        url=f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        code=401,
+        msg="Unauthorized",
+        hdrs={},
+        fp=io.BytesIO(err_body),
+    )
+
+    with patch("urllib.request.urlopen", side_effect=http_error):
+        caplog.clear()
+        with caplog.at_level(logging.INFO):
+            success = notifier._send_payload("Test Alert Message")
+            assert success is False
+
+            # Asserts raw secret is absent and [REDACTED] is present
+            assert bot_token not in caplog.text
+            assert oauth_secret not in caplog.text
+            assert "[REDACTED]" in caplog.text
+            assert "Telegram HTTP 401 error:" in caplog.text
 
 
 # ==============================================================================

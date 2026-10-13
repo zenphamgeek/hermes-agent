@@ -975,9 +975,22 @@ class HermesTelegramNotifier:
                 logger.error("Failed loading token from %s: %s", self.env_file, e)
         return token
 
+    @staticmethod
+    def is_valid_token_format(token: Optional[str]) -> bool:
+        """Validates Telegram bot token structure and rejects non-routable test tokens (Fail-Closed Guard)."""
+        if not token or not isinstance(token, str):
+            return False
+        clean = token.strip().strip("'\"")
+        if clean.startswith("test-") or clean.lower() in ("dummy", "placeholder", "none"):
+            return False
+        return bool(re.match(r"^[0-9]{6,20}:[A-Za-z0-9_\-]{30,128}$", clean))
+
     def _send_payload(self, text: str) -> bool:
-        if not self.bot_token:
-            logger.error("Cannot send Telegram message: Bot token is missing.")
+        if not self.bot_token or not self.is_valid_token_format(self.bot_token):
+            logger.info("Telegram live send suppressed: dummy or non-live bot token format (%s).", str(self.bot_token)[:12])
+            return False
+        if os.environ.get("HERMES_SUPPRESS_TELEGRAM") == "1":
+            logger.info("Telegram live send suppressed via HERMES_SUPPRESS_TELEGRAM=1.")
             return False
 
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
@@ -999,10 +1012,12 @@ class HermesTelegramNotifier:
                 return bool(data.get("ok", False))
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="replace")
-            logger.error("Telegram HTTP %s error: %s", e.code, err_body)
+            safe_body = self.redact_secrets(err_body)
+            logger.error("Telegram HTTP %s error: %s", e.code, safe_body)
             return False
         except Exception as e:
-            logger.error("Telegram delivery failed: %s", e)
+            safe_e = self.redact_secrets(str(e))
+            logger.error("Telegram delivery failed: %s", safe_e)
             return False
 
     _URL_CRED_PATTERN = re.compile(
