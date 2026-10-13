@@ -102,67 +102,141 @@ Mỗi automation là một sidecar thư mục con tại `<configDir>/sidecars/<s
 
 ---
 
-## 4. Danh mục 5 Automations Trọng điểm
+## 4. Danh mục 6 Automations Trọng điểm (Bao phủ Toàn bộ Workspace)
 
-### 4.1. `pinned-evolution-scout` (Quét & Đẩy Tiến độ Dự án Ghim)
+### 4.1. `high-entropy-research-radar` (Bơm Entropy & Hội Đồng Tranh Biện Dialect Council)
+- **ID thư mục**: `high-entropy-research-radar`
+- **Tên hiển thị**: `High-Entropy Multi-Domain Research & Dialect Council Scout`
+- **Tần suất**: Mỗi 2 giờ (`CRON_TZ=Asia/Ho_Chi_Minh 0 */2 * * *`)
+- **Nhiệm vụ**: Bơm entropy học thuật và công nghệ mở từ GitHub Trending, ArXiv, Tech Feeds vào các routines nghiên cứu thuộc 4 miền dự án trọng điểm (/O20, /VerticalRisk, /Graydoom, /insilos_mobile). Triệu tập **Dialect Council** (Cloud Clef + Local JEV + Opus Node) để phê duyệt giải pháp và phân phối `fleet_plan` / `fleet_run` qua AGY Fleet Swarm.
+- **Quyền hạn**:
+  - `workspace_uris`: `["file:///home/zen/O20", "file:///home/zen/VerticalRisk", "file:///home/zen/Graydoom", "file:///home/zen/insilos_mobile", "file:///home/zen/workspace", "file:///home/zen/hermes-agent", "file:///home/zen/zencode-ent"]`
+  - `command(fleet-watcher status)`
+  - `command(fleet-watcher scan --dry-run)`
+  - `command(fleet-watcher scout-repos)`
+  - `command(fleet-watcher research)`
+  - `command(fleet-watcher plan)`
+  - `read_file(/home/zen/O20)`
+  - `read_file(/home/zen/VerticalRisk)`
+  - `read_file(/home/zen/Graydoom)`
+  - `read_file(/home/zen/insilos_mobile)`
+  - `read_file(/home/zen/.gemini/antigravity/conversation_summaries.db)`
+  - `read_file(/home/zen/.gemini/antigravity/annotations)`
+
+### 4.2. `pinned-evolution-scout` (Quét & Đẩy Tiến độ Dự án Ghim Toàn Diện)
 - **ID thư mục**: `pinned-evolution-scout`
 - **Tên hiển thị**: `Pinned Projects Autonomous Evolution Scout`
 - **Tần suất**: Mỗi 30 phút (`CRON_TZ=Asia/Ho_Chi_Minh */30 * * * *`)
-- **Nhiệm vụ**: Đọc danh sách các dự án đang ghim (`pinned:true`) trong `conversation_summaries.db`, xác định các dự án đang ở trạng thái idle, chạy `fleet-watcher scan --dry-run` và phân phối tác vụ nghiên cứu / mở rộng kiểm thử qua AGY Fleet.
+- **Nhiệm vụ**: Bao phủ toàn bộ các dự án ghim tại `/O20`, `/VerticalRisk`, `/Graydoom`, `/insilos_mobile`, `/hermes-agent`, `/zencode-ent`. Đọc trạng thái idle trong `conversation_summaries.db`, chạy `fleet-watcher scan --dry-run`, điều phối tiến hóa kiểm thử đối kháng và nâng cấp kiến trúc qua AGY Fleet.
 - **Quyền hạn**:
+  - `workspace_uris`: `["file:///home/zen/O20", "file:///home/zen/VerticalRisk", "file:///home/zen/Graydoom", "file:///home/zen/insilos_mobile", "file:///home/zen/workspace", "file:///home/zen/hermes-agent", "file:///home/zen/zencode-ent"]`
   - `command(fleet-watcher status)`
   - `command(fleet-watcher scan --dry-run)`
+  - `command(fleet-watcher scout-repos)`
+  - `command(fleet-watcher research)`
+  - `command(fleet-watcher plan)`
+  - `read_file(/home/zen/O20)`
+  - `read_file(/home/zen/VerticalRisk)`
+  - `read_file(/home/zen/Graydoom)`
+  - `read_file(/home/zen/insilos_mobile)`
   - `read_file(/home/zen/.gemini/antigravity/conversation_summaries.db)`
   - `read_file(/home/zen/.gemini/antigravity/annotations)`
-  - `mcp(agy-fleet/fleet_run)`
-  - `mcp(agy-fleet/fleet_smart_run)`
 
-### 4.2. `memory-curator-l3-audit` (Audit Bộ nhớ Chuẩn tắc L3)
+### 4.3. `teamwork-sentinel-liveness` (Giám sát Sống Còn & Tiến độ Swarm Toàn Dự Án)
+- **ID thư mục**: `teamwork-sentinel-liveness`
+- **Tên hiển thị**: `Teamwork Swarm Liveness & Progress Sentinel`
+- **Tần suất**: Mỗi 15 phút (`CRON_TZ=Asia/Ho_Chi_Minh */15 * * * *`)
+- **Nhiệm vụ**: Quét `.agents/teamwork/` trên toàn bộ các workspace (`/O20`, `/VerticalRisk`, `/Graydoom`, `/insilos_mobile`, `/zencode-ent`, `/workspace`). Kiểm tra mtime của `progress.md` và `BRIEFING.md`, phát hiện worker/subagent treo (>20 phút) và báo cáo trạng thái.
+- **Quyền hạn**:
+  - `workspace_uris`: `["file:///home/zen/O20", "file:///home/zen/VerticalRisk", "file:///home/zen/Graydoom", "file:///home/zen/insilos_mobile", "file:///home/zen/zencode-ent", "file:///home/zen/workspace", "file:///home/zen/hermes-agent"]`
+  - `read_file(/home/zen/O20)`
+  - `read_file(/home/zen/VerticalRisk)`
+  - `read_file(/home/zen/Graydoom)`
+  - `read_file(/home/zen/insilos_mobile)`
+  - `read_file(/home/zen/zencode-ent/.agents/teamwork)`
+  - `read_file(/home/zen/workspace/agy-pinned-monitor/.agents/teamwork)`
+  - `command(git status)`
+
+### 4.4. `content-factory-segmentation` (Batch Phân đoạn Video)
+- **ID thư mục**: `content-factory-segmentation`
+- **Tên hiển thị**: `Content Factory Video Segmentation Batch Pipeline`
+- **Tần suất**: Mỗi giờ tại phút thứ 00 (`CRON_TZ=Asia/Ho_Chi_Minh 0 * * * *`)
+- **Nhiệm vụ**: Thay thế crontab `batch_segment_eporner.py`. Xử lý lô video đầu vào, cắt ghép cảnh 2K/4K và kiểm tra chất lượng âm thanh EBU R128 (-14.5 LUFS).
+- **Quyền hạn**:
+  - `workspace_uris`: `["file:///home/zen/hermes-agent"]`
+  - `command(/usr/bin/python3 /home/zen/hermes-agent/assets/scripts_video/batch_segment_eporner.py --cron)`
+  - `read_file(/home/zen/hermes-agent/assets)`
+
+### 4.5. `rule-harness-daily-consolidation` (Hợp nhất Quy tắc & Quên Thông minh)
+- **ID thư mục**: `rule-harness-daily-consolidation`
+- **Tên hiển thị**: `Daily Agent Rules Consolidation & Forgetting Audit`
+- **Tần suất**: Hàng ngày lúc 04:15 ICT (`CRON_TZ=Asia/Ho_Chi_Minh 15 4 * * *`)
+- **Nhiệm vụ**: Thay thế crontab `rule_harness_consolidator.py`. Quét các quy tắc hoạt động, tối ưu hóa độ dài ngữ cảnh, dọn dẹp ngữ cảnh mô hình cũ không còn sử dụng.
+- **Quyền hạn**:
+  - `workspace_uris`: `["file:///home/zen/zencode-ent"]`
+  - `command(/usr/bin/python3 /home/zen/zencode-ent/router/rule_harness_consolidator.py --consolidate)`
+  - `read_file(/home/zen/zencode-ent/router)`
+
+### 4.6. `memory-curator-l3-audit` (Audit Bộ nhớ Chuẩn tắc L3)
 - **ID thư mục**: `memory-curator-l3-audit`
 - **Tên hiển thị**: `Memory Curator L3 Weekly Normative Audit`
-- **Tần suất**: Định kỳ Chủ Nhật hàng tuần lúc 03:00 ICT (`CRON_TZ=Asia/Ho_Chi_Minh 0 3 * * 0`)
-- **Nhiệm vụ**: Thay thế crontab `memory_curator_l3.py`. Kiểm tra tri thức chuẩn tắc L3 (`AGENTS.md`, `.agents/rules/`), phát hiện tri thức xung đột/lỗi thời, tạo tombstone và ghi nhận thay đổi có bằng chứng.
+- **Tần suất**: Chủ Nhật hàng tuần lúc 03:00 ICT (`CRON_TZ=Asia/Ho_Chi_Minh 0 3 * * 0`)
+- **Nhiệm vụ**: Thay thế crontab `curate_l3.py`. Kiểm tra tri thức chuẩn tắc L3 (`AGENTS.md`, `.agents/rules/`), phát hiện tri thức lỗi thời, tạo tombstone và ghi nhận commit sạch sẽ.
 - **Quyền hạn**:
   - `workspace_uris`: `["file:///home/zen/hermes-agent"]`
   - `command(/home/zen/hermes-agent/.venv/bin/python .agents/skills/memory-curator/scripts/curate_l3.py --apply)`
   - `command(git status)`
   - `command(git diff)`
-
-### 4.3. `rule-harness-daily-consolidation` (Hợp nhất Quy tắc & Quên Thông minh)
-- **ID thư mục**: `rule-harness-daily-consolidation`
-- **Tên hiển thị**: `Daily Agent Rules Consolidation & Forgetting Audit`
-- **Tần suất**: Hàng ngày lúc 04:15 ICT (`CRON_TZ=Asia/Ho_Chi_Minh 15 4 * * *`)
-- **Nhiệm vụ**: Thay thế crontab `rule_harness_consolidator.py`. Quét các quy tắc hoạt động, tối ưu độ dài ngữ cảnh, dọn dẹp các ngữ cảnh mô hình cũ không còn sử dụng.
-- **Quyền hạn**:
-  - `workspace_uris`: `["file:///home/zen/zencode-ent"]`
-  - `command(/usr/bin/python3 /home/zen/zencode-ent/router/rule_harness_consolidator.py --consolidate)`
-
-### 4.4. `teamwork-sentinel-liveness` (Giám sát Tiến độ & Sống còn Swarm)
-- **ID thư mục**: `teamwork-sentinel-liveness`
-- **Tên hiển thị**: `Teamwork Swarm Liveness & Progress Sentinel`
-- **Tần suất**: Mỗi 15 phút (`CRON_TZ=Asia/Ho_Chi_Minh */15 * * * *`)
-- **Nhiệm vụ**: Thay thế cụm Cron 1 (Progress Reporting) và Cron 2 (Liveness Check) từng chạy nội phiên trong `d9db2920`. Quét `.agents/teamwork/`, kiểm tra `progress.md` và `BRIEFING.md`, phát hiện subagent bị treo (>20 phút) và báo cáo ngắn gọn.
-- **Quyền hạn**:
-  - `workspace_uris`: `["file:///home/zen/zencode-ent", "file:///home/zen/workspace"]`
-  - `read_file(/home/zen/zencode-ent/.agents/teamwork)`
-  - `read_file(/home/zen/workspace/agy-pinned-monitor/.agents/teamwork)`
-  - `command(git status)`
-
-### 4.5. `content-factory-segmentation` (Batch Phân đoạn Video)
-- **ID thư mục**: `content-factory-segmentation`
-- **Tên hiển thị**: `Content Factory Video Segmentation Batch Pipeline`
-- **Tần suất**: Mỗi giờ tại phút thứ 00 (`CRON_TZ=Asia/Ho_Chi_Minh 0 * * * *`)
-- **Nhiệm vụ**: Thay thế crontab `batch_segment_eporner.py`. Xử lý các lô video đầu vào, cắt ghép cảnh 2K/4K và kiểm tra chất lượng âm thanh EBU R128 chuẩn -14.5 LUFS.
-- **Quyền hạn**:
-  - `workspace_uris`: `["file:///home/zen/hermes-agent"]`
-  - `command(/usr/bin/python3 /home/zen/hermes-agent/assets/scripts_video/batch_segment_eporner.py --cron)`
+  - `read_file(/home/zen/hermes-agent/.agents/rules)`
+  - `read_file(/home/zen/hermes-agent/AGENTS.md)`
 
 ---
 
-## 5. Hướng dẫn Vận hành & Kích hoạt trên Dashboard
+## 5. Quy trình Bơm Entropy Cao & Tranh Biện Hội Đồng (Dialect Council)
 
-1. **Khởi tạo tệp sidecar**: Các tệp `sidecar.json` được ghi vào `~/.gemini/config/sidecars/<sidecar-id>/sidecar.json`.
-2. **Kích hoạt an toàn**: Theo quy định an toàn hệ thống, Agent không tự ý sửa đổi `user_config.json`. Người dùng chỉ cần mở dashboard bằng liên kết:
+```mermaid
+flowchart TD
+    subgraph Sources["Nguồn Cung Cấp Entropy Cao (High-Entropy Ingestion)"]
+        GH["GitHub Radar (Titans & Fast-Climbing)<br/>vLLM, SGLang, LiteLLM, Prefect, Drift, Bevy"]
+        AX["ArXiv & Scholarly Preprints<br/>Reflexion, Multi-agent Debate, MemGPT, CRDTs, Lockstep"]
+        DOM["Multi-Domain Frontiers<br/>• ERP: Odoo 20, QWeb, Owl 20, Assets<br/>• HSE/GRC: VerticalRisk, OSHA, CAPA, Incident Matrix<br/>• Game: Graydoom RTS, Lockstep, ECS<br/>• Mobile: Insilos Mobo, Flutter, Offline Drift"]
+    end
+
+    subgraph Council["Hội Đồng Tranh Biện Ba Trụ Cột (Dialect Council)"]
+        CC["1. Cloud Clef Swarm<br/>(Edge PoPs · Zero-Output-Tokens)<br/>Định tuyến, phân loại độ phức tạp [0.0-4.0]"]
+        JEV["2. Local JEV (Judge / Evolution Validator)<br/>(In-Process AST & Ledger Guard)<br/>Chống trùng lặp SHA256, kiểm định DoD/Test runner"]
+        OPUS["3. Opus Node (Lead Sovereign Architect)<br/>(Ultra Tier / Claude Opus 4.8 / 5.5 High)<br/>Phản biện đối kháng, tổng hợp đặc tả kiến trúc"]
+    end
+
+    subgraph Dispatch["Điều Phối & Thi Hành (Fleet Dispatch)"]
+        FP["fleet_plan --deep --strategy dialectic<br/>(Thang tiến hóa 5 bước · Ladder Step 1-5)"]
+        FR["fleet_run / fleet_autonomous_enqueue<br/>(Phân luồng 21 nodes AGY Swarm :7777)"]
+    end
+
+    Sources --> Council
+    CC <--> JEV
+    JEV <--> OPUS
+    Council --> FP
+    FP --> FR
+```
+
+### 5.1. Ba Trụ Cột của Dialect Council
+1. **Cloud Clef (Edge Fast-Path & Cognitive Routing)**:
+   - Chạy trên mạng lưới Cloudflare Workers AI Edge PoPs với chi phí đầu ra $0.00 (`output_tokens == 0`).
+   - Đánh giá độ phức tạp thuật toán, phân tích domain tags, và quyết định lộ trình: Fast-Path (<200ms) nếu đồng thuận $\ge 85\%$, hoặc chuyển tiếp sang phiên tranh luận sâu.
+2. **Local JEV (Judge & Evolution Validator)**:
+   - Đảm bảo kiểm chứng nghiêm ngặt (*Zero-Fake-Pass*): xác minh file tồn tại, phân tích cú pháp AST, và bắt buộc định dạng kiểm thử theo runner bản địa (`pytest`, `node:test`, `@odoo/hoot`, `flutter test`).
+   - Tra cứu sổ cái `evolution_ledger.db` để ngăn ngừa các prompt lặp lại trong cửa sổ khử trùng lặp 2 giờ.
+3. **Opus Node (Sovereign Architectural Synthesis)**:
+   - Triệu tập node `ultra-2` / `pro-1` hoặc Nebula `claude-opus-4.8` để đóng vai trò Kiến trúc sư trưởng đối kháng (*Adversarial Principal Architect*).
+   - Thiết lập kịch bản tranh biện đa góc nhìn: *Security Red Team* vs *Pragmatic SRE* vs *Domain Consultant* (ERP/HSE/Game/Mobile) trước khi sinh mã nguồn.
+
+---
+
+## 6. Hướng dẫn Vận hành & Kích hoạt trên Dashboard
+
+1. **Khởi tạo tệp sidecar**: Toàn bộ 6 tệp `sidecar.json` đã được định vị tại `~/.gemini/config/sidecars/<sidecar-id>/sidecar.json`.
+2. **Kích hoạt an toàn**: Người dùng truy cập dashboard tập trung của Antigravity để bật tự động hóa:
    👉 **[Mở Automations Dashboard](sidecar://dashboard)**
-3. **Bật/Tắt bằng một click**: Tìm các Automation tương ứng (`display_name`) và bật công tắc **Enable**.
-4. **Giám sát lịch sử**: Mọi lần chạy định kỳ sẽ tự động xuất hiện thành một phiên hội thoại riêng biệt trong danh sách hội thoại của Antigravity, có gắn nhãn Automation tương ứng, dễ dàng kiểm tra kết quả và audit lịch sử.
+3. **Giám sát trực quan**: Mỗi chu kỳ tự động sẽ tạo ra một phiên hội thoại độc lập trong Antigravity IDE, lưu giữ đầy đủ biên bản họp của Dialect Council, kế hoạch `fleet_plan`, và kết quả thực thi `fleet_run`.
+
