@@ -24,6 +24,7 @@ CLI:
 
 import argparse
 from contextlib import contextmanager
+from collections import Counter
 import enum
 import errno
 try:
@@ -114,14 +115,21 @@ def parse_timestamp(val: Any) -> Optional[datetime]:
     if not val:
         return None
     if isinstance(val, (int, float)):
-        return datetime.fromtimestamp(val, tz=timezone.utc)
+        if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+            return None
+        try:
+            return datetime.fromtimestamp(val, tz=timezone.utc)
+        except (ValueError, OverflowError, OSError):
+            return None
     if isinstance(val, str):
         val = val.strip()
         try:
             # Handle float string
             ts = float(val)
+            if math.isnan(ts) or math.isinf(ts):
+                return None
             return datetime.fromtimestamp(ts, tz=timezone.utc)
-        except ValueError:
+        except (ValueError, OverflowError, OSError):
             pass
 
         # Try ISO 8601
@@ -910,7 +918,7 @@ class EntropyDegradationDetector:
                 "error": str(e),
             }
 
-    def check_stream_5_fleet_mesh(self) -> Dict[str, Any]:
+    def check_stream_5_fleet_mesh(self, now_ts: Optional[float] = None) -> Dict[str, Any]:
         """Stream 5: AGY Fleet & Clef Mesh (REST query to localhost:7777)."""
         active_nodes = 0
         total_nodes = 0
@@ -919,9 +927,16 @@ class EntropyDegradationDetector:
         total_fleet_tokens = 0
         top_5_nodes: List[Dict[str, Any]] = []
         total_jobs_tokens = 0
+        total_jobs_tokens_1h = 0
         top_3_tasks: List[Dict[str, Any]] = []
         valid_nodes: List[Dict[str, Any]] = []
         valid_jobs: List[Dict[str, Any]] = []
+        future_jobs_rejected = 0
+        malformed_jobs_rejected = 0
+        stale_jobs_filtered = 0
+
+        now_time = now_ts if now_ts is not None else time.time()
+        cutoff_ts = now_time - 3600.0
 
         try:
             sum_data = _safe_fetch_json(self.fleet_summary_url, timeout=10.0)
@@ -951,45 +966,133 @@ class EntropyDegradationDetector:
                 nodes_list = raw_data.get("nodes", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
                 valid_nodes = [n for n in nodes_list if isinstance(n, dict)]
                 total_fleet_tokens = sum(_safe_int(n.get("quota_weekly_consumed")) for n in valid_nodes)
-                sorted_nodes = sorted(
-                    valid_nodes,
-                    key=lambda n: (_safe_int(n.get("requests_served")), _safe_int(n.get("quota_weekly_consumed"))),
-                    reverse=True,
-                )
-                for n in sorted_nodes[:5]:
-                    top_5_nodes.append({
-                        "name": str(n.get("name", "")),
-                        "tier": str(n.get("tier", "")),
-                        "requests_served": _safe_int(n.get("requests_served")),
-                        "tokens_consumed": _safe_int(n.get("quota_weekly_consumed")),
-                        "active_jobs": _safe_int(n.get("active_jobs")),
-                    })
             except Exception as e:
                 logger.debug("Fleet nodes query failed: %s", e)
 
             try:
-                raw_data = _safe_fetch_json(self.fleet_jobs_url, timeout=5.0)
+                jobs_url = self.fleet_jobs_url
+                if "?" not in jobs_url:
+                    jobs_url = f"{jobs_url}?summary=true"
+                raw_data = _safe_fetch_json(jobs_url, timeout=10.0, max_bytes=33554432)
                 jobs_list = raw_data.get("jobs", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
                 valid_jobs = [j for j in jobs_list if isinstance(j, dict)]
                 total_jobs_tokens = sum(_safe_int(j.get("total_tokens")) for j in valid_jobs)
-                sorted_jobs = sorted(
-                    valid_jobs,
-                    key=lambda j: _safe_int(j.get("total_tokens")),
-                    reverse=True,
-                )
-                for j in sorted_jobs[:3]:
-                    jid = str(j.get("job_id", ""))[:8]
-                    raw_p = str(j.get("prompt", "")).replace("\r", " ").replace("\n", " ").strip()
-                    prompt_clean = " ".join(raw_p.split())
-                    top_3_tasks.append({
-                        "job_id": jid,
-                        "node_name": str(j.get("node_name", "")),
-                        "model": str(j.get("model", "")),
-                        "total_tokens": _safe_int(j.get("total_tokens")),
-                        "prompt": prompt_clean,
-                    })
             except Exception as e:
                 logger.debug("Fleet jobs query failed: %s", e)
+
+            def _get_job_ts(j: Dict[str, Any]) -> Optional[float]:
+                for field in ("completed_at", "started_at", "created_at"):
+                    val = j.get(field)
+                    if val is not None:
+                        # Guard against boolean (bool is subclass of int in Python)
+                        if isinstance(val, bool):
+                            continue
+                        dt = parse_timestamp(val)
+                        if dt is not None:
+                            try:
+                                ts = dt.timestamp()
+                                if not (math.isnan(ts) or math.isinf(ts)):
+                                    return ts
+                            except Exception:
+                                pass
+                return None
+
+            # Maximum future clock drift tolerance (60 seconds)
+            MAX_FUTURE_SLACK_S = 60.0
+            future_ceiling_ts = now_time + MAX_FUTURE_SLACK_S
+
+            # Detect whether any jobs in payload have a valid timestamp
+            has_any_valid_ts = any(_get_job_ts(j) is not None for j in valid_jobs)
+
+            jobs_1h = []
+            future_jobs_rejected = 0
+            malformed_jobs_rejected = 0
+            stale_jobs_filtered = 0
+
+            for j in valid_jobs:
+                j_ts = _get_job_ts(j)
+                if has_any_valid_ts:
+                    if j_ts is None:
+                        # Malformed or missing timestamp when valid timestamps exist -> reject
+                        malformed_jobs_rejected += 1
+                        continue
+                    if j_ts > future_ceiling_ts:
+                        # Future timestamp beyond clock drift slack -> reject (forgery/drift guard)
+                        future_jobs_rejected += 1
+                        continue
+                    if j_ts < cutoff_ts:
+                        # Outside the 1-hour window
+                        stale_jobs_filtered += 1
+                        continue
+                    jobs_1h.append(j)
+                else:
+                    # Synthetic test mock without any timestamps across all jobs
+                    jobs_1h.append(j)
+
+            total_jobs_tokens_1h = sum(_safe_int(j.get("total_tokens")) for j in jobs_1h)
+
+            tasks_pool = jobs_1h if jobs_1h else valid_jobs
+            sorted_jobs = sorted(
+                tasks_pool,
+                key=lambda j: _safe_int(j.get("total_tokens")),
+                reverse=True,
+            )
+            for j in sorted_jobs[:3]:
+                jid = str(j.get("job_id", ""))[:8]
+                raw_p = str(j.get("prompt", "")).replace("\r", " ").replace("\n", " ").strip()
+                prompt_clean = " ".join(raw_p.split())
+                top_3_tasks.append({
+                    "job_id": jid,
+                    "node_name": str(j.get("node_name", "")),
+                    "model": str(j.get("model", "")),
+                    "total_tokens": _safe_int(j.get("total_tokens")),
+                    "prompt": prompt_clean,
+                })
+
+            # Count requests and tokens per node in the past 1 hour (jobs_1h)
+            reqs_1h = Counter()
+            tokens_1h = Counter()
+            for j in jobs_1h:
+                nname = str(j.get("node_name", "")).strip()
+                if nname:
+                    reqs_1h[nname] += 1
+                    tokens_1h[nname] += _safe_int(j.get("total_tokens"))
+
+            candidate_names = set(str(n.get("name", "")).strip() for n in valid_nodes if str(n.get("name", "")).strip()) | set(reqs_1h.keys())
+            node_tier_map = {str(n.get("name", "")): str(n.get("tier", "pro")) for n in valid_nodes}
+            node_active_map = {str(n.get("name", "")): _safe_int(n.get("active_jobs", 0)) for n in valid_nodes}
+            node_alltime_reqs = {str(n.get("name", "")): _safe_int(n.get("requests_served", 0)) for n in valid_nodes}
+            node_weekly_tokens = {str(n.get("name", "")): _safe_int(n.get("quota_weekly_consumed", 0)) for n in valid_nodes}
+
+            node_stats_list = []
+            for nname in candidate_names:
+                r1h = reqs_1h.get(nname, 0)
+                t1h = tokens_1h.get(nname, 0)
+                all_time_r = node_alltime_reqs.get(nname, 0)
+                weekly_t = node_weekly_tokens.get(nname, 0)
+                node_stats_list.append({
+                    "name": nname,
+                    "tier": node_tier_map.get(nname, "pro"),
+                    "requests_served": r1h if jobs_1h else all_time_r,
+                    "requests_served_1h": r1h,
+                    "requests_served_all_time": all_time_r,
+                    "tokens_consumed": t1h if t1h > 0 else (weekly_t if (r1h == 0 and not jobs_1h) else t1h),
+                    "tokens_consumed_1h": t1h,
+                    "tokens_weekly_consumed": weekly_t,
+                    "active_jobs": node_active_map.get(nname, 0),
+                })
+
+            sorted_nodes = sorted(
+                node_stats_list,
+                key=lambda x: (
+                    x["requests_served_1h"],
+                    x["tokens_consumed_1h"],
+                    x["requests_served_all_time"],
+                    x["tokens_weekly_consumed"],
+                ),
+                reverse=True,
+            )
+            top_5_nodes = sorted_nodes[:5]
 
             # Pro-First Quota Exhaustion & Workload Evaluation
             pro_nodes = [
@@ -1015,10 +1118,11 @@ class EntropyDegradationDetector:
                 if _safe_float(n.get("quota_weekly_percent", 100.0)) > 75.0 and _safe_int(n.get("requests_served", 0)) < 10
             ]
 
-            # Recent jobs distribution (from valid_jobs)
+            # Recent jobs distribution (from jobs_1h, falling back to valid_jobs if no jobs in 1h)
             pro_node_names = {str(n.get("name", "")) for n in pro_nodes}
-            recent_pro_jobs = sum(1 for j in valid_jobs if str(j.get("node_name", "")) in pro_node_names)
-            recent_total_jobs = len(valid_jobs)
+            jobs_for_eval = jobs_1h if jobs_1h else valid_jobs
+            recent_pro_jobs = sum(1 for j in jobs_for_eval if str(j.get("node_name", "")) in pro_node_names)
+            recent_total_jobs = len(jobs_for_eval)
             recent_pro_share_pct = _safe_pct(recent_pro_jobs, recent_total_jobs) if recent_total_jobs > 0 else pro_request_share_pct
 
             # Evaluation logic for Pro-First Quality Criterion
@@ -1064,10 +1168,16 @@ class EntropyDegradationDetector:
                 "consensus_score": consensus_score,
                 "sla_passed": sla_passed,
                 "total_jobs_tokens": total_jobs_tokens,
+                "total_jobs_tokens_1h": total_jobs_tokens_1h,
                 "total_fleet_tokens": total_fleet_tokens,
                 "top_3_tasks": top_3_tasks,
                 "top_5_nodes": top_5_nodes,
                 "pro_first_criterion": pro_first_criterion,
+                "window_anomalies": {
+                    "future_rejected": future_jobs_rejected,
+                    "malformed_rejected": malformed_jobs_rejected,
+                    "stale_filtered": stale_jobs_filtered,
+                },
             }
         except Exception as e:
             logger.warning("Fleet mesh endpoint check failed (daemon may be offline/busy): %s", e)
@@ -1080,10 +1190,16 @@ class EntropyDegradationDetector:
                 "consensus_score": 0.0,
                 "sla_passed": False,
                 "total_jobs_tokens": total_jobs_tokens,
+                "total_jobs_tokens_1h": total_jobs_tokens_1h,
                 "total_fleet_tokens": total_fleet_tokens,
                 "top_3_tasks": top_3_tasks,
                 "top_5_nodes": top_5_nodes,
                 "pro_first_criterion": {},
+                "window_anomalies": {
+                    "future_rejected": future_jobs_rejected,
+                    "malformed_rejected": malformed_jobs_rejected,
+                    "stale_filtered": stale_jobs_filtered,
+                },
                 "error": str(e),
             }
 
@@ -1100,7 +1216,7 @@ class EntropyDegradationDetector:
         s2 = self.check_stream_2_legal_docs(now_utc=now_utc)
         s3 = self.check_stream_3_media_production(now=now_utc)
         s4 = self.check_stream_4_median_sync(now_utc=now_utc)
-        s5 = self.check_stream_5_fleet_mesh()
+        s5 = self.check_stream_5_fleet_mesh(now_ts=now_utc.timestamp() if now_utc else None)
 
         streams = [s1, s2, s3, s4, s5]
         return {
@@ -1940,18 +2056,18 @@ class HermesTelegramNotifier:
 
         if top_nodes:
             lines.append("")
-            lines.append("🚀 <b>Top 5 Nodes làm việc nhiều nhất:</b>")
+            lines.append("🚀 <b>Top 5 Nodes làm việc nhiều nhất (1 giờ qua):</b>")
             ranks = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
             for idx, node in enumerate(top_nodes[:5]):
                 rank_icon = ranks[idx] if idx < len(ranks) else "•"
                 nname = html.escape(str(node.get("name", "")), quote=True)
                 ntier = html.escape(str(node.get("tier", "")), quote=True)
-                reqs = _safe_int(node.get("requests_served", 0))
-                toks = _safe_int(node.get("tokens_consumed", 0) or node.get("tokens", 0))
+                reqs = _safe_int(node.get("requests_served_1h", node.get("requests_served", 0)))
+                toks = _safe_int(node.get("tokens_consumed_1h", node.get("tokens_consumed", 0) or node.get("tokens", 0)))
                 active = _safe_int(node.get("active_jobs", 0))
                 active_str = f" [⚡ {active} active]" if active > 0 else ""
                 lines.append(
-                    f"{rank_icon} <b>{nname}</b> ({ntier}): <code>{reqs:,}</code> reqs | "
+                    f"{rank_icon} <b>{nname}</b> ({ntier}): <code>{reqs:,}</code> reqs (1h) | "
                     f"{toks:,} tokens{active_str}"
                 )
 

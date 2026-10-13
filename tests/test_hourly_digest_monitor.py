@@ -5380,3 +5380,282 @@ def test_truncate_never_splits_entity_property_sweep():
             out = notifier.truncate_telegram_html(payload, max_chars=limit)
             assert len(out) <= limit
             assert not re.search(r"&[a-zA-Z#0-9]*$", out), f"Dangling entity detected at limit {limit}: {out[-20:]}"
+
+
+def test_top_5_nodes_in_past_1_hour_instead_of_all_time(tmp_path):
+    """Verifies that top_5_nodes ranks nodes strictly based on activity in the past 1 hour, not all-time."""
+    now = time.time()
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    summary_resp = json.dumps({"online_nodes": 20, "total_nodes": 21}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 90.0, "sla_passed": True}).encode("utf-8")
+
+    nodes_data = {
+        "nodes": [
+            {"name": "ultra-exhausted", "tier": "ultra", "requests_served": 1000, "quota_weekly_consumed": 2500000, "active_jobs": 0},
+            {"name": "pro-dormant", "tier": "pro", "requests_served": 800, "quota_weekly_consumed": 2000000, "active_jobs": 0},
+            {"name": "node-active-1", "tier": "pro", "requests_served": 25, "quota_weekly_consumed": 50000, "active_jobs": 1},
+            {"name": "node-active-2", "tier": "pro", "requests_served": 20, "quota_weekly_consumed": 40000, "active_jobs": 0},
+            {"name": "node-active-3", "tier": "pro", "requests_served": 15, "quota_weekly_consumed": 30000, "active_jobs": 0},
+            {"name": "node-active-4", "tier": "pro", "requests_served": 10, "quota_weekly_consumed": 20000, "active_jobs": 0},
+            {"name": "node-active-5", "tier": "pro", "requests_served": 5, "quota_weekly_consumed": 10000, "active_jobs": 0},
+        ]
+    }
+    nodes_resp = json.dumps(nodes_data).encode("utf-8")
+
+    jobs_list = []
+    # Old jobs for ultra-exhausted (outside 1h)
+    for i in range(10):
+        jobs_list.append({
+            "job_id": f"old-{i}",
+            "node_name": "ultra-exhausted",
+            "model": "claude-opus-4.8",
+            "total_tokens": 5000,
+            "created_at": now - 7200,
+            "completed_at": now - 7190,
+        })
+    # 1 recent job for pro-dormant
+    jobs_list.append({
+        "job_id": "recent-dormant",
+        "node_name": "pro-dormant",
+        "model": "gemini-3.8-flash-high",
+        "total_tokens": 1000,
+        "created_at": now - 600,
+        "completed_at": now - 590,
+    })
+    # Recent jobs for node-active-1 (10 jobs)
+    for i in range(10):
+        jobs_list.append({
+            "job_id": f"act1-{i}",
+            "node_name": "node-active-1",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 2000,
+            "created_at": now - (100 * (i + 1)),
+            "completed_at": now - (100 * (i + 1) - 5),
+        })
+    # Recent jobs for node-active-2 (8 jobs)
+    for i in range(8):
+        jobs_list.append({
+            "job_id": f"act2-{i}",
+            "node_name": "node-active-2",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 1500,
+            "created_at": now - (120 * (i + 1)),
+            "completed_at": now - (120 * (i + 1) - 5),
+        })
+    # Recent jobs for node-active-3 (6 jobs)
+    for i in range(6):
+        jobs_list.append({
+            "job_id": f"act3-{i}",
+            "node_name": "node-active-3",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 1200,
+            "created_at": now - (150 * (i + 1)),
+            "completed_at": now - (150 * (i + 1) - 5),
+        })
+    # Recent jobs for node-active-4 (4 jobs)
+    for i in range(4):
+        jobs_list.append({
+            "job_id": f"act4-{i}",
+            "node_name": "node-active-4",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 1000,
+            "created_at": now - (200 * (i + 1)),
+            "completed_at": now - (200 * (i + 1) - 5),
+        })
+    # Recent jobs for node-active-5 (2 jobs)
+    for i in range(2):
+        jobs_list.append({
+            "job_id": f"act5-{i}",
+            "node_name": "node-active-5",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 800,
+            "created_at": now - (300 * (i + 1)),
+            "completed_at": now - (300 * (i + 1) - 5),
+        })
+
+    jobs_resp = json.dumps({"jobs": jobs_list}).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        res = detector.check_stream_5_fleet_mesh(now_ts=now)
+
+    top_nodes = res["top_5_nodes"]
+    assert len(top_nodes) == 5
+    top_names = [n["name"] for n in top_nodes]
+    assert top_names == ["node-active-1", "node-active-2", "node-active-3", "node-active-4", "node-active-5"]
+    assert "ultra-exhausted" not in top_names
+    assert "pro-dormant" not in top_names
+    assert top_nodes[0]["requests_served_1h"] == 10
+    assert top_nodes[0]["tokens_consumed_1h"] == 20000
+    assert top_nodes[0]["requests_served_all_time"] == 25
+
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    scan_result = {
+        "overall_health_score": 95,
+        "severity": "HEALTHY",
+        "cron": {"cron_health_score": 100, "ticker_heartbeat": {"is_stale": False, "age_seconds": 10}},
+        "entropy": {"entropy_health_score": 95, "streams": [res]},
+    }
+    digest = notifier.format_hourly_digest(scan_result)
+    assert "Top 5 Nodes làm việc nhiều nhất (1 giờ qua)" in digest
+    assert "<code>10</code> reqs (1h)" in digest
+    assert "node-active-1" in digest
+    assert "ultra-exhausted" not in digest
+
+
+def test_ranking_ignores_future_and_malformed_timestamps():
+    """Adversarial Clock Drift & Injection Gate:
+    1. Jobs with timestamps > now + 60s (future clock drift/forgery) must be rejected.
+    2. Jobs with missing timestamps (when valid timestamps exist) must be rejected.
+    3. Jobs with non-numeric/unparseable timestamps must be rejected.
+    4. Jobs with boolean timestamps (e.g. True) must be rejected (isinstance bool check).
+    5. Jobs at exact 1-hour boundary (now - 3600.0) must be accepted.
+    6. n2 (active in 1h) must strictly outrank n1 (adversarial/future/stale jobs) despite n1 having higher all-time requests.
+    7. window_anomalies correctly tallies future_rejected, malformed_rejected, and stale_filtered.
+    """
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    now = 1770000000.0
+
+    summary_resp = json.dumps({"online_nodes": 18, "total_nodes": 18}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 98.0, "sla_passed": True}).encode("utf-8")
+
+    nodes_data = {
+        "nodes": [
+            {"name": "adversarial-n1", "tier": "pro", "requests_served": 50, "quota_weekly_consumed": 50000, "active_jobs": 0},
+            {"name": "valid-n2", "tier": "pro", "requests_served": 2, "quota_weekly_consumed": 2000, "active_jobs": 0},
+        ]
+    }
+    nodes_resp = json.dumps(nodes_data).encode("utf-8")
+
+    jobs_list = [
+        # Adversarial job 1: Future timestamp (now + 3600s) -> rejected (future_rejected)
+        {
+            "job_id": "future-job",
+            "node_name": "adversarial-n1",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 999999,
+            "created_at": now + 3600.0,
+            "completed_at": now + 3605.0,
+        },
+        # Adversarial job 2: Missing timestamp -> rejected (malformed_rejected)
+        {
+            "job_id": "missing-ts-job",
+            "node_name": "adversarial-n1",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 888888,
+        },
+        # Adversarial job 3: Non-numeric unparseable string -> rejected (malformed_rejected)
+        {
+            "job_id": "malformed-str-job",
+            "node_name": "adversarial-n1",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 777777,
+            "created_at": "not-a-number",
+            "completed_at": "invalid-timestamp",
+        },
+        # Adversarial job 4: Boolean timestamp (True) -> rejected (malformed_rejected)
+        {
+            "job_id": "bool-ts-job",
+            "node_name": "adversarial-n1",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 666666,
+            "created_at": True,
+            "completed_at": True,
+        },
+        # Stale job: Outside 1-hour window (now - 7200s) -> filtered (stale_filtered)
+        {
+            "job_id": "stale-job",
+            "node_name": "adversarial-n1",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 555555,
+            "created_at": now - 7200.0,
+            "completed_at": now - 7195.0,
+        },
+        # Valid job 1 for n2: Exactly at boundary (now - 3600.0s) -> accepted
+        {
+            "job_id": "boundary-job",
+            "node_name": "valid-n2",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 1500,
+            "created_at": now - 3600.0,
+            "completed_at": now - 3595.0,
+        },
+        # Valid job 2 for n2: Inside 1-hour window (now - 300.0s) -> accepted
+        {
+            "job_id": "valid-recent-job",
+            "node_name": "valid-n2",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": 2500,
+            "created_at": now - 300.0,
+            "completed_at": now - 295.0,
+        },
+    ]
+    jobs_resp = json.dumps({"jobs": jobs_list}).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        res = detector.check_stream_5_fleet_mesh(now_ts=now)
+
+    # Verify window anomalies tally
+    anomalies = res.get("window_anomalies", {})
+    assert anomalies.get("future_rejected") == 1
+    assert anomalies.get("malformed_rejected") == 3
+    assert anomalies.get("stale_filtered") == 1
+
+    # Verify 1-hour token sum only contains valid jobs for n2 (1500 + 2500 = 4000)
+    assert res["total_jobs_tokens_1h"] == 4000
+
+    # Verify ranking: valid-n2 outranks adversarial-n1
+    top_nodes = res["top_5_nodes"]
+    assert len(top_nodes) == 2
+    assert top_nodes[0]["name"] == "valid-n2"
+    assert top_nodes[0]["requests_served_1h"] == 2
+    assert top_nodes[0]["tokens_consumed_1h"] == 4000
+
+    assert top_nodes[1]["name"] == "adversarial-n1"
+    assert top_nodes[1]["requests_served_1h"] == 0
+    assert top_nodes[1]["tokens_consumed_1h"] == 0
+    assert top_nodes[1]["requests_served_all_time"] == 50
+
