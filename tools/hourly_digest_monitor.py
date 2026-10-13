@@ -1459,6 +1459,9 @@ class HermesTelegramNotifier:
             return text
 
         suffix = "\n... [Cắt bớt do giới hạn Telegram]"
+        if max_chars <= len(suffix):
+            return text[:max_chars]
+
         tag_pattern = re.compile(r"</?([a-zA-Z0-9]+)(?:\s+[^>]*)?>")
 
         def _get_open_stack(s: str) -> List[str]:
@@ -1502,7 +1505,10 @@ class HermesTelegramNotifier:
             closing_tags = "".join(f"</{t}>" for t in reversed(stack))
             total_len = pos + len(suffix) + len(closing_tags)
             if total_len <= max_chars:
-                return text[:pos] + suffix + closing_tags
+                cut_text = re.sub(r"&[a-zA-Z#0-9]*$", "", text[:pos])
+                out = cut_text + suffix + closing_tags
+                assert len(out) <= max_chars, f"Truncation invariant violated: {len(out)} > {max_chars}"
+                return out
             excess = total_len - max_chars
             new_pos = pos - excess
             if new_pos <= 0:
@@ -1512,7 +1518,10 @@ class HermesTelegramNotifier:
         # Pathological fallback (e.g. closing tags alone exceed max_chars):
         plain = re.sub(r"<[^>]+>", "", text)
         cut = _safe_cut(plain, max_chars - len(suffix))
-        return plain[:cut] + suffix
+        cut_plain = re.sub(r"&[a-zA-Z#0-9]*$", "", plain[:cut])
+        out = cut_plain + suffix
+        assert len(out) <= max_chars, f"Truncation fallback invariant violated: {len(out)} > {max_chars}"
+        return out
 
     def send_payload_result(self, text: str) -> SendResult:
         if self._suppressed or os.environ.get("HERMES_SUPPRESS_TELEGRAM") == "1":

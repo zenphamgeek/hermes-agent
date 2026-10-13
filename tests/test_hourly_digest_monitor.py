@@ -5360,3 +5360,23 @@ def test_bare_bot_token_in_exception_is_redacted():
     scrubbed = notifier._scrub_secrets(leak)
     assert "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345" not in scrubbed
     assert "[REDACTED]" in scrubbed
+
+
+def test_longer_ellipsis_still_respects_ceiling():
+    """Guards the 'junior localizes the marker' and small-budget regression."""
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    for limit in [30, 40, 50, 64, 100, 250, 500, 4096]:
+        out = notifier.truncate_telegram_html("<b>" + "A" * 8000 + "</b>", max_chars=limit)
+        assert len(out) <= limit, f"Failed at limit={limit}: got {len(out)}"
+
+
+def test_truncate_never_splits_entity_property_sweep():
+    """Property test: sweeps various entity types and cuts to ensure zero entity splitting."""
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    entities = ["&lt;", "&gt;", "&amp;", "&quot;", "&#65;", "&#x41;"]
+    for ent in entities:
+        payload = f"<b>Leading text {ent * 1000} trailing text</b>"
+        for limit in [50, 80, 100, 200, 500, 1000]:
+            out = notifier.truncate_telegram_html(payload, max_chars=limit)
+            assert len(out) <= limit
+            assert not re.search(r"&[a-zA-Z#0-9]*$", out), f"Dangling entity detected at limit {limit}: {out[-20:]}"
