@@ -1444,6 +1444,76 @@ class HermesTelegramNotifier:
                 self._recent_sends[raw_digest] = timestamp
             self._recent_sends = {k: v for k, v in self._recent_sends.items() if v >= cutoff}
 
+    @staticmethod
+    def truncate_telegram_html(text: str, max_chars: int = 4096) -> str:
+        """Truncate an HTML-formatted message to fit within Telegram's max_chars limit (CWE-116 / CWE-400).
+
+        Guarantees:
+          1. len(result) <= max_chars under all conditions (including closing-tag bombs).
+          2. No HTML tag is cut in half.
+          3. No HTML entity (&...;) is cut in half.
+          4. All unclosed supported tags are properly closed in correct reverse order (balanced tags).
+          5. Appends a clean truncation indicator when truncated.
+        """
+        if not text or len(text) <= max_chars:
+            return text
+
+        suffix = "\n... [Cắt bớt do giới hạn Telegram]"
+        tag_pattern = re.compile(r"</?([a-zA-Z0-9]+)(?:\s+[^>]*)?>")
+
+        def _get_open_stack(s: str) -> List[str]:
+            stack: List[str] = []
+            for m in tag_pattern.finditer(s):
+                full_tag = m.group(0)
+                tag_name = m.group(1).lower()
+                if full_tag.startswith("</"):
+                    if stack and stack[-1] == tag_name:
+                        stack.pop()
+                    elif tag_name in stack:
+                        for idx in range(len(stack) - 1, -1, -1):
+                            if stack[idx] == tag_name:
+                                stack.pop(idx)
+                                break
+                elif not full_tag.endswith("/>"):
+                    stack.append(tag_name)
+            return stack
+
+        def _safe_cut(s: str, pos: int) -> int:
+            pos = max(0, min(pos, len(s)))
+            # 1. Back off if cutting inside an HTML tag <...>
+            last_lt = s.rfind("<", 0, pos)
+            last_gt = s.rfind(">", 0, pos)
+            if last_lt > last_gt:
+                pos = last_lt
+
+            # 2. Back off if cutting inside an HTML entity &...;
+            last_amp = s.rfind("&", 0, pos)
+            last_semi = s.rfind(";", 0, pos)
+            if last_amp > last_semi and (pos - last_amp) < 32:
+                pos = last_amp
+            return pos
+
+        # Iteratively find candidate cut position that fits max_chars
+        pos = _safe_cut(text, max_chars - len(suffix))
+
+        for _ in range(10):
+            pos = _safe_cut(text, pos)
+            stack = _get_open_stack(text[:pos])
+            closing_tags = "".join(f"</{t}>" for t in reversed(stack))
+            total_len = pos + len(suffix) + len(closing_tags)
+            if total_len <= max_chars:
+                return text[:pos] + suffix + closing_tags
+            excess = total_len - max_chars
+            new_pos = pos - excess
+            if new_pos <= 0:
+                break
+            pos = new_pos
+
+        # Pathological fallback (e.g. closing tags alone exceed max_chars):
+        plain = re.sub(r"<[^>]+>", "", text)
+        cut = _safe_cut(plain, max_chars - len(suffix))
+        return plain[:cut] + suffix
+
     def send_payload_result(self, text: str) -> SendResult:
         if self._suppressed or os.environ.get("HERMES_SUPPRESS_TELEGRAM") == "1":
             logger.info("Telegram live send suppressed via HERMES_SUPPRESS_TELEGRAM=1.")
@@ -1460,6 +1530,9 @@ class HermesTelegramNotifier:
         if had_secret:
             logger.warning("Outbound alert contained secret pattern; sending redacted copy.")
         text = scrubbed
+
+        # Ensure message does not exceed Telegram's 4096 character ceiling (CWE-116)
+        text = self.truncate_telegram_html(text, max_chars=4096)
 
         key = self._dedup_key(text)
 
@@ -1513,6 +1586,10 @@ class HermesTelegramNotifier:
         r"(?P<scheme>\b(?:jdbc:)?[a-zA-Z][a-zA-Z0-9+.\-]*://[^:@/\s]+:)(?:[^@/\s]+)(?P<at>@)",
         re.I,
     )
+    _BOT_URL_PATTERN = re.compile(
+        r"(/bot)[0-9A-Za-z_\-:]+(/)",
+        re.I,
+    )
     _QUERY_PARAM_PATTERN = re.compile(
         r"(?i)([\?&](?:token|key|secret|password|passwd|api[_-]?key|access[_-]?token)=)([^&\s]+)"
     )
@@ -1529,7 +1606,7 @@ class HermesTelegramNotifier:
         re.compile(r"\bBearer\s+[A-Za-z0-9._\-/+=]{10,512}", re.I),
         re.compile(r"\bya29\.[A-Za-z0-9._\-/+=]{10,512}", re.I),
         re.compile(r"\b1//[A-Za-z0-9._\-/+=]{10,512}", re.I),
-        re.compile(r"\b[0-9]{6,20}:[A-Za-z0-9_\-]{30,128}\b"),
+        re.compile(r"\b[0-9]{6,20}:[A-Za-z0-9_\-]{20,128}\b"),
         re.compile(r"\b(?:access|refresh|id)[_-]?token\s*[:=]?\s*[A-Za-z0-9._\-/+=]{10,512}", re.I),
         re.compile(r"\beyJ[A-Za-z0-9._\-/+=]{20,1024}"),
         re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b"),
@@ -1579,6 +1656,7 @@ class HermesTelegramNotifier:
         # Format Regex Redaction
         head = cls_or_self._PEM_KEY_PATTERN.sub("[REDACTED_PRIVATE_KEY]", head)
         head = cls_or_self._URL_CRED_PATTERN.sub(r"\g<scheme>[REDACTED]\g<at>", head)
+        head = cls_or_self._BOT_URL_PATTERN.sub(r"\g<1>[REDACTED]\g<2>", head)
         head = cls_or_self._QUERY_PARAM_PATTERN.sub(r"\g<1>[REDACTED]", head)
         head = cls_or_self._BASIC_AUTH_PATTERN.sub(r"\g<1>[REDACTED]", head)
         head = cls_or_self._KV_SECRET_PATTERN.sub(r"\g<k>\g<sep>[REDACTED]", head)
@@ -1586,6 +1664,15 @@ class HermesTelegramNotifier:
             head = pat.sub("[REDACTED]", head)
 
         return head + tail
+
+    @hybridmethod
+    def _scrub_secrets(
+        cls_or_self,
+        text: Any,
+        known_secrets: Optional[Iterable[str]] = None,
+    ) -> str:
+        """Alias for redact_secrets for backward compatibility with audit runners (CWE-532)."""
+        return cls_or_self.redact_secrets(text, known_secrets=known_secrets)
 
     @hybridmethod
     def sanitize_error(
@@ -1762,8 +1849,10 @@ class HermesTelegramNotifier:
 
         sev_emoji = status_emojis.get(severity, "⚪")
 
-        streams = entropy.get("streams", [])
+        streams = entropy.get("streams", []) or scan_result.get("entropy_streams", {}).get("streams", [])
         fleet_stream = next((s for s in streams if "Fleet" in str(s.get("name", ""))), {})
+        if not fleet_stream and streams:
+            fleet_stream = streams[0]
         total_jobs_tok = _safe_int(fleet_stream.get("total_jobs_tokens", 0))
         total_fleet_tok = _safe_int(fleet_stream.get("total_fleet_tokens", 0))
         top_tasks = fleet_stream.get("top_3_tasks", [])
@@ -1793,7 +1882,8 @@ class HermesTelegramNotifier:
             starved_cnt = pro_first.get("starved_count", 0)
             tot_pro = pro_first.get("total_pro_nodes", 0)
             starved_list = pro_first.get("starved_pro_nodes", [])
-            starved_preview = f" (gồm: {', '.join(starved_list[:3])}{'...' if len(starved_list) > 3 else ''})" if starved_list else ""
+            escaped_starved = [html.escape(str(s), quote=True) for s in starved_list[:3]]
+            starved_preview = f" (gồm: {', '.join(escaped_starved)}{'...' if len(starved_list) > 3 else ''})" if starved_list else ""
             verdict = html.escape(str(pro_first.get("verdict", "")))
 
             lines.append("")
@@ -1845,10 +1935,10 @@ class HermesTelegramNotifier:
             ranks = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
             for idx, node in enumerate(top_nodes[:5]):
                 rank_icon = ranks[idx] if idx < len(ranks) else "•"
-                nname = html.escape(str(node.get("name", "")))
-                ntier = html.escape(str(node.get("tier", "")))
+                nname = html.escape(str(node.get("name", "")), quote=True)
+                ntier = html.escape(str(node.get("tier", "")), quote=True)
                 reqs = _safe_int(node.get("requests_served", 0))
-                toks = _safe_int(node.get("tokens_consumed", 0))
+                toks = _safe_int(node.get("tokens_consumed", 0) or node.get("tokens", 0))
                 active = _safe_int(node.get("active_jobs", 0))
                 active_str = f" [⚡ {active} active]" if active > 0 else ""
                 lines.append(
@@ -1890,6 +1980,14 @@ class HermesTelegramNotifier:
             f"• Auth Issues: <code>{len(cron.get('auth_failed_jobs', []))}</code> | "
             f"Rate Limits: <code>{len(cron.get('rate_limited_jobs', []))}</code>"
         )
+
+        self_healing = scan_result.get("self_healing", {})
+        sh_actions = self_healing.get("actions", []) if isinstance(self_healing, dict) else []
+        if sh_actions:
+            lines.append("")
+            lines.append("🔧 <b>Self-Healing Actions:</b>")
+            for act in sh_actions:
+                lines.append(f"• <code>{html.escape(str(act), quote=True)}</code>")
 
         lines.append("")
         if severity == "HEALTHY":

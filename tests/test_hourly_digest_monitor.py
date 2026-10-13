@@ -4475,6 +4475,7 @@ def test_zero_unanalyzable_patterns_in_production_notifier():
     all_patterns = [
         *HermesTelegramNotifier._SECRET_PATTERNS,
         HermesTelegramNotifier._URL_CRED_PATTERN,
+        HermesTelegramNotifier._BOT_URL_PATTERN,
         HermesTelegramNotifier._QUERY_PARAM_PATTERN,
         HermesTelegramNotifier._BASIC_AUTH_PATTERN,
         HermesTelegramNotifier._KV_SECRET_PATTERN,
@@ -5096,3 +5097,266 @@ def test_safe_format_prompt_xss_and_injection_resilience():
     # 3. Newline stripping and multi-space collapsing
     multiline = "line1\n\n\rline2   with   spaces"
     assert notifier._safe_format_prompt(multiline) == "line1 line2 with spaces"
+
+
+# ==============================================================================
+# Nebula Cycle 35 Adversarial Security Suite (CWE-116, CWE-532, CWE-918, CWE-400)
+# ==============================================================================
+
+def test_starved_pro_nodes_and_node_names_html_escaped():
+    """CWE-116: Verify starved_pro_nodes with XSS/HTML payloads are escaped clean in digest output."""
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    scan_result = {
+        "overall_health_score": 90,
+        "overall_severity": "OPTIMAL",
+        "cron_anomalies": {"clogged": [], "drift_skipped": [], "auth_failed": [], "overdue": []},
+        "entropy_streams": {
+            "overall_status": "OPTIMAL",
+            "streams": [
+                {
+                    "name": "AGY Fleet & Clef Mesh",
+                    "status": "PASS",
+                    "pro_first_criterion": {
+                        "badge": "🟡 CẦN TỐI ƯU",
+                        "grade": "ACCEPTABLE",
+                        "pro_burn_pct": 45.0,
+                        "pro_consumed_tokens": 1000000,
+                        "pro_capacity_tokens": 2000000,
+                        "pro_request_share_pct": 50.0,
+                        "recent_pro_share_pct": 45.0,
+                        "pro_requests": 50,
+                        "total_requests": 100,
+                        "starved_count": 2,
+                        "total_pro_nodes": 5,
+                        "starved_pro_nodes": ["<script>alert(1)</script>", "<b>evil_node</b>"],
+                        "verdict": "Node needs <img src=x onerror=alert(1)>",
+                    },
+                    "total_jobs_tokens": 5000,
+                    "total_fleet_tokens": 10000,
+                    "top_3_tasks": [],
+                    "top_5_nodes": [],
+                }
+            ],
+        },
+        "self_healing": {"actions": []},
+    }
+
+    digest = notifier.format_hourly_digest(scan_result)
+    assert "<script>" not in digest
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in digest
+    assert "<b>evil_node</b>" not in digest
+    assert "&lt;b&gt;evil_node&lt;/b&gt;" in digest
+    assert "<img" not in digest
+    assert "&lt;img" in digest
+
+
+def test_telegram_message_truncation_under_4096_and_valid_tags(tmp_path):
+    """CWE-116: Verify length bomb is truncated to <= 4096 chars with balanced HTML tags."""
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+
+    # 1. Direct truncate_telegram_html check
+    bomb = "<b>Header: <i>Nested <code>" + "A" * 8000 + "</code></i></b>"
+    truncated = notifier.truncate_telegram_html(bomb, max_chars=4096)
+    assert len(truncated) <= 4096
+    assert truncated.endswith("</code></i></b>")
+    assert "Cắt bớt do giới hạn Telegram" in truncated
+
+    # 2. send_payload_result integration check
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345\n")
+    live_notifier = HermesTelegramNotifier(env_file=env_file, target_chat_id=TEST_CHAT_ID, ledger_path=tmp_path / "ledger.json")
+
+    captured_payloads = []
+    class MockSuccessResponse:
+        def read(self, *args):
+            return b'{"ok": true}'
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    def mock_urlopen(req, *args, **kwargs):
+        payload_data = json.loads(req.data.decode("utf-8"))
+        captured_payloads.append(payload_data)
+        return MockSuccessResponse()
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        res = live_notifier.send_payload_result(bomb)
+        assert res == SendResult.DELIVERED
+        assert len(captured_payloads) == 1
+        sent_text = captured_payloads[0]["text"]
+        assert len(sent_text) <= 4096
+        assert sent_text.endswith("</code></i></b>")
+
+
+def test_bot_token_in_url_redacted():
+    """CWE-532: Verify bot tokens in Telegram URLs are masked to [REDACTED]."""
+    url_err = "urllib.error.URLError: <urlopen error https://api.telegram.org/bot123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345/sendMessage connection refused>"
+    redacted = HermesTelegramNotifier.redact_secrets(url_err)
+    assert "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345" not in redacted
+    assert "https://api.telegram.org/bot[REDACTED]/sendMessage" in redacted
+
+
+def test_zero_capacity_pro_node_no_zero_division():
+    """Zero-Division Guard: Nodes with quota_weekly_capacity == 0 do not raise ZeroDivisionError."""
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary:8080",
+        fleet_council_url="http://mock-council:8080",
+        fleet_nodes_url="http://mock-nodes:8080",
+        fleet_jobs_url="http://mock-jobs:8080",
+    )
+
+    mock_summary = {"status": "ok", "active_nodes": 2, "jobs_pending": 0, "jobs_running": 0}
+    mock_council = {"last_resolution": "approved"}
+    mock_nodes = [
+        {"name": "pro-zero-cap", "tier": "Pro", "quota_weekly_capacity": 0, "quota_weekly_consumed": 0, "requests_served": 0},
+        {"name": "pro-zero-cap-2", "tier": "Pro", "quota_weekly_capacity": 0, "quota_weekly_consumed": 100, "requests_served": 5},
+    ]
+    mock_jobs = []
+
+    def mock_fetch(url, *args, **kwargs):
+        if "summary" in url:
+            return mock_summary
+        if "council" in url:
+            return mock_council
+        if "nodes" in url:
+            return mock_nodes
+        if "jobs" in url:
+            return mock_jobs
+        return {}
+
+    with patch("tools.hourly_digest_monitor._safe_fetch_json", side_effect=mock_fetch):
+        res = detector.check_stream_5_fleet_mesh()
+        assert res["status"] in ("HEALTHY", "DEGRADED", "CRITICAL")
+        pro_crit = res.get("pro_first_criterion", {})
+        assert pro_crit.get("grade") in ("OPTIMAL", "ACCEPTABLE", "DEFICIT")
+        assert pro_crit.get("pro_burn_pct") == 0.0
+        assert pro_crit.get("pro_capacity_tokens") == 0
+
+
+def test_non_standard_telemetry_resilience():
+    """Type Coercion Guard: String NaNs, Infs, and non-standard telemetry are gracefully handled."""
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary:8080",
+        fleet_council_url="http://mock-council:8080",
+        fleet_nodes_url="http://mock-nodes:8080",
+        fleet_jobs_url="http://mock-jobs:8080",
+    )
+
+    mock_nodes = [
+        {
+            "name": "node-nan",
+            "tier": "Pro",
+            "quota_weekly_percent": "N/A",
+            "quota_weekly_capacity": None,
+            "quota_weekly_consumed": "invalid",
+            "requests_served": "NaN",
+            "active_jobs": "-10",
+        }
+    ]
+    mock_jobs = [
+        {
+            "job_id": "job-inf",
+            "node_name": "node-nan",
+            "model": "gemini-3.8-flash-high",
+            "total_tokens": "Inf",
+            "prompt": "Test prompt with non-numeric tokens",
+        }
+    ]
+
+    def mock_fetch(url, *args, **kwargs):
+        if "summary" in url:
+            return {"status": "ok", "active_nodes": 1, "jobs_pending": 0, "jobs_running": 0}
+        if "council" in url:
+            return {"last_resolution": "approved"}
+        if "nodes" in url:
+            return mock_nodes
+        if "jobs" in url:
+            return mock_jobs
+        return {}
+
+    with patch("tools.hourly_digest_monitor._safe_fetch_json", side_effect=mock_fetch):
+        res = detector.check_stream_5_fleet_mesh()
+        assert res["status"] in ("HEALTHY", "DEGRADED", "CRITICAL")
+        assert res["total_jobs_tokens"] == 0
+        assert res["total_fleet_tokens"] == 0
+
+
+def test_ssrf_probe_aws_metadata_rejected():
+    """CWE-918: Cloud link-local metadata IP 169.254.169.254 is rejected unconditionally."""
+    with pytest.raises(ValueError, match="blocked address class"):
+        _validate_fleet_url("http://169.254.169.254/latest/meta-data/")
+
+
+def test_safe_fetch_json_rejects_payload_over_8mb(monkeypatch):
+    """CWE-400: Payload exceeding 8MiB max_bytes ceiling is strictly rejected."""
+    class MockOversized:
+        def read(self, n=-1):
+            return b"{" + b"A" * (MAX_FLEET_BYTES + 100)
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: MockOversized())
+
+    with pytest.raises(ValueError, match="exceeds size ceiling of 8388608 bytes"):
+        _safe_fetch_json("http://mock-fleet:8080/jobs")
+
+
+def test_truncate_closing_tag_bomb_stays_under_limit():
+    """CWE-400/116: payload whose CLOSING sequence alone is large must still fit 4096."""
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    # 300 nested 1-char tags => closing sequence ~ 300*4 chars, plus notice
+    opens = "".join("<b>" for _ in range(300))
+    closes = "".join("</b>" for _ in range(300))
+    bomb = opens + ("A" * 8000) + closes
+    out = notifier.truncate_telegram_html(bomb, max_chars=4096)
+    assert len(out) <= 4096
+    assert out.count("<b>") == out.count("</b>")  # tags balanced after truncation
+
+
+def test_truncate_never_splits_html_entity():
+    """CWE-116: truncation boundary must not fall inside an &entity; token."""
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    # pack '&lt;' entities right up to the boundary
+    payload = "&lt;" * 2000
+    out = notifier.truncate_telegram_html(payload, max_chars=4096)
+    assert len(out) <= 4096
+    # no dangling partial entity at the cut
+    assert not out.rstrip("…").endswith(("&", "&l", "&lt", "&amp", "&g", "&gt"))
+
+
+def test_all_untrusted_render_paths_escaped():
+    """CWE-116: XSS payloads in top_5_nodes / self_healing.actions must also be escaped."""
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    scan = {
+        "overall_health_score": 100,
+        "severity": "HEALTHY",
+        "cron": {"cron_health_score": 100, "ticker_heartbeat": {"is_stale": False, "age_seconds": 10}},
+        "entropy": {
+            "entropy_health_score": 100,
+            "streams": [
+                {
+                    "name": "Fleet Mesh",
+                    "status": "HEALTHY",
+                    "top_5_nodes": [
+                        {"name": "<script>x</script>", "tier": "<b onmouseover=evil()>", "tokens": 1}
+                    ],
+                }
+            ],
+        },
+        "self_healing": {"actions": ["<img src=x onerror=alert(1)>"]},
+    }
+    digest = notifier.format_hourly_digest(scan)
+    assert "<script>" not in digest and "<img" not in digest and "<b onmouseover" not in digest
+    assert "&lt;script&gt;" in digest and "&lt;img" in digest
+
+
+def test_bare_bot_token_in_exception_is_redacted():
+    """CWE-532: token leaked outside a URL (e.g. exception text) must still be scrubbed."""
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    leak = "connection failed with token 123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345 retrying"
+    scrubbed = notifier._scrub_secrets(leak)
+    assert "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345" not in scrubbed
+    assert "[REDACTED]" in scrubbed
