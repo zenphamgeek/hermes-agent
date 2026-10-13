@@ -1,0 +1,121 @@
+{
+  "_meta": {
+    "title": "Nahla NSFW Set - Scene 03: The Unveiled Consort (Reclining Nude)",
+    "character": "Nahla (Sunward Persian Royal Consort)",
+    "scene": "Reclining Nude on Velvet",
+    "model": "FLUX.1 Fill [dev] FP8 + NSFW LoRA"
+  },
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "flux1-fill-dev-fp8.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    }
+  },
+  "2": {
+    "class_type": "DualCLIPLoader",
+    "inputs": {
+      "clip_name1": "t5xxl_fp8_e4m3fn.safetensors",
+      "clip_name2": "clip_l.safetensors",
+      "type": "flux"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "model": ["1", 0],
+      "clip": ["2", 0],
+      "lora_name": "flux_nsfw_detailer.safetensors",
+      "strength_model": 0.90,
+      "strength_clip": 0.90
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["4", 1],
+      "text": "RAW masterpiece photo, adult Nahla Persian consort reclining gracefully on plush ivory silk bed sheets, completely nude, perfect feminine anatomy, natural slender waist, smooth warm-olive skin, long dark hair fanned out across pillows, turquoise drop earrings, dramatic chiaroscuro golden hour light grazing curves, sensual, intimate high-art aesthetic, 8k resolution"
+    }
+  },
+  "6": {
+    "class_type": "FluxGuidance",
+    "inputs": {
+      "conditioning": ["5", 0],
+      "guidance": 3.5
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "nahla_source_identity.png"
+    }
+  },
+  "8": {
+    "class_type": "InpaintModelConditioning",
+    "inputs": {
+      "positive": ["6", 0],
+      "negative": ["5", 0],
+      "vae": ["3", 0],
+      "pixels": ["7", 0],
+      "mask": ["7", 1]
+    }
+  },
+  "9": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "10": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 26,
+      "denoise": 0.92,
+      "model": ["4", 0]
+    }
+  },
+  "11": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": ["4", 0],
+      "conditioning": ["8", 0]
+    }
+  },
+  "12": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 303
+    }
+  },
+  "13": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["12", 0],
+      "guider": ["11", 0],
+      "sampler": ["9", 0],
+      "sigmas": ["10", 0],
+      "latent_image": ["8", 2]
+    }
+  },
+  "14": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["13", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "15": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["14", 0],
+      "filename_prefix": "nahla_nsfw_scene03_unveiled"
+    }
+  }
+}

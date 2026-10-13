@@ -1190,6 +1190,47 @@ def test_safe_int_coercion_edge_cases():
     assert _safe_int(None, default=10, min_val=0) == 10
 
 
+def test_adversarial_ssrf_metadata_rejection():
+    """Adversarial Test Spec #1: Reject Cloud Metadata and Loopback vectors (CWE-918)."""
+    ssrf_vectors = [
+        "http://169.254.169.254/computeMetadata/v1/",
+        "http://127.0.0.1:28069/web/database/selector",
+        "http://127.1:8080",
+        "http://[::1]:9000/metrics",
+        "http://10.0.0.15/status",
+        "file:///etc/shadow",
+        "gopher://127.0.0.1:6379/_FLUSHALL",
+    ]
+    for vector in ssrf_vectors:
+        with pytest.raises(ValueError):
+            _validate_fleet_url(vector, allow_private=False)
+
+
+def test_adversarial_slowloris_max_bytes_enforcement():
+    """Adversarial Test Spec #2: Enforce strict byte ceiling on chunked/stream payloads (CWE-400)."""
+    oversized_data = b"A" * (MAX_FLEET_BYTES + 1024)
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = oversized_data
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        with pytest.raises(ValueError, match="Payload exceeded max permitted length"):
+            _safe_fetch_json("http://fleet.internal.mesh/metrics", timeout=5.0, allow_private=True)
+
+
+def test_adversarial_numeric_boundary_and_fuzz():
+    """Adversarial Test Spec #3: Boundary saturation and NaN/Inf isolation."""
+    assert _safe_int("0") == 0
+    assert _safe_int(str(MAX_TELEMETRY_VALUE)) == MAX_TELEMETRY_VALUE
+    assert _safe_int(str(MAX_TELEMETRY_VALUE + 1000)) == MAX_TELEMETRY_VALUE
+    assert _safe_int("1e30") == MAX_TELEMETRY_VALUE
+    assert _safe_int("-1e30") == 0
+    assert _safe_int(None) == 0
+    assert _safe_int({}) == 0
+    assert _safe_int("1e500") == MAX_TELEMETRY_VALUE
+    assert _safe_int("-1e500") == 0
+
+
 # ==============================================================================
 # 3. Tests: CompositeHealthCalculator
 # ==============================================================================
