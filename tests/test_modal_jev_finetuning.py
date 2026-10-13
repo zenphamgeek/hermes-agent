@@ -599,35 +599,38 @@ def test_symlink_weight_file_rejected(tmp_path):
 
 def test_crafted_pickle_sentinel_never_executed(tmp_path):
     """
-    F1 (CWE-502): Crafted malicious pickle opcode that attempts RCE
+    F1 (CWE-502): Crafted malicious class with __reduce__ that attempts RCE
     via file write is blocked by weights_only=True and NEVER executed.
     """
     sentinel_path = Path(f"/tmp/sentinel_exploit_{uuid.uuid4().hex}.txt")
 
-    # Raw pickle protocol 0 payload invoking os.system
-    exploit_payload = b"cos\nsystem\n(S'touch " + str(sentinel_path).encode("utf-8") + b"'\ntR."
+    class MaliciousPayload:
+        def __reduce__(self):
+            return (eval, (f"open('{sentinel_path}', 'w').write('CWE-502-RCE')",))
 
     exploit_pt = tmp_path / "crafted_exploit.pt"
-    exploit_pt.write_bytes(exploit_payload)
+    with open(exploit_pt, "wb") as f:
+        pickle.dump(MaliciousPayload(), f, protocol=2)
 
     try:
         with pytest.raises(Exception):
             load_safe_model_weights(exploit_pt)
         assert not sentinel_path.exists(), (
-            "CWE-502 Critical RCE: Malicious payload executed during load_safe_model_weights (.pt)!"
+            "CWE-502 Critical RCE: Malicious __reduce__ payload executed during load_safe_model_weights (.pt)!"
         )
     finally:
         if sentinel_path.exists():
             sentinel_path.unlink()
 
     exploit_bin = tmp_path / "crafted_exploit.bin"
-    exploit_bin.write_bytes(exploit_payload)
+    with open(exploit_bin, "wb") as f:
+        pickle.dump(MaliciousPayload(), f, protocol=2)
 
     try:
         with pytest.raises(Exception):
             load_safe_model_weights(exploit_bin)
         assert not sentinel_path.exists(), (
-            "CWE-502 Critical RCE: Malicious payload executed during load_safe_model_weights (.bin)!"
+            "CWE-502 Critical RCE: Malicious __reduce__ payload executed during load_safe_model_weights (.bin)!"
         )
     finally:
         if sentinel_path.exists():
