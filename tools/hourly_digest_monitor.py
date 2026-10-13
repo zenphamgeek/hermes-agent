@@ -1932,8 +1932,8 @@ class HermesTelegramNotifier:
         if stalled_streams:
             lines.append(f"🌪️ <b>Degraded / Stalled Entropy Streams ({len(stalled_streams)}):</b>")
             for s in stalled_streams:
-                st = html.escape(str(s.get("status", "")))
-                name = html.escape(str(s.get("name", "")))
+                st = html.escape(str(s.get("status", "")), quote=True)
+                name = html.escape(str(s.get("name", "")), quote=True)
                 if "Stock" in name:
                     lines.append(f"• <b>{name}:</b> {st} ({s.get('hours_since_crawl')}h since crawl)")
                 elif "Legal" in name:
@@ -1996,7 +1996,7 @@ class HermesTelegramNotifier:
 
         if pro_first:
             badge = pro_first.get("badge", "⚪ CHƯA RÕ")
-            grade = html.escape(str(pro_first.get("grade", "UNKNOWN")))
+            grade = html.escape(str(pro_first.get("grade", "UNKNOWN")), quote=True)
             p_burn = pro_first.get("pro_burn_pct", 0.0)
             p_cons = pro_first.get("pro_consumed_tokens", 0)
             p_cap = pro_first.get("pro_capacity_tokens", 0)
@@ -2009,7 +2009,7 @@ class HermesTelegramNotifier:
             starved_list = pro_first.get("starved_pro_nodes", [])
             escaped_starved = [html.escape(str(s), quote=True) for s in starved_list[:3]]
             starved_preview = f" (gồm: {', '.join(escaped_starved)}{'...' if len(starved_list) > 3 else ''})" if starved_list else ""
-            verdict = html.escape(str(pro_first.get("verdict", "")))
+            verdict = html.escape(str(pro_first.get("verdict", "")), quote=True)
 
             lines.append("")
             lines.append("🎯 <b>Tiêu Chí Quality Hàng Giờ: Dùng Quota Pro Agy First:</b>")
@@ -2044,9 +2044,9 @@ class HermesTelegramNotifier:
             ranks = ["1️⃣", "2️⃣", "3️⃣"]
             for idx, task in enumerate(top_tasks[:3]):
                 rank_icon = ranks[idx] if idx < len(ranks) else "•"
-                jid = html.escape(str(task.get("job_id", "")))
-                node = html.escape(str(task.get("node_name", "")))
-                model = html.escape(str(task.get("model", "")))
+                jid = html.escape(str(task.get("job_id", "")), quote=True)
+                node = html.escape(str(task.get("node_name", "")), quote=True)
+                model = html.escape(str(task.get("model", "")), quote=True)
                 tok = _safe_int(task.get("total_tokens", 0))
                 prompt_snippet = self._safe_format_prompt(task.get("prompt", ""), limit=60)
                 lines.append(
@@ -2076,9 +2076,9 @@ class HermesTelegramNotifier:
         for idx, s in enumerate(streams, 1):
             raw_st = s.get("status", "UNKNOWN")
             emoji = status_emojis.get(raw_st, "⚪")
-            st = html.escape(str(raw_st))
+            st = html.escape(str(raw_st), quote=True)
             raw_name = str(s.get("name", ""))
-            name = html.escape(raw_name)
+            name = html.escape(raw_name, quote=True)
             if "Stock" in raw_name:
                 detail = f"{s.get('hours_since_crawl')}h ago, {s.get('articles_24h')} art/24h, {s.get('unique_symbols')} sym"
             elif "Legal" in raw_name:
@@ -2091,7 +2091,7 @@ class HermesTelegramNotifier:
                 detail = f"{s.get('active_nodes')}/{s.get('total_nodes')} nodes, Clef {s.get('consensus_score')}%, SLA: {'PASS' if s.get('sla_passed') else 'FAIL'}"
             else:
                 detail = ""
-            detail_escaped = html.escape(detail)
+            detail_escaped = html.escape(detail, quote=True)
             lines.append(f"{idx}️⃣ <b>{name}:</b> {emoji} <b>{st}</b> ({detail_escaped})")
 
         lines.append("")

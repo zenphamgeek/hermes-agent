@@ -5659,3 +5659,183 @@ def test_ranking_ignores_future_and_malformed_timestamps():
     assert top_nodes[1]["tokens_consumed_1h"] == 0
     assert top_nodes[1]["requests_served_all_time"] == 50
 
+
+def test_job_timestamp_boundary_and_clock_skew_resilience():
+    """Nebula Cycle 36 Adversarial Clock Skew & Timestamp Boundary Test:
+    - Exact boundary: now - 3600.0s (included in 1h window).
+    - Inside 1h window: now - 3599.0s (included).
+    - Outside 1h window: now - 3601.0s (excluded -> stale_filtered).
+    - Future within slack (now + 30.0s, slack is 60.0s) (included).
+    - Future beyond slack (now + 60.1s, now + 7200.0s) (excluded -> future_rejected).
+    - Non-finite / corrupt timestamps: float("nan"), float("inf"), 1e30, -100.0, "invalid".
+    """
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    now = 1770000000.0
+
+    summary_resp = json.dumps({"online_nodes": 10, "total_nodes": 10}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 95.0, "sla_passed": True}).encode("utf-8")
+    nodes_resp = json.dumps({"nodes": [{"name": "n1", "tier": "pro", "requests_served": 1, "quota_weekly_consumed": 1000, "active_jobs": 0}]}).encode("utf-8")
+
+    jobs_list = [
+        # 1. Exact boundary: now - 3600.0 -> accepted
+        {"job_id": "exact-boundary", "node_name": "n1", "model": "m", "total_tokens": 100, "created_at": now - 3600.0},
+        # 2. Inside window: now - 3599.0 -> accepted
+        {"job_id": "inside-window", "node_name": "n1", "model": "m", "total_tokens": 200, "created_at": now - 3599.0},
+        # 3. Outside window: now - 3601.0 -> stale_filtered
+        {"job_id": "outside-window", "node_name": "n1", "model": "m", "total_tokens": 400, "created_at": now - 3601.0},
+        # 4. Future within slack: now + 30.0 -> accepted
+        {"job_id": "future-slack-ok", "node_name": "n1", "model": "m", "total_tokens": 800, "created_at": now + 30.0},
+        # 5. Future beyond slack: now + 60.1 -> future_rejected
+        {"job_id": "future-slack-exceeded", "node_name": "n1", "model": "m", "total_tokens": 1600, "created_at": now + 60.1},
+        # 6. Future astronomical: now + 7200.0 -> future_rejected
+        {"job_id": "future-astronomical", "node_name": "n1", "model": "m", "total_tokens": 3200, "created_at": now + 7200.0},
+        # 7. NaN timestamp -> malformed_rejected
+        {"job_id": "nan-ts", "node_name": "n1", "model": "m", "total_tokens": 6400, "created_at": float("nan")},
+        # 8. Inf timestamp -> malformed_rejected
+        {"job_id": "inf-ts", "node_name": "n1", "model": "m", "total_tokens": 12800, "created_at": float("inf")},
+        # 9. Overflow timestamp (1e30) -> malformed_rejected
+        {"job_id": "overflow-ts", "node_name": "n1", "model": "m", "total_tokens": 25600, "created_at": 1e30},
+        # 10. String invalid -> malformed_rejected
+        {"job_id": "str-invalid", "node_name": "n1", "model": "m", "total_tokens": 51200, "created_at": "invalid_date_not_iso"},
+        # 11. Stale pre-epoch / ancient: -100.0 -> stale_filtered (dt in 1969 < cutoff_ts)
+        {"job_id": "ancient-ts", "node_name": "n1", "model": "m", "total_tokens": 102400, "created_at": -100.0},
+    ]
+    jobs_resp = json.dumps({"jobs": jobs_list}).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        res = detector.check_stream_5_fleet_mesh(now_ts=now)
+
+    anomalies = res.get("window_anomalies", {})
+    assert anomalies["future_rejected"] == 2  # jobs 5, 6
+    assert anomalies["malformed_rejected"] == 4  # jobs 7, 8, 9, 10
+    assert anomalies["stale_filtered"] == 2  # jobs 3, 11
+
+    # Only jobs 1, 2, 4 are accepted: 100 + 200 + 800 = 1100 tokens
+    assert res["total_jobs_tokens_1h"] == 1100
+    top_nodes = res["top_5_nodes"]
+    assert top_nodes[0]["requests_served_1h"] == 3
+    assert top_nodes[0]["tokens_consumed_1h"] == 1100
+
+
+def test_untrusted_stored_injection_in_fleet_jobs_and_nodes_escaped(tmp_path):
+    """Nebula Cycle 36 Stored-Injection & Telegram HTML Sanitization Fuzzing:
+    Verify that adversarial inputs across node names, tiers, job IDs, models,
+    prompts, and starved node lists are safely escaped with quote=True and cannot
+    break out of Telegram HTML formatting or execute arbitrary tags.
+    """
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    now = 1770000000.0
+
+    summary_resp = json.dumps({"online_nodes": 5, "total_nodes": 5}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 90.0, "sla_passed": True}).encode("utf-8")
+
+    nodes_resp = json.dumps({
+        "nodes": [
+            {
+                "name": "<script>alert('node')</script>&",
+                "tier": "pro\" autofocus onfocus=\"alert(1)",
+                "requests_served": 5,
+                "quota_weekly_consumed": 50000,
+                "quota_weekly_percent": 80.0,
+                "active_jobs": 1,
+            },
+            {
+                "name": "pro-starved-<b>1</b>",
+                "tier": "pro",
+                "requests_served": 0,
+                "quota_weekly_consumed": 0,
+                "quota_weekly_percent": 100.0,
+                "active_jobs": 0,
+            },
+        ]
+    }).encode("utf-8")
+
+    jobs_resp = json.dumps({
+        "jobs": [
+            {
+                "job_id": "<script>evil</script>\"'",
+                "node_name": "<script>alert('node')</script>&",
+                "model": "model<b onclick=\"bad()\">\"'",
+                "total_tokens": 10000,
+                "prompt": "<svg/onload=alert('prompt')>&quot;Hello<script>alert(2)</script>",
+                "completed_at": now - 60.0,
+            }
+        ]
+    }).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        stream_res = detector.check_stream_5_fleet_mesh(now_ts=now)
+
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    scan_result = {
+        "overall_health_score": 92,
+        "severity": "HEALTHY",
+        "cron": {"cron_health_score": 100, "ticker_heartbeat": {"is_stale": False, "age_seconds": 15}},
+        "entropy": {"entropy_health_score": 90, "streams": [stream_res]},
+    }
+    digest = notifier.format_hourly_digest(scan_result)
+
+    # Invariants: No raw unescaped dangerous tags or event handlers in executable contexts
+    assert "<script" not in digest
+    assert "</script" not in digest
+    assert "<svg" not in digest
+    assert "<img" not in digest
+    assert "<b onclick" not in digest
+
+    # Invariants: Properly escaped HTML entities are present
+    assert "&lt;script&gt;alert(&#x27;node&#x27;)&lt;/script&gt;&amp;" in digest
+    assert "model&lt;b onclick=&quot;bad()&quot;&gt;&quot;&#x27;" in digest
+    assert "&lt;svg/onload=" in digest
+    assert "pro&quot; autofocus onfocus=&quot;alert(1)" in digest
+    assert "pro-starved-&lt;b&gt;1&lt;/b&gt;" in digest
+
+    # Verify truncate_telegram_html maintains tag balance without crashing
+    safe_digest = notifier.truncate_telegram_html(digest, max_chars=1000)
+    assert len(safe_digest) <= 1000
+    assert "<script" not in safe_digest
+
+
