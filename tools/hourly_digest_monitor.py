@@ -875,6 +875,8 @@ class hybridmethod:
 class HermesTelegramNotifier:
     """Delivers rich HTML alerts and executive hourly digests to Hermes Telegram."""
 
+    _MIN_SECRET_SEGMENT = 30
+
     _SECRET_KEY_KEYWORDS = (
         "TOKEN",
         "SECRET",
@@ -914,6 +916,9 @@ class HermesTelegramNotifier:
         self.target_chat_id = target_chat_id
         self.bot_token = bot_token or self._load_token()
         self._known_secrets: Set[str] = self._load_known_secrets()
+        self._suppressed: bool = os.environ.get("HERMES_SUPPRESS_TELEGRAM") == "1"
+        self._recent_sends: Dict[str, float] = {}
+        self._dedup_window_s: float = 90.0
 
     def _load_known_secrets(self) -> Set[str]:
         """Load known secrets from .env and environment for exact verbatim redaction (Defense B1)."""
@@ -983,15 +988,40 @@ class HermesTelegramNotifier:
         clean = token.strip().strip("'\"")
         if clean.startswith("test-") or clean.lower() in ("dummy", "placeholder", "none"):
             return False
+        if ":" not in clean:
+            return False
+        bot_id_part, secret_segment = clean.split(":", 1)
+        if len(secret_segment) < HermesTelegramNotifier._MIN_SECRET_SEGMENT:
+            return False
         return bool(re.match(r"^[0-9]{6,20}:[A-Za-z0-9_\-]{30,128}$", clean))
 
+    def _scrub_outbound(self, payload: str) -> Tuple[str, bool]:
+        """Scrub outbound message body to ensure credentials never egress to Telegram (CWE-359)."""
+        scrubbed = self.redact_secrets(payload)
+        had_secret = (scrubbed != payload)
+        return scrubbed, had_secret
+
     def _send_payload(self, text: str) -> bool:
+        if self._suppressed or os.environ.get("HERMES_SUPPRESS_TELEGRAM") == "1":
+            logger.info("Telegram live send suppressed via HERMES_SUPPRESS_TELEGRAM=1.")
+            return False
         if not self.bot_token or not self.is_valid_token_format(self.bot_token):
             logger.info("Telegram live send suppressed: dummy or non-live bot token format (%s).", str(self.bot_token)[:12])
             return False
-        if os.environ.get("HERMES_SUPPRESS_TELEGRAM") == "1":
-            logger.info("Telegram live send suppressed via HERMES_SUPPRESS_TELEGRAM=1.")
-            return False
+
+        # Outbound egress secret scrubbing (CWE-359)
+        scrubbed, had_secret = self._scrub_outbound(text)
+        if had_secret:
+            logger.warning("Outbound alert contained secret pattern; sending redacted copy.")
+        text = scrubbed
+
+        # Delivery dedup window (best-effort at-most-once retry protection)
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        now = time.monotonic()
+        last = self._recent_sends.get(digest)
+        if last is not None and (now - last) < self._dedup_window_s:
+            logger.info("Duplicate alert suppressed within %.1fs dedup window (sha256: %s).", self._dedup_window_s, digest[:12])
+            return True
 
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         payload = {
@@ -1009,7 +1039,12 @@ class HermesTelegramNotifier:
             )
             with urllib.request.urlopen(req, timeout=15, context=get_ssl_context()) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                return bool(data.get("ok", False))
+                ok = bool(data.get("ok", False))
+                if ok:
+                    self._recent_sends[digest] = now
+                    cutoff = now - (self._dedup_window_s * 2)
+                    self._recent_sends = {k: v for k, v in self._recent_sends.items() if v >= cutoff}
+                return ok
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="replace")
             safe_body = self.redact_secrets(err_body)

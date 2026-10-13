@@ -726,6 +726,125 @@ def test_send_payload_redacts_secrets_in_http_error_logging(tmp_path, caplog):
 
 
 # ==============================================================================
+# Cycle 29 Adversarial Unit Tests: HermesTelegramNotifier Egress Hardening & Dedup
+# ==============================================================================
+def test_secret_in_alert_body_is_not_egressed(tmp_path):
+    """Cycle 29 (CWE-359): Alert body credentials and secrets are scrubbed before Telegram outbound egress."""
+    raw_secret = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+    password = "SuperSecretPassword123"
+    bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN={bot_token}\nGITHUB_TOKEN={raw_secret}\n")
+
+    notifier = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        bot_token=bot_token,
+    )
+    assert raw_secret in notifier._known_secrets
+
+    alert_body = f"<b>Alert</b>: Cron failure with token {raw_secret} and password={password}"
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps({"ok": True}).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        sent = notifier._send_payload(alert_body)
+        assert sent is True
+        mock_urlopen.assert_called_once()
+        req = mock_urlopen.call_args[0][0]
+        req_data = req.data.decode("utf-8")
+        assert raw_secret not in req_data
+        assert password not in req_data
+        assert "[REDACTED]" in req_data
+
+
+def test_token_format_rejects_trivial_secret_segment():
+    """Cycle 29: Fail-closed token validation enforces minimum secret segment length >= 30 chars."""
+    assert HermesTelegramNotifier._MIN_SECRET_SEGMENT == 30
+    assert HermesTelegramNotifier.is_valid_token_format("1:a") is False
+    assert HermesTelegramNotifier.is_valid_token_format("123456:short") is False
+    assert HermesTelegramNotifier.is_valid_token_format("123456789:" + "a" * 29) is False
+    assert HermesTelegramNotifier.is_valid_token_format("123456789:" + "a" * 30) is True
+
+
+def test_suppression_pinned_at_construction(tmp_path):
+    """Cycle 29: Suppression state is pinned at construction time to prevent runtime unsuppress bypass."""
+    env_file = tmp_path / ".env"
+    bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN={bot_token}\n")
+
+    with patch.dict(os.environ, {"HERMES_SUPPRESS_TELEGRAM": "1"}):
+        notifier = HermesTelegramNotifier(
+            env_file=env_file,
+            target_chat_id=TEST_CHAT_ID,
+            bot_token=bot_token,
+        )
+        assert notifier._suppressed is True
+
+    # Unset or change HERMES_SUPPRESS_TELEGRAM to "0"
+    with patch.dict(os.environ, {"HERMES_SUPPRESS_TELEGRAM": "0"}):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            sent = notifier._send_payload("<b>Test Payload</b>")
+            assert sent is False
+            mock_urlopen.assert_not_called()
+
+    # Also unsetting completely
+    with patch.dict(os.environ, {}, clear=True):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            sent = notifier._send_payload("<b>Test Payload</b>")
+            assert sent is False
+            mock_urlopen.assert_not_called()
+
+
+def test_retry_within_window_dispatches_once(tmp_path):
+    """Cycle 29: Duplicate alert delivery within dedup window is suppressed (at-most-once protection)."""
+    env_file = tmp_path / ".env"
+    bot_token = "123456789:ABCdefGhIjkLmNoPqRsTuVwXyZ_12345"
+    env_file.write_text(f"TELEGRAM_BOT_TOKEN={bot_token}\n")
+
+    notifier = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        bot_token=bot_token,
+    )
+    assert notifier._dedup_window_s == 90.0
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps({"ok": True}).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        # Calls _send_payload("<b>Test Payload</b>") with mock_urlopen returning b'{"ok": true}'
+        payload1 = "<b>Test Payload</b>"
+        # First call succeeds, mock_urlopen.call_count == 1
+        res1 = notifier._send_payload(payload1)
+        assert res1 is True
+        assert mock_urlopen.call_count == 1
+
+        # Second call within 90s returns True, mock_urlopen.call_count == 1 (deduped)
+        res2 = notifier._send_payload(payload1)
+        assert res2 is True
+        assert mock_urlopen.call_count == 1
+
+        # Call with different payload dispatches, mock_urlopen.call_count == 2
+        payload2 = "<b>Different Payload</b>"
+        res3 = notifier._send_payload(payload2)
+        assert res3 is True
+        assert mock_urlopen.call_count == 2
+
+        # Simulates time advance > 90s, original payload dispatches again, mock_urlopen.call_count == 3
+        digest1 = hashlib.sha256(payload1.encode("utf-8")).hexdigest()
+        notifier._recent_sends[digest1] = time.monotonic() - 95.0
+
+        res4 = notifier._send_payload(payload1)
+        assert res4 is True
+        assert mock_urlopen.call_count == 3
+
+
+# ==============================================================================
 # 5. Tests: SelfHealingManager
 # ==============================================================================
 def test_self_healing_manager_drift_skips(tmp_path):
