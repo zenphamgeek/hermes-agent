@@ -31,16 +31,19 @@ from tools.modal_jev_finetuning import (
     JEV_SYSTEM_INSTRUCTION,
     DatasetSecretScrubber,
     ModalCredentialError,
+    ModalCreditGateViolation,
     QuotaBreaker,
     advisory_file_lock,
     generate_dataset_manifest,
     get_modal_credentials,
+    get_modal_mtd_spend,
     harvest_dataset_from_ledgers,
     is_tombstoned,
     load_safe_model_weights,
     train_jev_modal,
     validate_dataset_is_sanitized,
     verify_dataset_manifest,
+    verify_modal_credit_gate,
     write_dataset_manifest,
 )
 
@@ -947,6 +950,56 @@ def test_no_manifest_for_incomplete_artifact(tmp_path):
     ok, violations = verify_dataset_manifest(missing_ds)
     assert ok is False
     assert any("does not exist" in v.lower() for v in violations)
+
+
+def test_modal_credit_gate_passes_when_ample_credits():
+    """
+    Sovereign Invariant 1.17: When MTD spend is low (e.g. $2.50),
+    remaining credits ($27.50) exceed both $15.00 (deploy) and $10.00 (inference).
+    """
+    rem_inf = verify_modal_credit_gate(mode="inference", mtd_spend=2.50)
+    assert rem_inf == 27.50
+
+    rem_dep = verify_modal_credit_gate(mode="deploy", mtd_spend=2.50)
+    assert rem_dep == 27.50
+
+
+def test_modal_credit_gate_rejects_inference_when_spend_too_high():
+    """
+    Sovereign Invariant 1.17: Inference is strictly forbidden if remaining <= $10.00
+    (MTD spend >= $20.00).
+    """
+    with pytest.raises(ModalCreditGateViolation, match="Inference/Training requires strictly > \\$10.00"):
+        verify_modal_credit_gate(mode="inference", mtd_spend=20.00)
+
+    with pytest.raises(ModalCreditGateViolation, match="Inference/Training requires strictly > \\$10.00"):
+        verify_modal_credit_gate(mode="inference", mtd_spend=24.50)
+
+
+def test_modal_credit_gate_rejects_deploy_when_spend_too_high():
+    """
+    Sovereign Invariant 1.17: Deployment is strictly forbidden if remaining <= $15.00
+    (MTD spend >= $15.00).
+    """
+    # At spend=$15.00, remaining=$15.00 <= $15.00 -> must fail closed
+    with pytest.raises(ModalCreditGateViolation, match="Deploy requires strictly > \\$15.00"):
+        verify_modal_credit_gate(mode="deploy", mtd_spend=15.00)
+
+    with pytest.raises(ModalCreditGateViolation, match="Deploy requires strictly > \\$15.00"):
+        verify_modal_credit_gate(mode="deploy", mtd_spend=18.00)
+
+
+def test_modal_credit_gate_rejects_retired_hermes_clef_decision():
+    """
+    Sovereign Invariant 1.17: hermes-clef-decision on Modal GPU is permanently decommissioned.
+    Any attempt to target this app must fail closed immediately.
+    """
+    with pytest.raises(ModalCreditGateViolation, match="Hermes-Clef-Decision is permanently retired"):
+        verify_modal_credit_gate(mode="inference", mtd_spend=0.0, target_app="hermes-clef-decision")
+
+    with pytest.raises(ModalCreditGateViolation, match="Hermes-Clef-Decision is permanently retired"):
+        verify_modal_credit_gate(mode="deploy", mtd_spend=0.0, target_app="app_hermes-clef-decision_v2")
+
 
 
 

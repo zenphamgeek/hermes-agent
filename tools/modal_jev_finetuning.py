@@ -557,6 +557,77 @@ def get_modal_credentials(require: bool = False) -> Dict[str, Optional[str]]:
     }
 
 
+class ModalCreditGateViolation(RuntimeError):
+    """Raised when remaining Modal GPU credits violate Sovereign Invariant 1.17."""
+    pass
+
+
+def get_modal_mtd_spend(env: Optional[Dict[str, str]] = None) -> float:
+    """
+    Queries Modal billing report for current month-to-date (MTD) spend in USD.
+    Returns 0.0 if report is empty or on dry-run/mock environments.
+    """
+    run_env = dict(os.environ)
+    if env:
+        run_env.update(env)
+    try:
+        res = subprocess.run(
+            ["modal", "billing", "report", "--for", "this month", "--json"],
+            env=run_env,
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            billing_entries = json.loads(res.stdout)
+            if isinstance(billing_entries, list):
+                return sum(float(b.get("Cost", 0)) for b in billing_entries if isinstance(b, dict))
+    except Exception as e:
+        logger.warning("Failed querying Modal billing report: %s", e)
+    return 0.0
+
+
+def verify_modal_credit_gate(
+    mode: str = "inference",
+    mtd_spend: Optional[float] = None,
+    target_app: Optional[str] = None,
+    env: Optional[Dict[str, str]] = None,
+) -> float:
+    """
+    Enforces Rule 1.17: Modal GPU Remote Execution Credit Gate Invariant.
+    - Deploy: strictly > $15.00 remaining (MTD spend < $15.00).
+    - Inference / Training: strictly > $10.00 remaining (MTD spend < $20.00).
+    - hermes-clef-decision is permanently retired (0% Modal GPU usage allowed).
+    - Fails closed with ModalCreditGateViolation if thresholds are breached.
+    Returns current remaining credits in USD.
+    """
+    if target_app and "hermes-clef-decision" in target_app.lower():
+        raise ModalCreditGateViolation(
+            "Hermes-Clef-Decision is permanently retired per Sovereign Invariant 1.17. "
+            "Routing/classification MUST resolve via Cloudflare Workers AI or Local Air-Gapped Surrogate."
+        )
+
+    spend = mtd_spend if mtd_spend is not None else get_modal_mtd_spend(env=env)
+    remaining = 30.00 - spend
+
+    mode_lower = mode.lower()
+    if mode_lower in ("deploy", "deployment"):
+        if remaining <= 15.00:
+            raise ModalCreditGateViolation(
+                f"Modal Credit Gate Violation: Deploy requires strictly > $15.00 remaining credits, "
+                f"but workspace has ${remaining:.2f} (current MTD spend: ${spend:.2f})."
+            )
+    else:  # inference / train / worker run
+        if remaining <= 10.00:
+            raise ModalCreditGateViolation(
+                f"Modal Credit Gate Violation: Inference/Training requires strictly > $10.00 remaining credits, "
+                f"but workspace has ${remaining:.2f} (current MTD spend: ${spend:.2f})."
+            )
+
+    return remaining
+
+
 # =============================================================================
 # 3. DATASET PROVENANCE MANIFEST & SUPPLY-CHAIN INTEGRITY
 # =============================================================================
@@ -869,6 +940,7 @@ def harvest_dataset_from_ledgers(
 
     scrubber = DatasetSecretScrubber()
     records: List[Dict[str, Any]] = []
+    seen_prompts: Set[str] = set()
 
     # 1. Ingest from ActionLedger if available
     ledger_p = action_ledger_path or (Path.home() / ".gemini" / "antigravity" / "action_ledger.jsonl")
@@ -883,8 +955,9 @@ def harvest_dataset_from_ledgers(
                         # Immediate read-boundary scrubbing before JSON deserialization (CWE-200)
                         scrubbed_line = scrubber.scrub_text(line)
                         raw_entry = json.loads(scrubbed_line)
-                        if raw_entry.get("action") == "jev_decision_evaluation":
-                            # Deep-object recursive scrub pass
+                        action = raw_entry.get("action")
+
+                        if action == "jev_decision_evaluation":
                             entry = scrubber.scrub(raw_entry)
                             details = entry.get("details", {})
                             domain = entry.get("domain", "general_ai_workspace")
@@ -892,11 +965,16 @@ def harvest_dataset_from_ledgers(
                             tier = details.get("tier", "PRO")
                             runner = details.get("runner", "pytest (`pytest tests/ -v`)")
                             status = entry.get("status", "PERMITTED")
+                            prompt_text = f"Evaluate task: {entry.get('payload_sha256', '')}"
+
+                            if prompt_text in seen_prompts:
+                                continue
+                            seen_prompts.add(prompt_text)
 
                             rec = {
                                 "instruction": JEV_SYSTEM_INSTRUCTION,
                                 "input": {
-                                    "prompt": f"Evaluate task: {entry.get('payload_sha256', '')}",
+                                    "prompt": prompt_text,
                                     "domain": domain,
                                 },
                                 "output": {
@@ -909,8 +987,79 @@ def harvest_dataset_from_ledgers(
                                     "rationale": f"JEV verdict for {domain} with complexity {complexity}.",
                                 },
                             }
-                            # Attach cryptographic scrubber integrity signature
                             records.append(scrubber.sign_record(rec))
+
+                        elif action == "dispatch_fleet_task":
+                            entry = scrubber.scrub(raw_entry)
+                            details = entry.get("details", {})
+                            model = str(details.get("model", "")).lower()
+                            domain = entry.get("domain") or "general_ai_workspace"
+                            payload_hash = entry.get("payload_sha256", "")
+                            prompt_text = f"Evaluate fleet dispatch task: {payload_hash}"
+
+                            if prompt_text in seen_prompts:
+                                continue
+                            seen_prompts.add(prompt_text)
+
+                            is_ultra = any(u in model for u in ("opus", "ultra", "thinking"))
+                            complexity = 3.2 if is_ultra else (1.8 if "sonnet" in model else 1.2)
+                            tier = "ULTRA" if is_ultra else "PRO"
+                            requires_cloud = is_ultra
+                            runner = "pytest (`pytest tests/ -v`)"
+                            if "erp" in domain:
+                                runner = "odoo.tests.common.TransactionCase (`odoo-bin --test-enable`)"
+                            elif "mobile" in domain or "flutter" in domain:
+                                runner = "flutter test (`flutter test`)"
+                            elif "game" in domain:
+                                runner = "node:test (`NODE_ENV=test node --test tests/*.test.js`)"
+
+                            rec = {
+                                "instruction": JEV_SYSTEM_INSTRUCTION,
+                                "input": {
+                                    "prompt": prompt_text,
+                                    "domain": domain,
+                                },
+                                "output": {
+                                    "domain": domain,
+                                    "complexity_score": complexity,
+                                    "target_tier": tier,
+                                    "test_runner": runner,
+                                    "requires_cloud_escalation": requires_cloud,
+                                    "verdict": "ESCALATED" if requires_cloud else "PERMITTED",
+                                    "rationale": f"JEV routed dispatch to {details.get('model', 'fleet worker')} for domain {domain}.",
+                                },
+                            }
+                            records.append(scrubber.sign_record(rec))
+
+                        elif action in ("scout_repos", "fetch_arxiv"):
+                            entry = scrubber.scrub(raw_entry)
+                            domain = entry.get("domain") or "general_ai_workspace"
+                            target_host = entry.get("target_host") or "external_api"
+                            payload_hash = entry.get("payload_sha256", "")
+                            prompt_text = f"Evaluate research scan: {action} on {target_host} ({payload_hash})"
+
+                            if prompt_text in seen_prompts:
+                                continue
+                            seen_prompts.add(prompt_text)
+
+                            rec = {
+                                "instruction": JEV_SYSTEM_INSTRUCTION,
+                                "input": {
+                                    "prompt": prompt_text,
+                                    "domain": domain,
+                                },
+                                "output": {
+                                    "domain": domain,
+                                    "complexity_score": 1.1,
+                                    "target_tier": "PRO",
+                                    "test_runner": "pytest (`pytest tests/ -v`)",
+                                    "requires_cloud_escalation": False,
+                                    "verdict": "PERMITTED",
+                                    "rationale": f"Autonomous research scan task for {domain}. Low complexity fast-path permitted.",
+                                },
+                            }
+                            records.append(scrubber.sign_record(rec))
+
                     except Exception:
                         pass
         except Exception as e:
@@ -1325,6 +1474,13 @@ def main():
         creds = get_modal_credentials(require=True)
         if not (creds.get("MODAL_TOKEN_ID") and creds.get("MODAL_TOKEN_SECRET")) and not os.environ.get("MODAL_PROFILE"):
             logger.info("Using Modal profile/environment token sourcing.")
+
+        # Sovereign Invariant 1.17: Modal GPU Remote Execution Credit Gate
+        remaining_credits = verify_modal_credit_gate(
+            mode="inference",
+            target_app="jev-decision-finetune",
+        )
+        logger.info("Modal Credit Gate verified: $%.2f remaining credits (threshold > $10.00).", remaining_credits)
 
         breaker = QuotaBreaker(max_attempts=3, base_backoff_s=2.0)
         print("🚀 Dispatching JEV Fine-Tuning to Modal GPU (Quota-Breaker Protected)...")
