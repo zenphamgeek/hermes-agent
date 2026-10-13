@@ -9,6 +9,7 @@ Covers Cycle 33 Nebula adversarial security remediation:
 """
 
 import ast
+import builtins
 import fcntl
 import json
 import os
@@ -597,44 +598,73 @@ def test_symlink_weight_file_rejected(tmp_path):
         load_safe_model_weights(symlink_file)
 
 
-def test_crafted_pickle_sentinel_never_executed(tmp_path):
+_RCE_GADGETS = [
+    ("eval",            lambda p: (eval,  (f"open({p!r}, 'w').write('RCE')",))),
+    ("exec",            lambda p: (exec,  (f"open({p!r}, 'w').write('RCE')",))),
+    ("os.system",       lambda p: (os.system, (f"touch {p}",))),
+    ("builtins.import", lambda p: (builtins.__import__, ("os",))),
+]
+
+
+@pytest.mark.live_system_guard_bypass
+@pytest.mark.parametrize("gadget_name,reducer", _RCE_GADGETS, ids=[g[0] for g in _RCE_GADGETS])
+@pytest.mark.parametrize("suffix", [".pt", ".bin"])
+def test_crafted_pickle_sentinel_never_executed(tmp_path, gadget_name, reducer, suffix):
     """
-    F1 (CWE-502): Crafted malicious class with __reduce__ that attempts RCE
-    via file write is blocked by weights_only=True and NEVER executed.
+    F1 (CWE-502): A well-formed malicious __reduce__ payload must be rejected
+    by weights_only=True and NEVER executed, across every RCE gadget and
+    every accepted file extension (.pt, .bin).
     """
-    sentinel_path = Path(f"/tmp/sentinel_exploit_{uuid.uuid4().hex}.txt")
+    sentinel_path = tmp_path / f"sentinel_{gadget_name}_{uuid.uuid4().hex}.txt"
 
     class MaliciousPayload:
         def __reduce__(self):
-            return (eval, (f"open('{sentinel_path}', 'w').write('CWE-502-RCE')",))
+            return reducer(str(sentinel_path))
 
-    exploit_pt = tmp_path / "crafted_exploit.pt"
-    with open(exploit_pt, "wb") as f:
+    exploit = tmp_path / f"crafted_exploit{suffix}"
+    with open(exploit, "wb") as f:
         pickle.dump(MaliciousPayload(), f, protocol=2)
 
-    try:
-        with pytest.raises(Exception):
-            load_safe_model_weights(exploit_pt)
-        assert not sentinel_path.exists(), (
-            "CWE-502 Critical RCE: Malicious __reduce__ payload executed during load_safe_model_weights (.pt)!"
-        )
-    finally:
-        if sentinel_path.exists():
-            sentinel_path.unlink()
+    # Must raise the loader's deserialization-rejection error specifically.
+    with pytest.raises(pickle.UnpicklingError) as exc:
+        load_safe_model_weights(exploit)
 
-    exploit_bin = tmp_path / "crafted_exploit.bin"
-    with open(exploit_bin, "wb") as f:
+    err_msg = str(exc.value).lower()
+    assert any(k in err_msg for k in ("weights only", "unsupported global", "not an allowed global", "weights_only")), (
+        f"Loader raised, but not for the restricted-unpickler reason: {exc.value!r}"
+    )
+    assert not sentinel_path.exists(), (
+        f"CWE-502 Critical RCE: {gadget_name} payload executed during load ({suffix})!"
+    )
+
+
+@pytest.mark.live_system_guard_bypass
+def test_security_guard_is_load_bearing(tmp_path):
+    """
+    Insider-tamper guard (CWE-502 regression integrity):
+    If weights_only protection is disabled, the exploit MUST fire.
+    This proves the primary test is detecting a real control, not passing vacuously.
+    """
+    sentinel_path = tmp_path / f"sentinel_{uuid.uuid4().hex}.txt"
+
+    class MaliciousPayload:
+        def __reduce__(self):
+            return (eval, (f"open({str(sentinel_path)!r}, 'w').write('RCE')",))
+
+    exploit = tmp_path / "exploit.pt"
+    with open(exploit, "wb") as f:
         pickle.dump(MaliciousPayload(), f, protocol=2)
 
+    # Deliberately bypass the guard to confirm the payload is genuinely live.
     try:
-        with pytest.raises(Exception):
-            load_safe_model_weights(exploit_bin)
-        assert not sentinel_path.exists(), (
-            "CWE-502 Critical RCE: Malicious __reduce__ payload executed during load_safe_model_weights (.bin)!"
-        )
-    finally:
-        if sentinel_path.exists():
-            sentinel_path.unlink()
+        torch.load(exploit, weights_only=False)  # unsafe path, isolated to this test
+    except Exception:
+        pass
+
+    assert sentinel_path.exists(), (
+        "Mutation guard FAILED: payload did not execute even with weights_only=False. "
+        "The exploit fixture is inert, so the primary test proves nothing."
+    )
 
 
 def test_honeytoken_canary_recall_harness(tmp_path):
