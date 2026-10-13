@@ -14,6 +14,9 @@ import json
 import os
 import pickle
 import stat
+import threading
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 import pytest
 import torch
@@ -26,6 +29,7 @@ from tools.modal_jev_finetuning import (
     generate_dataset_manifest,
     get_modal_credentials,
     harvest_dataset_from_ledgers,
+    is_tombstoned,
     load_safe_model_weights,
     train_jev_modal,
     validate_dataset_is_sanitized,
@@ -484,4 +488,86 @@ def test_dataset_provenance_manifest_gate(tmp_path):
     is_valid_tampered, violations_tampered = verify_dataset_manifest(output_ds)
     assert is_valid_tampered is False
     assert any("Provenance hash mismatch" in v for v in violations_tampered)
+
+
+def test_manifest_write_is_atomic_under_concurrent_writers(tmp_path):
+    """
+    CWE-362: Concurrent manifest writers must not produce torn writes or interleaved JSON.
+    """
+    target_ds = tmp_path / "concurrent_dataset.jsonl"
+    target_ds.write_text('{"sample": 1}\n', encoding="utf-8")
+    errors = []
+
+    def writer(tag: int):
+        try:
+            m = generate_dataset_manifest(
+                dataset_path=target_ds,
+                dataset_content=f'{{"sample": {tag}}}\n',
+                sample_count=1,
+            )
+            write_dataset_manifest(target_ds, m)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Concurrent manifest write errors encountered: {errors}"
+    manifest_p = target_ds.with_name(f"{target_ds.name}.manifest.json")
+    assert manifest_p.exists()
+    # Must parse cleanly without JSON syntax error
+    data = json.loads(manifest_p.read_text(encoding="utf-8"))
+    assert "content_sha256" in data
+    assert "provenance_signature" in data
+
+
+def test_manifest_rejects_future_dated_validity_window(tmp_path):
+    """
+    CWE-367/613: Skew-tolerant but strictly bounded. A manifest dated 5 minutes
+    in the future beyond allowed max_clock_skew_s (120s) must be rejected.
+    """
+    m = generate_dataset_manifest(
+        dataset_path=tmp_path / "skew_dataset.jsonl",
+        dataset_content='{"sample": 1}\n',
+        sample_count=1,
+    )
+    # Tamper timestamp to 5 minutes into the future
+    m["generated_at"] = (datetime.now(timezone.utc).timestamp() + 300)
+
+    ok, violations = verify_dataset_manifest(m, max_clock_skew_s=120)
+    assert ok is False
+    assert any("clock skew" in v.lower() for v in violations)
+
+
+def test_tombstone_not_resurrected_by_lagging_reader_clock():
+    """
+    Bi-Temporal Invariant: A reader whose wall clock lags the tombstone's
+    transaction_time must still treat the record as deleted (Zero-Resurrection).
+    """
+    tombstone_tx_time = time.time()
+    reader_now = tombstone_tx_time - 300  # Reader 5 minutes slow
+    assert is_tombstoned(tombstone_tx_time, reader_now=reader_now) is True
+
+
+def test_validator_catches_unredacted_high_entropy_token():
+    """
+    CWE-200 Non-Circular Gate: Independent Shannon entropy heuristic catches
+    un-enumerated, unknown high-entropy token shapes not in the named pattern set.
+    """
+    # Raw high-entropy token (32 random base64 chars with entropy > 4.0)
+    novel_token = "K9zX4mP7qR2wL8vN5tY1jB6cE0aF3sD="
+    leaked_record = {
+        "instruction": JEV_SYSTEM_INSTRUCTION,
+        "input": {"prompt": f"Debug unknown token: {novel_token}"},
+        "output": {"domain": "enterprise_erp", "complexity_score": 1.0},
+    }
+    content = json.dumps(leaked_record) + "\n"
+
+    is_valid, violations = validate_dataset_is_sanitized(content, enforce_signature=False)
+    assert is_valid is False
+    assert any("high-entropy" in v.lower() for v in violations)
+
 
