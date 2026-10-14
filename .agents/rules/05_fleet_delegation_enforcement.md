@@ -33,16 +33,17 @@ When a task requires **non-trivial code generation, refactoring, or analysis** (
 2. ❌ **Never use `invoke_subagent` when `fleet_run` would suffice** (wastes orchestrator quota)
 3. ❌ **Never send `fleet_run` a task that requires reading files** without pasting the file content into the prompt (fleet nodes have no disk access in --print mode)
 4. ❌ **Never claim "delegated to fleet" without actually calling fleet_run** — this is fabrication
-5. ❌ **Never route Claude tasks to Ultra accounts**: Ultra accounts (`ultra-2` / `lthn.Ariana`, etc.) STRICTLY serve Gemini models (`gemini-3.1-pro-high`, `gemini-3.8-flash-high`). Consuming Claude quota on Ultra accounts for Fleet tasks is ABSOLUTELY FORBIDDEN.
+5. ❌ **Never route Claude tasks to Ultra accounts**: Ultra accounts (`innoria-team` / `innoria.team@gmail.com`, `ultra-2` / `lthn.Ariana`) STRICTLY serve Gemini models (`gemini-4-argon-high/medium/low`, `gemini-3.1-pro-high`, `gemini-3.8-flash-high`). Consuming Claude quota on Ultra accounts for Fleet tasks is ABSOLUTELY FORBIDDEN.
 6. ❌ **Never send Gemini tasks to Nebula or query Nebula for Gemini**: Nebula API Gateway (`b.ai`) ONLY supports Claude Opus 4.8 (`claude-opus-4.8`) and does NOT have Gemini models. Cấm ngặt việc hỏi hoặc điều phối Gemini sang Nebula.
 
-## Rule: Claude Routing Hierarchy (Pro-First Then Nebula), Ultra Gemini-Only & Nebula Opus 4.8 Invariant
+## Rule: Claude Routing Hierarchy (Pro-First Then Pro Gemini Fallback), Per-Node Allowlist, Nebula Disabled & Ultra Gemini-Only Invariant
 
-1. **Claude Pro-First Mandate**: When Claude models (`claude-sonnet-5-5-high`, `claude-opus-5-5-high`, `claude-opus-4-6-thinking`) are required, the scheduler MUST prioritize **Pro-first** (Pro CLI nodes with available Claude quota in `pro-claude-pool` defined in untracked `fleet_roster.yml` / `fleet_roster.defaults.yml`).
-2. **Nebula API Fallback (Claude Opus 4.8 Only & Zero-Gemini Mandate)**: ONLY when ALL Pro CLI Claude nodes have exhausted their quota, are rate-limited, or are busy, the system automatically falls back to **Nebula API Gateway (`nebula` / `b.ai`)**.
-   - **Nebula ONLY has Claude Opus 4.8 (`claude-opus-4.8`)**: Nebula does NOT have Gemini!
-   - **Never Ask Nebula about Gemini**: Never route Gemini models or query Nebula for Gemini tasks. All Gemini tasks MUST strictly run on AGY CLI nodes (Ultra/Pro).
-3. **Ultra Accounts Strictly Gemini-Only**: Ultra accounts (`ultra-2` / `lthn.Ariana`) exist exclusively for high-complexity Gemini inference (`gemini-3.1-pro-high`, `gemini-3.8-flash-high`). Consuming Claude quota on Ultra accounts for Fleet tasks is ABSOLUTELY FORBIDDEN. Ultra accounts are permanently excluded from Claude routing pools.
+1. **Per-Node Model Allowlist (`FLEET_NODE_ALLOWLIST`) & Dynamic Model Adaptation (`resolve_model_for_node`)**:
+   - **Group A (2 Ultra Nodes — `innoria-team` (`innoria.team@gmail.com`) & `ariana`/`ultra-2` (`lthn.ariana@gmail.com`))**: Supports `gemini-4-argon-high/medium/low`, `gemini-3.8-flash-high/medium/low`, `gemini-3.1-pro-high`. Ultra accounts strictly serve Gemini only (Zero Claude quota usage).
+   - **Group B (17 Standard Pro Nodes)**: Supports `gemini-3.8-flash-high/medium/low`, `claude-opus-4-6-thinking`, `claude-opus-4.6`, `claude-sonnet-4-6`, `gpt-oss-120b-medium`. `resolve_model_for_node` dynamically adapts `gemini-4-argon-*` $\to$ `gemini-3.8-flash-*` and `claude-*-5-5-*` $\to$ `claude-*-4-6*` on Group B nodes, load-balanced via **Quota-Balanced Round-Robin (QBRR)**.
+2. **Claude Pro-First Mandate**: When Claude models (`claude-sonnet-5-5-high`, `claude-opus-5-5-high`, `claude-opus-4-6-thinking`) are required, the scheduler MUST prioritize **Pro-first** (Pro CLI nodes with available Claude quota in `pro-claude-pool` defined in untracked `fleet_roster.yml` / `fleet_roster.defaults.yml`).
+3. **Nebula Disabled & Pro Gemini CLI Fallback**: **Nebula API Gateway (`nebula` / `b.ai`)** is currently **DISABLED (`disabled: True`, `ineligible: True`)** due to quota exhaustion (`NebulaAdmissionCircuitBreaker.can_admit()` returns `False`). When ALL Pro CLI Claude nodes have exhausted their quota, are rate-limited, or are busy, the system automatically falls back to **healthy Pro CLI nodes running Gemini** (`gemini-4-argon-high` resolved per node via `resolve_model_for_node`), NEVER `nebula` and NEVER Ultra.
+4. **Ultra Accounts Strictly Gemini-Only**: Ultra accounts (`innoria-team` / `innoria.team@gmail.com`, `ultra-2` / `lthn.Ariana`) exist exclusively for high-complexity Gemini inference (`gemini-4-argon-high`, `gemini-3.1-pro-high`, `gemini-3.8-flash-high`). Consuming Claude quota on Ultra accounts for Fleet tasks is ABSOLUTELY FORBIDDEN. Ultra accounts are permanently excluded from Claude routing pools.
 
 ## Rule: Mandatory Clef Swarm Participation Across All Fleet Tasks (Sự Tham Gia Của Clef Là Bắt Buộc)
 

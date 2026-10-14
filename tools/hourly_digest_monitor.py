@@ -199,23 +199,11 @@ def _safe_int(
                 except ValueError:
                     try:
                         f = float(v_str)
-                        if math.isnan(f):
+                        if math.isnan(f) or math.isinf(f):
                             res = default
-                        elif math.isinf(f):
-                            if "inf" in v_str.lower():
-                                res = default
-                            elif not v_str.startswith("-") and max_val is not None:
-                                res = max_val
-                            else:
-                                res = min_val
                         else:
                             res = int(f)
-                    except OverflowError:
-                        if not v_str.startswith("-") and max_val is not None:
-                            res = max_val
-                        else:
-                            res = min_val
-                    except ValueError:
+                    except (OverflowError, ValueError):
                         res = default
         else:
             try:
@@ -1208,7 +1196,8 @@ class EntropyDegradationDetector:
             # Pro-First Quota Exhaustion & Workload Evaluation
             pro_nodes = [
                 n for n in valid_nodes
-                if str(n.get("tier", "")).lower() == "pro" and str(n.get("name", "")).lower() != "nebula"
+                if str(n.get("tier", "")).lower() == "pro"
+                and str(n.get("name", "")).lower() not in ("nebula", "innoria-team", "innoria.team", "ariana", "ultra-2")
             ]
             non_pro_nodes = [n for n in valid_nodes if n not in pro_nodes]
 
@@ -1499,7 +1488,7 @@ class HermesTelegramNotifier:
         bot_token: Optional[str] = None,
         ledger_path: Optional[Path] = None,
     ):
-        self.env_file = Path(env_file)
+        self.env_file = Path(env_file) if env_file is not None else DEFAULT_ENV_FILE
         self.target_chat_id = target_chat_id
         self.bot_token = bot_token or self._load_token()
         self._known_secrets: Set[str] = self._load_known_secrets()

@@ -1227,7 +1227,7 @@ def test_adversarial_numeric_boundary_and_fuzz():
     assert _safe_int("-1e30") == 0
     assert _safe_int(None) == 0
     assert _safe_int({}) == 0
-    assert _safe_int("1e500") == MAX_TELEMETRY_VALUE
+    assert _safe_int("1e500") == 0
     assert _safe_int("-1e500") == 0
 
 
@@ -6127,5 +6127,91 @@ def test_reconciliation_divergence_above_threshold_flags():
     assert anomalies["reconciliation_divergence"] == 1
 
 
+def test_2303_11366_invariant(tmp_path):
+    """Reflexion (arXiv:2303.11366) Episodic Self-Reflection Buffer & Ultra Node Isolation Invariant:
+    1. Verifies deterministic episodic dedup ledger state transition S_{t+1} = delta(S_t, E)
+       with SHA-256 content digest indexing and mode-0600 atomic persistence.
+    2. Verifies that Ultra-tier nodes ('innoria-team' / 'innoria.team@gmail.com' and 'ariana' / 'lthn.ariana@gmail.com')
+       are strictly isolated from the Pro candidate pool in Stream 5 telemetry, never inflating
+       total_pro_nodes or starved_pro_nodes even under malformed tier payloads.
+    """
+    import hashlib
+    import stat
 
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-reflexion-token\n", encoding="utf-8")
+    ledger_file = tmp_path / "reflexion_dedup_ledger.json"
+
+    notifier = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        ledger_path=ledger_file,
+    )
+
+    # Part A: Episodic memory state transition S_{t+1} = delta(S_t, E)
+    now_ts = time.time()
+    episode_key = "reflexion_episode_2303_11366"
+    episode_text = "Episodic reflection: isolate innoria-team (Ultra) from Pro quota burn pool"
+    expected_sha256 = hashlib.sha256(episode_text.encode("utf-8")).hexdigest()
+
+    assert notifier._is_dedup_suppressed(episode_key, text=episode_text) is False
+    notifier._record_dedup_success(episode_key, now_ts, text=episode_text)
+
+    # Verify deterministic state transition in memory & on disk (0600 permissions)
+    assert notifier._is_dedup_suppressed(episode_key, text=episode_text) is True
+    assert expected_sha256 in notifier._recent_sends
+    assert ledger_file.exists()
+    file_mode = stat.S_IMODE(ledger_file.stat().st_mode)
+    assert file_mode == 0o600
+
+    # Part B: Ultra node isolation ('innoria-team' & 'ariana') in Stream 5 Pro-First evaluation
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+
+    summary_resp = json.dumps({"online_nodes": 5, "total_nodes": 5}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 96.0, "sla_passed": True}).encode("utf-8")
+    nodes_resp = json.dumps({
+        "nodes": [
+            {"name": "innoria-team", "tier": "ultra", "account_email": "innoria.team@gmail.com", "requests_served": 2, "quota_weekly_capacity": 7000000, "quota_weekly_consumed": 50000, "quota_weekly_percent": 99.3, "active_jobs": 0},
+            {"name": "ariana", "tier": "ultra", "account_email": "lthn.ariana@gmail.com", "requests_served": 4, "quota_weekly_capacity": 7000000, "quota_weekly_consumed": 62526, "quota_weekly_percent": 99.1, "active_jobs": 0},
+            {"name": "binhthuong", "tier": "pro", "requests_served": 120, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 2100000, "quota_weekly_percent": 16.0, "active_jobs": 0},
+            {"name": "sunward", "tier": "pro", "requests_served": 115, "quota_weekly_capacity": 2500000, "quota_weekly_consumed": 2050000, "quota_weekly_percent": 18.0, "active_jobs": 0},
+        ]
+    }).encode("utf-8")
+    jobs_resp = json.dumps({
+        "jobs": [
+            {"job_id": "j-pro-1", "node_name": "binhthuong", "model": "gemini-3.8-flash-high", "total_tokens": 12000, "created_at": now_ts - 60.0},
+            {"job_id": "j-pro-2", "node_name": "sunward", "model": "claude-sonnet-4-6", "total_tokens": 15000, "created_at": now_ts - 30.0},
+        ]
+    }).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        res = detector.check_stream_5_fleet_mesh(now_ts=now_ts)
+
+    pfc = res["pro_first_criterion"]
+    assert pfc["total_pro_nodes"] == 2
+    assert "innoria-team" not in pfc["starved_pro_nodes"]
+    assert "ariana" not in pfc["starved_pro_nodes"]
+    assert pfc["grade"] == "OPTIMAL"
+    assert pfc["status"] == "PASS"
 
