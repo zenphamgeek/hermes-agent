@@ -43,6 +43,7 @@ from tools.hourly_digest_monitor import (
     SendResult,
     MAX_FLEET_BYTES,
     MAX_TELEMETRY_VALUE,
+    _extract_clean_task_prompt,
     _safe_fetch_json,
     _safe_float,
     _safe_int,
@@ -6215,3 +6216,398 @@ def test_2303_11366_invariant(tmp_path):
     assert pfc["grade"] == "OPTIMAL"
     assert pfc["status"] == "PASS"
 
+
+# ==============================================================================
+# Sovereign Hold (Streams 1, 2, 3), Clean Task Prompt & Deep Insight Tests
+# ==============================================================================
+def test_streams_1_2_3_on_hold_and_excluded_from_health_penalty(tmp_path):
+    """Verify Streams 1, 2, 3 marked ON_HOLD do not penalize entropy_health_score."""
+    missing_stock = tmp_path / "missing_stock.db"
+    missing_legal = tmp_path / "missing_legal"
+    missing_media = tmp_path / "missing_media.json"
+
+    median_log = tmp_path / "median.log"
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    median_log.write_text(
+        f"[{now_str}] Running check 1\n[{now_str}] Hourly Sync completed successfully\n",
+        encoding="utf-8",
+    )
+
+    detector = EntropyDegradationDetector(
+        stock_db_path=missing_stock,
+        legal_dir_path=missing_legal,
+        media_json_path=missing_media,
+        median_log_path=median_log,
+        held_streams={1, 2, 3},
+    )
+
+    with patch.object(
+        detector,
+        "check_stream_5_fleet_mesh",
+        return_value={"name": "AGY Fleet Mesh & Council", "status": "HEALTHY", "score": 100},
+    ):
+        scan_res = detector.scan()
+
+    streams = scan_res["streams"]
+    assert streams[0]["status"] == "ON_HOLD"
+    assert streams[1]["status"] == "ON_HOLD"
+    assert streams[2]["status"] == "ON_HOLD"
+    assert streams[3]["status"] == "HEALTHY"
+    assert streams[4]["status"] == "HEALTHY"
+    # Even though Streams 1, 2, 3 files are missing (raw score 0), they are ON_HOLD so active score is 100!
+    assert scan_res["entropy_health_score"] == 100
+    assert scan_res["active_streams_count"] == 2
+    assert scan_res["held_streams_count"] == 3
+
+
+def test_paused_cron_jobs_ignored_by_anomaly_detector(mock_executions_db, mock_ticker_heartbeat, tmp_path):
+    """Verify paused/disabled jobs in jobs.json are excluded from clogged, drift, overdue, auth, and rate-limit checks."""
+    jobs_file = tmp_path / "jobs_paused.json"
+    past_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    future_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+
+    data = {
+        "version": 1,
+        "jobs": [
+            {
+                "id": "job_clogged_1",
+                "name": "stock-news-crawler",
+                "enabled": False,
+                "state": "paused",
+                "paused_reason": "On Hold per Sovereign Directive",
+                "drift_alerted": True,
+                "next_run_at": past_time,
+                "last_error": "[drift_skip:model_changed] HTTP 503: [codex] [429]: usage limit reached",
+            },
+            {
+                "id": "job_overdue_1",
+                "name": "legal-crawler",
+                "enabled": False,
+                "state": "paused",
+                "next_run_at": past_time,
+                "last_error": "Token refresh failed: invalid_grant",
+            },
+            {
+                "id": "job_healthy",
+                "name": "webhook-health",
+                "enabled": True,
+                "next_run_at": future_time,
+                "last_error": None,
+            },
+        ],
+    }
+    jobs_file.write_text(json.dumps(data), encoding="utf-8")
+
+    detector = CronAnomalyDetector(
+        db_path=mock_executions_db,
+        jobs_path=jobs_file,
+        heartbeat_path=mock_ticker_heartbeat,
+    )
+    scan_res = detector.scan()
+    assert scan_res["clogged_jobs"] == []
+    assert scan_res["drift_skipped_jobs"] == []
+    assert scan_res["overdue_jobs"] == []
+    assert scan_res["auth_failed_jobs"] == []
+    assert scan_res["rate_limited_jobs"] == []
+    assert scan_res["paused_jobs_count"] == 2
+    assert scan_res["active_jobs_count"] == 1
+    assert scan_res["cron_health_score"] == 100
+
+
+def test_clean_task_prompt_unwraps_clef_json_and_xml():
+    """Verify _extract_clean_task_prompt strips Clef JSON, XML, and Codex wrappers cleanly."""
+    # Case 1: Clef Gemini JSON wrapper
+    json_wrapped = {
+        "prompt": json.dumps(
+            {
+                "system_directive": "Sovereign Execution Agent",
+                "task_specification": "Audit Pro Fleet QBRR quota balance across 17 Pro nodes",
+                "constraints": ["Zero-Fake-Pass"],
+            }
+        )
+    }
+    assert (
+        _extract_clean_task_prompt(json_wrapped)
+        == "Audit Pro Fleet QBRR quota balance across 17 Pro nodes"
+    )
+
+    # Case 2: Clef Claude XML wrapper
+    xml_wrapped = {
+        "prompt": "<context>Hermes Router</context><task>Fix unresolved model None in autonomous_worker.py</task><constraints>Strict</constraints>"
+    }
+    assert (
+        _extract_clean_task_prompt(xml_wrapped)
+        == "Fix unresolved model None in autonomous_worker.py"
+    )
+
+    # Case 3: Codex markdown wrapper
+    codex_wrapped = {
+        "prompt": "### Context\nRouter\n### Objective\nVerify lxc container zencode-router service\n### Constraints\nNone"
+    }
+    assert (
+        _extract_clean_task_prompt(codex_wrapped)
+        == "Verify lxc container zencode-router service"
+    )
+
+
+def test_digest_includes_efficiency_pro_fleet_and_evolutionary_significance():
+    """Verify format_hourly_digest renders Operational Efficiency, Pro/Ultra Fleet Telemetry, ON_HOLD streams, and Evolutionary Significance."""
+    now_ts = time.time()
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+        held_streams={1, 2, 3},
+    )
+
+    summary_resp = json.dumps({"online_nodes": 19, "total_nodes": 19}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 98.0, "sla_passed": True}).encode("utf-8")
+    nodes_resp = json.dumps(
+        {
+            "nodes": [
+                {
+                    "name": "innoria-team",
+                    "tier": "ultra",
+                    "account_email": "innoria.team@gmail.com",
+                    "requests_served": 3,
+                    "quota_weekly_capacity": 7000000,
+                    "quota_weekly_consumed": 50000,
+                    "quota_weekly_percent": 99.3,
+                    "active_jobs": 0,
+                    "status": "healthy",
+                },
+                {
+                    "name": "ariana",
+                    "tier": "ultra",
+                    "account_email": "lthn.ariana@gmail.com",
+                    "requests_served": 5,
+                    "quota_weekly_capacity": 7000000,
+                    "quota_weekly_consumed": 65000,
+                    "quota_weekly_percent": 99.1,
+                    "active_jobs": 0,
+                    "status": "healthy",
+                },
+                {
+                    "name": "sunward",
+                    "tier": "pro",
+                    "requests_served": 85,
+                    "quota_weekly_capacity": 2500000,
+                    "quota_weekly_consumed": 1800000,
+                    "quota_weekly_percent": 28.0,
+                    "active_jobs": 0,
+                    "status": "healthy",
+                },
+            ]
+        }
+    ).encode("utf-8")
+    jobs_resp = json.dumps(
+        {
+            "jobs": [
+                {
+                    "job_id": "job-ok-1",
+                    "node_name": "sunward",
+                    "model": "gemini-3.8-flash-medium",
+                    "status": "completed",
+                    "total_tokens": 33465,
+                    "latency_ms": 28400,
+                    "created_at": now_ts - 120.0,
+                    "prompt": json.dumps(
+                        {"task_specification": "Synthesize Pro Fleet and Evolutionary Insights"}
+                    ),
+                },
+                {
+                    "job_id": "job-fail-1",
+                    "node_name": "sunward",
+                    "model": "gemini-3.8-flash-high",
+                    "status": "failed",
+                    "error": "Job timed out after 300.0s",
+                    "total_tokens": 0,
+                    "latency_ms": 300000,
+                    "created_at": now_ts - 600.0,
+                    "prompt": "Timeout diagnostic job",
+                },
+            ]
+        }
+    ).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = jobs_resp
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        s5 = detector.check_stream_5_fleet_mesh(now_ts=now_ts)
+
+    assert "operational_efficiency" in s5
+    assert s5["operational_efficiency"]["completed_jobs"] == 1
+    assert s5["operational_efficiency"]["timeout_jobs"] == 1
+    assert "pro_fleet_insight" in s5
+    assert "ultra_fleet_insight" in s5
+    assert s5["ultra_fleet_insight"]["gemini_only_invariant"] is True
+    assert "evolution_insight" in s5
+
+    scan_result = {
+        "overall_health_score": 100,
+        "severity": "HEALTHY",
+        "cron": {
+            "cron_health_score": 100,
+            "active_jobs_count": 4,
+            "paused_jobs_count": 18,
+            "clogged_jobs": [],
+            "drift_skipped_jobs": [],
+            "overdue_jobs": [],
+            "auth_failed_jobs": [],
+            "rate_limited_jobs": [],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 12.0},
+        },
+        "entropy": {
+            "entropy_health_score": 100,
+            "streams": [
+                {
+                    "name": "Stock News Feed",
+                    "status": "ON_HOLD",
+                    "hold_reason": "On Hold per Sovereign Directive",
+                    "hours_since_crawl": 0.5,
+                    "articles_24h": 42,
+                    "unique_symbols": 12,
+                },
+                s5,
+            ],
+        },
+    }
+
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    html_out = notifier.format_hourly_digest(scan_result)
+    assert "Hiệu Quả Vận Hành" in html_out
+    assert "Sức Khỏe Cụm Pro Fleet" in html_out
+    assert "Ý Nghĩa Tiến Hoá" in html_out
+    assert "ON_HOLD" in html_out
+    assert "Synthesize Pro Fleet and Evolutionary Insights" in html_out
+    assert "task_specification" not in html_out
+    assert len(html_out) < 4096
+
+
+def test_significant_gravitas_autogpt_pattern(
+    tmp_path, mock_executions_db, mock_jobs_json, mock_ticker_heartbeat
+):
+    """Significant-Gravitas/AutoGPT Goal Decomposition, Bounded Context & Health Clamping Invariant:
+    1. Audits CronAnomalyDetector.scan() sub-goal anomaly classification across clogged, drift-skipped,
+       overdue, auth-failed, and rate-limited state vectors.
+    2. Verifies _extract_clean_task_prompt unwraps multi-layer nested JSON metaprompts and enforces
+       bounded memory/context window M(t) <= M_max via HermesTelegramNotifier._safe_format_prompt.
+    3. Verifies CompositeHealthCalculator.calculate state transitions across HEALTHY, WARNING, and
+       CRITICAL regimes with strict [0, 100] clamping under extreme boundary inputs (-500, 99999).
+    """
+    detector = CronAnomalyDetector(
+        db_path=mock_executions_db,
+        jobs_path=mock_jobs_json,
+        heartbeat_path=mock_ticker_heartbeat,
+    )
+    scan_res = detector.scan()
+    assert len(scan_res["clogged_jobs"]) == 1
+    assert scan_res["clogged_jobs"][0]["job_id"] == "job_clogged_1"
+    assert len(scan_res["drift_skipped_jobs"]) == 1
+    assert len(scan_res["overdue_jobs"]) == 1
+    assert len(scan_res["auth_failed_jobs"]) == 1
+    assert len(scan_res["rate_limited_jobs"]) == 1
+    assert 0 <= scan_res["cron_health_score"] <= 100
+
+    nested_metaprompt = {
+        "prompt": json.dumps(
+            {
+                "$schema": "https://hermes.sovereign/clef/v1",
+                "task": {
+                    "raw_instructions": json.dumps(
+                        {
+                            "task_specification": "Decompose autonomous goal G into bounded sub-goals g_1..g_k and verify convergence"
+                        }
+                    )
+                },
+            }
+        )
+    }
+    clean_goal = _extract_clean_task_prompt(nested_metaprompt)
+    assert clean_goal == "Decompose autonomous goal G into bounded sub-goals g_1..g_k and verify convergence"
+    m_max = 48
+    bounded_goal = HermesTelegramNotifier._safe_format_prompt(clean_goal, limit=m_max)
+    assert len(bounded_goal) <= m_max
+
+    score_ok, sev_ok = CompositeHealthCalculator.calculate(100, 100, 100, 100)
+    assert score_ok == 100 and sev_ok == "HEALTHY"
+    score_warn, sev_warn = CompositeHealthCalculator.calculate(65, 70, 75, 80)
+    assert 60 <= score_warn < 85 and sev_warn == "WARNING"
+    score_crit, sev_crit = CompositeHealthCalculator.calculate(15, 25, 30, 0)
+    assert 0 <= score_crit < 60 and sev_crit == "CRITICAL"
+
+    score_low, sev_low = CompositeHealthCalculator.calculate(-500, -500, -500, -500)
+    assert score_low == 0 and sev_low == "CRITICAL"
+    score_high, sev_high = CompositeHealthCalculator.calculate(99999, 99999, 99999, 99999)
+    assert score_high == 100 and sev_high == "HEALTHY"
+
+
+def test_all_hands_ai_openhands_pattern(tmp_path):
+    """All-Hands-AI/OpenHands Event-Sourced Trajectory Deduplication & Poison-Pill Boundary Guard Invariant:
+    1. Verifies HermesTelegramNotifier event-sourced SHA-256 trajectory deduplication, mode 0o600
+       atomic ledger persistence, and cross-instance reload durability.
+    2. Verifies poison-pill numeric boundary guards (_safe_int, _safe_float, _safe_pct) against
+       NaN, Inf, negative underflow (-999), and overflow saturation (MAX_TELEMETRY_VALUE * 10).
+    """
+    import stat
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("TELEGRAM_BOT_TOKEN=test-openhands-token\n", encoding="utf-8")
+    ledger_file = tmp_path / "openhands_trajectory_ledger.json"
+
+    notifier = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        ledger_path=ledger_file,
+    )
+
+    now_ts = time.time()
+    event_text = "OpenHands trajectory event: sandbox action execution verified"
+    event_key = notifier._dedup_key(event_text)
+    expected_sha256 = hashlib.sha256(event_text.encode("utf-8")).hexdigest()
+
+    assert notifier._is_dedup_suppressed(event_key, text=event_text) is False
+    notifier._record_dedup_success(event_key, now_ts, text=event_text)
+    assert notifier._is_dedup_suppressed(event_key, text=event_text) is True
+    assert expected_sha256 in notifier._recent_sends
+    assert ledger_file.exists()
+    assert stat.S_IMODE(ledger_file.stat().st_mode) == 0o600
+
+    reloaded_notifier = HermesTelegramNotifier(
+        env_file=env_file,
+        target_chat_id=TEST_CHAT_ID,
+        ledger_path=ledger_file,
+    )
+    assert reloaded_notifier._is_dedup_suppressed(event_key, text=event_text) is True
+    assert event_key in reloaded_notifier._read_ledger()
+
+    assert _safe_int(float("nan"), default=7) == 7
+    assert _safe_int(float("inf"), default=7) == 7
+    assert _safe_int(-999) == 0
+    assert _safe_int(MAX_TELEMETRY_VALUE * 10) == MAX_TELEMETRY_VALUE
+
+    assert _safe_float(float("nan"), default=3.5) == 3.5
+    assert _safe_float(float("inf"), default=3.5) == 3.5
+    assert _safe_float(-999.0) == 0.0
+    assert _safe_float(float(MAX_TELEMETRY_VALUE * 10)) == float(MAX_TELEMETRY_VALUE)
+
+    assert _safe_pct(float("nan"), 100) == 0.0
+    assert _safe_pct(50, float("inf")) == 0.0
+    assert _safe_pct(-999, 100) == 0.0
+    assert _safe_pct(25, 0) == 0.0
+    assert _safe_pct(MAX_TELEMETRY_VALUE * 10, MAX_TELEMETRY_VALUE) == 100.0
