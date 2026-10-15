@@ -6612,3 +6612,34 @@ def test_all_hands_ai_openhands_pattern(tmp_path):
     assert _safe_pct(-999, 100) == 0.0
     assert _safe_pct(25, 0) == 0.0
     assert _safe_pct(MAX_TELEMETRY_VALUE * 10, MAX_TELEMETRY_VALUE) == 100.0
+
+
+def test_wheresryan22_anatomy_ecology_integration_invariant():
+    """wheresryan22/anatomy Ecology Integration & 4-Vector Sovereign Bridge Verification Invariant:
+    1. Verifies that `.agents/skills/anatomy/SKILL.md` and `.agents/skills/anatomy/kit/audit.mjs` exist on disk.
+    2. Executes `node --test tests/test_anatomy_sovereign_bridge.test.mjs` via subprocess.run and verifies
+       zero-defect completion (returncode == 0) across all 4 Mandatory Adversarial Verification Vectors.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    skill_md = repo_root / ".agents" / "skills" / "anatomy" / "SKILL.md"
+    audit_mjs = repo_root / ".agents" / "skills" / "anatomy" / "kit" / "audit.mjs"
+    bridge_test = repo_root / "tests" / "test_anatomy_sovereign_bridge.test.mjs"
+
+    assert skill_md.is_file(), f"Missing Anatomy SKILL.md at {skill_md}"
+    assert audit_mjs.is_file(), f"Missing Anatomy kit/audit.mjs at {audit_mjs}"
+    assert bridge_test.is_file(), f"Missing bridge test at {bridge_test}"
+
+    proc = subprocess.run(
+        ["node", "--test", str(bridge_test)],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 0, (
+        f"Anatomy Sovereign Bridge test failed (rc={proc.returncode}):\n"
+        f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert "pass 4" in proc.stdout or "fail 0" in proc.stdout
+
