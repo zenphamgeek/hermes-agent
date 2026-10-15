@@ -4081,6 +4081,7 @@ class CharClassFuzzTaxonomy:
         (3, 11): 109,
         (3, 12): 109,
         (3, 13): 109,
+        (3, 14): 109,
     }
     prefixes = ("[", "[^", "[]", "[^]")
     bodies = (
