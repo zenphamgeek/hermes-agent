@@ -223,3 +223,11 @@ def test_ast_formula_and_single_node_escrow_and_account_redaction() -> None:
     # Malicious job_id rejected (CWE-20)
     ok_bad, _, _ = escrow.acquire_ephemeral_lease("job;rm -rf /", estimated_cost=0.1)
     assert ok_bad is False
+
+
+def test_safe_formula_rejects_oversized_expression_cleanly() -> None:
+    from tools.modal_budget_guard import safe_evaluate_formula
+
+    with pytest.raises(ValueError):
+        safe_evaluate_formula("+".join(["1"] * 5000), {})
+    assert safe_evaluate_formula("Remaining = $30.00 - MTD Spend", {"MTD Spend": 5.0}) == pytest.approx(25.0)

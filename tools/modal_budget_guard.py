@@ -111,6 +111,8 @@ def safe_evaluate_formula(formula_str: str, context: Dict[str, float]) -> float:
     }
 
     expr_str = formula_str.split("=")[-1].strip().replace("$", "")
+    if len(expr_str) > 256:
+        raise ValueError("Formula exceeds 256 characters")
     normalized_vars = {
         re.sub(r"[^a-zA-Z0-9_]", "_", k).lower().strip("_"): float(v)
         for k, v in context.items()
