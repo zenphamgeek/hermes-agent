@@ -64,11 +64,14 @@ CANONICAL_APP_IDS: Tuple[str, ...] = (
 )
 
 
+ACCOUNT_ID_REDACT_REGEX = re.compile(r"\bac-[a-zA-Z0-9]{20,}\b")
+
+
 def _sanitize_modal_fleet_policy(policy: Dict[str, Any]) -> Dict[str, Any]:
     """
-    SEC-001 (CWE-20) Hardening: Sanitizes modal_fleet_policy dictionary so no untrusted
+    SEC-001 (CWE-20) & CWE-200 Hardening: Sanitizes modal_fleet_policy dictionary so no untrusted
     swarm payload can raise budget_ceiling_hard_kill_usd above $25.00 or lower credit gates
-    below $15.00 (deploy) / $10.00 (inference).
+    below $15.00 (deploy) / $10.00 (inference), and scrubs any raw Modal account IDs (ac-...).
     """
     sanitized = dict(policy or {})
     credit_policy = dict(sanitized.get("credit_policy") or {})
@@ -80,8 +83,124 @@ def _sanitize_modal_fleet_policy(policy: Dict[str, Any]) -> Dict[str, Any]:
     credit_policy["budget_ceiling_hard_kill_usd"] = min(HARD_KILL_CEILING, max(1.0, raw_ceiling))
     credit_policy["deploy_min_credits_usd"] = max(DEPLOY_MIN_CREDITS_USD, raw_deploy_min)
     credit_policy["inference_min_credits_usd"] = max(INFERENCE_MIN_CREDITS_USD, raw_infer_min)
+    credit_policy.setdefault("fallback_target", "cloudflare_clef_flash_zero_cost")
     sanitized["credit_policy"] = credit_policy
+
+    if isinstance(sanitized.get("excluded_reason"), dict):
+        sanitized["excluded_reason"] = {
+            k: ACCOUNT_ID_REDACT_REGEX.sub("[REDACTED_ACCOUNT_ID]", str(v))
+            for k, v in sanitized["excluded_reason"].items()
+        }
     return sanitized
+
+
+def safe_evaluate_formula(formula_str: str, context: Dict[str, float]) -> float:
+    """
+    Evaluates mathematical credit formulas via strict AST parsing.
+    Guarantees zero eval() or exec() execution (Anti-CWE-94).
+    """
+    import ast
+    import operator
+
+    safe_operators = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.USub: operator.neg,
+    }
+
+    expr_str = formula_str.split("=")[-1].strip().replace("$", "")
+    normalized_vars = {
+        re.sub(r"[^a-zA-Z0-9_]", "_", k).lower().strip("_"): float(v)
+        for k, v in context.items()
+    }
+    for raw_var in sorted(context.keys(), key=len, reverse=True):
+        pattern = re.compile(re.escape(raw_var), re.IGNORECASE)
+        clean_key = re.sub(r"[^a-zA-Z0-9_]", "_", raw_var).lower().strip("_")
+        expr_str = pattern.sub(clean_key, expr_str)
+
+    tree = ast.parse(expr_str, mode="eval")
+
+    def _eval_node(node: ast.AST) -> float:
+        if isinstance(node, ast.Expression):
+            return _eval_node(node.body)
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+                return float(node.value)
+            raise ValueError(f"Disallowed constant type: {type(node.value)}")
+        if isinstance(node, ast.Name):
+            var_name = node.id.lower()
+            if var_name in normalized_vars:
+                return normalized_vars[var_name]
+            raise KeyError(f"Undefined variable in formula: {node.id}")
+        if isinstance(node, ast.BinOp):
+            if type(node.op) not in safe_operators:
+                raise ValueError(f"Disallowed binary operator: {type(node.op)}")
+            return safe_operators[type(node.op)](_eval_node(node.left), _eval_node(node.right))
+        if isinstance(node, ast.UnaryOp):
+            if type(node.op) not in safe_operators:
+                raise ValueError(f"Disallowed unary operator: {type(node.op)}")
+            return safe_operators[type(node.op)](_eval_node(node.operand))
+        raise TypeError(f"Disallowed AST node: {type(node).__name__}")
+
+    return _eval_node(tree)
+
+
+class ResilientSingleNodeEscrowController:
+    """Protects single active node from exhaustion, TOCTOU, and phantom deadlocks."""
+
+    def __init__(self, node_name: str, total_allowance: float = 30.0, ceiling: float = 25.0):
+        self.node_name = node_name
+        self.total_allowance = total_allowance
+        self.ceiling = ceiling
+        self._lock = threading.Lock()
+        self._active_leases: Dict[str, Dict[str, Any]] = {}
+        self._recorded_spend: float = 0.0
+
+    def set_recorded_spend(self, spend: float) -> None:
+        with self._lock:
+            self._recorded_spend = float(spend)
+
+    def acquire_ephemeral_lease(
+        self, job_id: str, estimated_cost: float, ttl_seconds: float = 5.0
+    ) -> Tuple[bool, str, Optional[str]]:
+        if not APP_ID_REGEX.match(str(job_id)):
+            return False, f"InvalidJobId: '{job_id}' violates CWE-20", None
+
+        with self._lock:
+            now = time.monotonic()
+            self._active_leases = {
+                k: v for k, v in self._active_leases.items() if v["expires_at"] > now
+            }
+            in_flight = sum(v["cost"] for v in self._active_leases.values())
+            remaining = self.total_allowance - self._recorded_spend
+            effective_headroom = remaining - in_flight
+
+            if self._recorded_spend + in_flight + estimated_cost > self.ceiling:
+                return False, f"HeadroomExceeded: > ${self.ceiling:.2f}", "local_sovereign_jev_zero_cost"
+
+            if effective_headroom - estimated_cost < INFERENCE_MIN_CREDITS_USD:
+                return False, "InferenceGateLocked: < $10.00", "cloudflare_clef_flash_zero_cost"
+
+            self._active_leases[job_id] = {
+                "cost": float(estimated_cost),
+                "created_at": now,
+                "expires_at": now + ttl_seconds,
+            }
+            return True, "Lease acquired successfully", None
+
+    def release_lease(self, job_id: str) -> bool:
+        with self._lock:
+            return bool(self._active_leases.pop(job_id, None))
+
+    def reap_orphans(self) -> int:
+        with self._lock:
+            now = time.monotonic()
+            expired = [k for k, v in self._active_leases.items() if v["expires_at"] <= now]
+            for k in expired:
+                del self._active_leases[k]
+            return len(expired)
 
 
 def _resolve_active_and_failover(

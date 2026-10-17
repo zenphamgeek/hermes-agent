@@ -1,97 +1,85 @@
 {
-  "updated": "2026-10-03",
-  "excluded": [
-    "motion"
-  ],
-  "excluded_reason": {
-    "motion": "Workspace paused on Modal (ac-IZOdoGglIV04WnAGJohvuY); token kept, not in fleet"
+  "updated": "2026-10-13",
+  "sovereign_rule_section": "1.17",
+  "credit_policy": {
+    "total_credit_allowance_usd": 30.0,
+    "deploy_min_credits_usd": 15.0,
+    "inference_min_credits_usd": 10.0,
+    "budget_ceiling_hard_kill_usd": 25.0,
+    "fallback_target": "cloudflare_clef_flash_zero_cost",
+    "formula": "Remaining Credits = $30.00 - MTD Spend"
   },
+  "active_fleet": [
+    "nhatrophamvu"
+  ],
+  "deploy_ok": [
+    "nhatrophamvu"
+  ],
+  "inference_ok": [
+    "nhatrophamvu"
+  ],
   "deploy_blocked": [
     "asmr",
     "diatts",
     "mindful",
     "phi4",
     "pvvsf",
-    "r2rgraph",
     "vi2vi",
     "zenguru",
-    "zenllm",
     "zenmaster",
-    "zennchat",
-    "zenpeace"
-  ],
-  "deploy_blocked_reason": "Modal: 'Please add a payment method' on new GPU deploy (probe 2026-10-03). Existing apps may keep running; no new deploys.",
-  "deploy_ok": [
+    "zenpeace",
     "insimind",
     "lovenovel",
     "mojopham",
     "mvlm",
-    "nhatrophamvu",
+    "verticalresilience",
+    "vieturbo",
+    "vrag",
+    "zenonmind",
+    "zenonts",
+    "motion"
+  ],
+  "credit_blocked": [
+    "insimind",
+    "lovenovel",
+    "mojopham",
+    "mvlm",
     "verticalresilience",
     "vieturbo",
     "vrag",
     "zenonmind",
     "zenonts"
   ],
-  "routing": {
-    "qwen_img_21": {
-      "has_app": [
-        "zenonts",
-        "insimind",
-        "vrag",
-        "vieturbo",
-        "nhatrophamvu",
-        "lovenovel",
-        "mvlm",
-        "zenonmind",
-        "mojopham",
-        "verticalresilience"
-      ],
-      "order": [
-        "lovenovel",
-        "mvlm",
-        "zenonmind",
-        "mojopham",
-        "verticalresilience"
-      ],
-      "policy": "spend ascending at runtime; skip >= $25 MTD",
-      "skip_spend_usd": 25.0
-    },
-    "qwen_image_edit_t4": {
-      "has_app": [
-        "zenonts",
-        "insimind",
-        "vrag",
-        "vieturbo",
-        "nhatrophamvu",
-        "mvlm",
-        "mojopham",
-        "diatts",
-        "zenpeace",
-        "mindful",
-        "asmr"
-      ],
-      "order": [
-        "mvlm",
-        "mojopham",
-        "diatts",
-        "zenpeace",
-        "mindful",
-        "asmr"
-      ]
-    },
-    "new_deploy_candidates": [
-      "lovenovel",
-      "zenonmind",
-      "mvlm",
-      "vieturbo",
-      "vrag",
-      "zenonts",
-      "insimind",
-      "nhatrophamvu",
-      "mojopham"
-    ]
+  "credit_blocked_reason": "Remaining credits <= $15.00 for deploy and <= $10.00 for inference (MTD spend >= $25.00 cap).",
+  "card_blocked": [
+    "asmr",
+    "diatts",
+    "mindful",
+    "phi4",
+    "pvvsf",
+    "vi2vi",
+    "zenguru",
+    "zenmaster",
+    "zenpeace"
+  ],
+  "card_blocked_reason": "Modal Cloud enforces credit/debit card on file before allocating GPU containers.",
+  "excluded": [
+    "motion",
+    "gao2011vn",
+    "zenllm",
+    "zennchat",
+    "r2rgraph"
+  ],
+  "excluded_reason": {
+    "motion": "Workspace paused on Modal ([REDACTED_ACCOUNT_ID]); token kept, not in fleet",
+    "gao2011vn": "Permanently decommissioned and deleted per user billing dispute",
+    "zenllm": "Permanently decommissioned gao2011vn workspace",
+    "zennchat": "Permanently decommissioned gao2011vn workspace",
+    "r2rgraph": "Permanently decommissioned gao2011vn workspace"
   },
-  "overdue_invoice": [],
-  "just_ask_mr_zen_note": "invoice paid per user 2026-10-03, $30 credit available; no token so spend/deploy unverified"
+  "hermes_clef_decision": {
+    "status": "PERMANENTLY_RETIRED_ON_MODAL",
+    "target_platform": "Cloudflare Workers AI Cloud (@cf/cloudflare/clef-flash) / Local Air-Gapped Surrogate",
+    "modal_cost_usd": 0.0
+  }
 }

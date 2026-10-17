@@ -185,3 +185,41 @@ def test_sec001_to_sec004_modal_policy_and_catalog_drift_guard() -> None:
     assert "exhausted_ws" not in failover
     assert active == ["nhatrophamvu"]
     assert failover == ["r2rgraph", "motion"]
+
+
+def test_ast_formula_and_single_node_escrow_and_account_redaction() -> None:
+    import json
+    from pathlib import Path
+    from tools.modal_budget_guard import (
+        ACCOUNT_ID_REDACT_REGEX,
+        ResilientSingleNodeEscrowController,
+        safe_evaluate_formula,
+    )
+
+    # 1. Verify output/modal_fleet_policy.json has zero unredacted ac-... account IDs
+    policy_path = Path(__file__).resolve().parents[1] / "output" / "modal_fleet_policy.json"
+    raw_policy_text = policy_path.read_text(encoding="utf-8")
+    assert ACCOUNT_ID_REDACT_REGEX.search(raw_policy_text) is None
+    policy_data = json.loads(raw_policy_text)
+    assert "[REDACTED_ACCOUNT_ID]" in policy_data["excluded_reason"]["motion"]
+
+    # 2. Verify AST formula evaluator (CWE-94 defense)
+    rem = safe_evaluate_formula(
+        policy_data["credit_policy"]["formula"],
+        {"MTD Spend": 12.50},
+    )
+    assert rem == pytest.approx(17.50)
+    with pytest.raises((TypeError, ValueError, SyntaxError)):
+        safe_evaluate_formula("__import__('os').system('id')", {"MTD Spend": 0.0})
+
+    # 3. Verify ResilientSingleNodeEscrowController orphan reaper & zero-cost fallback
+    escrow = ResilientSingleNodeEscrowController("nhatrophamvu", total_allowance=30.0, ceiling=25.0)
+    escrow.set_recorded_spend(19.0)
+    ok1, msg1, fb1 = escrow.acquire_ephemeral_lease("job-ok-1", estimated_cost=0.5, ttl_seconds=0.01)
+    assert ok1 is True and fb1 is None
+    # Next $1.00 job breaches < $10.00 inference gate -> fallback to cloudflare_clef_flash_zero_cost
+    ok2, msg2, fb2 = escrow.acquire_ephemeral_lease("job-gate-lock", estimated_cost=1.0, ttl_seconds=5.0)
+    assert ok2 is False and fb2 == "cloudflare_clef_flash_zero_cost"
+    # Malicious job_id rejected (CWE-20)
+    ok_bad, _, _ = escrow.acquire_ephemeral_lease("job;rm -rf /", estimated_cost=0.1)
+    assert ok_bad is False
