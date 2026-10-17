@@ -52,6 +52,8 @@ Bộ set được biên soạn theo chuỗi cảm xúc và mức độ quyến r
 Bạn có thể kích hoạt toàn bộ 4 scene chỉ bằng 1 lệnh dispatch:
 
 ```bash
-# Chạy trực tiếp qua ComfyUI (Local hoặc Modal URL):
-python3 output/graydoom_consorts_nsfw/dispatch_nahla_set.py --host http://127.0.0.1:8188
+# Chạy trực tiếp qua Modal Endpoint ([REDACTED_TENANT]) hoặc Local ComfyUI:
+python3 output/graydoom_consorts_nsfw/dispatch_nahla_set.py \
+  --host https://[REDACTED_TENANT]--hermes-flux-fill-nsfw-fluxfillnsfwrunner-web-ui.us-east.modal.run \
+  --token [REDACTED_MODAL_TOKEN] --wait
 ```
