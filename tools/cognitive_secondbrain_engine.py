@@ -45,13 +45,42 @@ class BloomLevel(IntEnum):
 
 class MemoryTier(str, Enum):
     """
-    5-Tier Stratified AGI Memory Hierarchy.
+    5-Tier Stratified AGI Memory Hierarchy mapped to Human Neuro-Anatomy.
     """
-    L0_SENSORY = "L0"    # Ephemeral turn buffer / scratchpad
-    L1_EPISODIC = "L1"   # Session logs (10-Areas/AI Engineering/Sessions/)
-    L2_SEMANTIC = "L2"   # Patterns, concepts, playbooks (30-Resources/, Maps/, 20-Projects/)
-    L3_SOVEREIGN = "L3"  # Immutable ADRs, constitutional invariants (10-Areas/Architecture/, AGENTS.md)
-    L4_ARCHIVE = "L4"    # Bi-temporal tombstones (l3_tombstones.jsonl) & superseded/abandoned history
+    L0_SENSORY = "L0"    # Prefrontal Working Buffer & Thalamic Sensory Gate (Gamma 30-100Hz)
+    L1_EPISODIC = "L1"   # Hippocampus CA3/CA1 & Dentate Gyrus (Fast Hebbian one-shot encoding)
+    L2_SEMANTIC = "L2"   # Temporal-Parietal Association Neocortex & Basal Ganglia (Schemas & SOPs)
+    L3_SOVEREIGN = "L3"  # vmPFC / dlPFC & Anterior Cingulate Cortex (Myelinated Constitutional Invariants)
+    L4_ARCHIVE = "L4"    # Infralimbic Extinction & Subcortical Bi-Temporal Ledger (l3_tombstones.jsonl)
+
+
+BRAIN_REGION_MAP: Dict[str, Dict[str, str]] = {
+    MemoryTier.L0_SENSORY.value: {
+        "region": "Thalamic Gate & Prefrontal Working Buffer",
+        "oscillation": "Gamma (30–100 Hz)",
+        "plasticity": "Sub-second attentional bottleneck (7±2 chunks)",
+    },
+    MemoryTier.L1_EPISODIC.value: {
+        "region": "Hippocampus (Dentate Gyrus Pattern Separation + CA3/CA1)",
+        "oscillation": "Theta-Nested Gamma & Sharp-Wave Ripples (150–250 Hz)",
+        "plasticity": "Fast one-shot Hebbian LTP; vulnerable to interference",
+    },
+    MemoryTier.L2_SEMANTIC.value: {
+        "region": "Temporal-Parietal Association Neocortex & Basal Ganglia",
+        "oscillation": "Thalamocortical Sleep Spindles (11–16 Hz)",
+        "plasticity": "Slow interleaved systems consolidation; procedural SOPs & concept maps",
+    },
+    MemoryTier.L3_SOVEREIGN.value: {
+        "region": "Dorsolateral & Ventromedial Prefrontal Cortex (dlPFC / vmPFC) + ACC",
+        "oscillation": "Phase-Locked Prefrontal-Cortical Coherence",
+        "plasticity": "Myelinated constitutional invariants & ADRs; Synaptic Tagging protected",
+    },
+    MemoryTier.L4_ARCHIVE.value: {
+        "region": "Infralimbic Extinction Cortex & Bi-Temporal Fossil Ledger",
+        "oscillation": "Slow Delta Extinction Trace (< 1 Hz)",
+        "plasticity": "Inhibited counterfactual trace with Clef Mnemosyne tombstone",
+    },
+}
 
 
 def classify_bloom_level(content: str, tier: str = "L1") -> BloomLevel:
@@ -1100,6 +1129,293 @@ class CognitiveSecondBrainEngine:
 
         return "\n".join(assembled_lines)
 
+    # --------------------------------------------------------------------------
+    # 02:00 AM Neuro-Biological Circadian Sleep Consolidation Cycle
+    # --------------------------------------------------------------------------
+
+    def run_circadian_sleep_cycle(
+        self,
+        vault_path: Optional[Path] = None,
+        shy_downscale_factor: float = 0.97,
+        swr_replay_limit: int = 10,
+    ) -> Dict[str, Any]:
+        """
+        Executes the 02:00 AM Neuro-Biological Circadian Sleep Consolidation Cycle,
+        modeled directly on the 4 physiological phases of human sleep:
+
+        Stage 1 — NREM Slow-Wave Delta (0.5–4 Hz): Glymphatic Clearance (AQP4 Flush)
+          - Flushes metabolic neurotoxins (broken symlinks, duplicate SHA-256 engrams,
+            transient L0 sensory fragments) and syncs fresh vault notes.
+
+        Stage 2 — NREM Slow-Wave Sleep: Synaptic Homeostasis Hypothesis (SHY - Tononi & Cirelli)
+          - Applies proportional global synaptic downscaling (`w <- w * shy_downscale_factor`)
+            to L1/L2 memories to prevent runaway saturation while protecting Synaptic-Tagged
+            high-salience engrams (`recall_count >= 3` or `L3_SOVEREIGN`).
+          - Archives memories falling below Ebbinghaus survival threshold (`retention < 0.25 -> L4`).
+
+        Stage 3 — NREM Stage 2/3 Spindles (11–16 Hz) + Sharp-Wave Ripples (SWR, 150–250 Hz):
+          Hippocampal-Neocortical Systems Consolidation (Buzsáki / McClelland CLS)
+          - Replays high-salience `L1_EPISODIC` memories from Hippocampus at compressed speed,
+            promotes their Bloom level (`B1/B2 -> B2/B3/B4`), and transfers consolidated
+            traces into Neocortex (`L2_SEMANTIC` / `L3_SOVEREIGN`).
+
+        Stage 4 — REM Theta-Gamma Coupling (4–8 Hz): Predictive Coding (Friston Free-Energy)
+          & Associative Dream Reconsolidation
+          - Scans for high-prediction-error / high-dissonance memories (`contradiction_count >= 2`)
+            and resolves or flags them for Hegelian Dialectical Critique.
+          - Discovers novel cross-domain Associative Dream Bridges between L2/L3 notes.
+          - Writes the nightly Sleep Spindle & Dream Journal to
+            `10-Areas/AI Engineering/Sleep-Consolidation/Sleep-Cycle-YYYY-MM-DD.md`.
+        """
+        target_vault = Path(vault_path) if vault_path else self.vault_path
+        now_dt = datetime.now(timezone.utc)
+        now_iso = now_dt.isoformat()
+        date_str = now_dt.strftime("%Y-%m-%d")
+
+        # Pre-sync fresh notes from SecondBrain vault
+        seed_summary = self.seed_from_secondbrain_vault(target_vault)
+
+        # --- STAGE 1: Glymphatic Clearance (Delta 0.5-4Hz AQP4 Flush) ---
+        deduped_count = 0
+        l0_flushed_count = 0
+        with self.db.get_connection() as conn:
+            # Flush ephemeral L0 sensory buffer
+            cur_l0 = conn.execute(
+                "DELETE FROM cognitive_memories WHERE tier = ?;",
+                (MemoryTier.L0_SENSORY.value,),
+            )
+            l0_flushed_count = cur_l0.rowcount if cur_l0.rowcount > 0 else 0
+
+            # Deduplicate identical sha256 active records (keep lowest id / oldest canonical)
+            dup_rows = conn.execute("""
+                SELECT id, mem_key, sha256
+                FROM cognitive_memories
+                WHERE status = 'ACTIVE'
+                  AND id NOT IN (
+                      SELECT MIN(id)
+                      FROM cognitive_memories
+                      WHERE status = 'ACTIVE'
+                      GROUP BY sha256
+                  );
+            """).fetchall()
+            for d_row in dup_rows:
+                conn.execute(
+                    "UPDATE cognitive_memories SET status = 'ARCHIVED', tier = ?, valid_to = ? WHERE id = ?;",
+                    (MemoryTier.L4_ARCHIVE.value, now_iso, d_row["id"]),
+                )
+                deduped_count += 1
+            conn.commit()
+
+        # --- STAGE 2: Synaptic Homeostasis Hypothesis (SHY Downscaling) ---
+        downscaled_count = 0
+        shy_pruned_keys: List[str] = []
+        with self.db.get_connection() as conn:
+            rows = conn.execute("""
+                SELECT id, mem_key, synaptic_strength, recall_count, last_recalled_at, tier
+                FROM cognitive_memories
+                WHERE tier IN ('L1', 'L2') AND status = 'ACTIVE';
+            """).fetchall()
+            for r in rows:
+                recalls = int(r["recall_count"])
+                strength = float(r["synaptic_strength"])
+                # Synaptic Tagging & Capture (STC): protect memories with recall_count >= 3
+                if recalls < 3:
+                    strength = round(max(0.05, strength * shy_downscale_factor), 4)
+                    conn.execute(
+                        "UPDATE cognitive_memories SET synaptic_strength = ? WHERE id = ?;",
+                        (strength, r["id"]),
+                    )
+                    downscaled_count += 1
+
+                retention = compute_retention_score(
+                    strength, r["last_recalled_at"], recalls, now_iso=now_iso
+                )
+                if retention < 0.25:
+                    conn.execute("""
+                        UPDATE cognitive_memories
+                        SET status = 'ARCHIVED',
+                            tier = ?,
+                            valid_to = ?
+                        WHERE id = ?;
+                    """, (MemoryTier.L4_ARCHIVE.value, now_iso, r["id"]))
+                    shy_pruned_keys.append(r["mem_key"])
+            conn.commit()
+
+        # --- STAGE 3: Hippocampal-Neocortical SWR Replay (150-250Hz) ---
+        swr_consolidated: List[Dict[str, Any]] = []
+        with self.db.get_connection() as conn:
+            l1_candidates = conn.execute("""
+                SELECT mem_key, title, bloom_level, synaptic_strength, evidence_score, recall_count
+                FROM cognitive_memories
+                WHERE tier = 'L1'
+                  AND status = 'ACTIVE'
+                  AND (synaptic_strength >= 0.68 OR evidence_score >= 0.65)
+                ORDER BY synaptic_strength DESC, evidence_score DESC
+                LIMIT ?;
+            """, (swr_replay_limit,)).fetchall()
+
+        for cand in l1_candidates:
+            # Replay boosts synaptic strength and promotes L1 (Hippocampus) -> L2 (Neocortex)
+            old_bloom = int(cand["bloom_level"])
+            updated = self.reinforce_memory(
+                cand["mem_key"], evidence_boost=0.16, promote_bloom=True
+            )
+            # If recall_count was only 1, force systems consolidation to L2 if strength >= 0.84
+            if updated.get("tier") == "L1" and float(updated.get("synaptic_strength", 0)) >= 0.84:
+                new_bloom = min(6, max(2, int(updated.get("bloom_level", 1)) + 1))
+                with self.db.get_connection() as conn:
+                    conn.execute("""
+                        UPDATE cognitive_memories
+                        SET tier = 'L2', bloom_level = ?
+                        WHERE mem_key = ?;
+                    """, (new_bloom, cand["mem_key"]))
+                    conn.commit()
+                updated = self.get_memory(cand["mem_key"]) or updated
+
+            swr_consolidated.append({
+                "mem_key": cand["mem_key"],
+                "title": cand["title"],
+                "from_bloom": f"B{old_bloom}",
+                "to_bloom": f"B{updated.get('bloom_level', old_bloom)}",
+                "to_tier": updated.get("tier", "L2"),
+            })
+
+        # --- STAGE 4: REM Theta-Gamma Dreaming & Predictive Free-Energy Reconsolidation ---
+        dissonance_quarantined: List[str] = []
+        dream_bridges: List[Tuple[str, str, List[str]]] = []
+
+        with self.db.get_connection() as conn:
+            # Check memories with high contradiction_count (Free-Energy Prediction Error)
+            high_err_rows = conn.execute("""
+                SELECT mem_key, title, contradiction_count, evidence_score
+                FROM cognitive_memories
+                WHERE status = 'ACTIVE' AND contradiction_count >= 2;
+            """).fetchall()
+            for r in high_err_rows:
+                if float(r["evidence_score"]) < 0.45:
+                    # Auto-abandon chronically contradicted low-evidence beliefs during REM
+                    self.dialectical_critique(
+                        thesis_key=r["mem_key"],
+                        antithesis_claim=(
+                            f"REM Predictive Coding Free-Energy Pruning: {r['contradiction_count']} "
+                            f"accumulated contradictions with low evidence ({r['evidence_score']})."
+                        ),
+                        new_content="",
+                        evidence_score=0.88,
+                        evidence_ref="Circadian-REM-Reconsolidation",
+                    )
+                    dissonance_quarantined.append(r["mem_key"])
+
+            # Discover Associative Dream Bridges across L2/L3 notes
+            semantic_rows = conn.execute("""
+                SELECT mem_key, title, content, tier
+                FROM cognitive_memories
+                WHERE tier IN ('L2', 'L3') AND status = 'ACTIVE'
+                ORDER BY synaptic_strength DESC LIMIT 30;
+            """).fetchall()
+
+        stop_words = {
+            "the", "and", "for", "with", "from", "that", "this", "into", "active",
+            "adr", "status", "title", "context", "decision", "rationale", "valid",
+        }
+        tokenized_notes: List[Tuple[str, Set[str]]] = []
+        for row in semantic_rows:
+            words = {
+                w.lower()
+                for w in re.findall(r"[A-Za-zÀ-ỹ]{4,}", f"{row['title']} {row['content'][:400]}")
+                if w.lower() not in stop_words
+            }
+            if len(words) >= 3:
+                tokenized_notes.append((row["title"], words))
+
+        for i in range(len(tokenized_notes)):
+            for j in range(i + 1, len(tokenized_notes)):
+                t1, w1 = tokenized_notes[i]
+                t2, w2 = tokenized_notes[j]
+                if t1 == t2:
+                    continue
+                shared = sorted(w1.intersection(w2))
+                if len(shared) >= 4 and len(dream_bridges) < 8:
+                    dream_bridges.append((t1, t2, shared[:5]))
+
+        # Run structural vault self-heal & render matrix
+        heal_summary = self.self_heal_secondbrain(target_vault)
+
+        # Write Nightly Sleep Consolidation Journal to SecondBrain
+        sleep_dir = target_vault / "10-Areas" / "AI Engineering" / "Sleep-Consolidation"
+        sleep_report_path = sleep_dir / f"Sleep-Cycle-{date_str}.md"
+        try:
+            sleep_dir.mkdir(parents=True, exist_ok=True)
+            swr_lines = [
+                f"- `{item['mem_key']}` (**{item['title']}**): `{item['from_bloom']} -> {item['to_bloom']}` (`Tier -> {item['to_tier']}`)"
+                for item in swr_consolidated
+            ] or ["- *No new L1 episodic traces required SWR cortical transfer tonight.*"]
+
+            bridge_lines = [
+                f"- **{a}** $\\leftrightarrow$ **{b}** *(Shared engrams: `{', '.join(sh)}`)*"
+                for a, b, sh in dream_bridges
+            ] or ["- *No new cross-cortical dream bridges synthesized.*"]
+
+            journal_md = f"""# 🌙 Circadian 02:00 AM Neuro-Biological Sleep Consolidation (`{date_str}`)
+
+> [!NOTE]
+> **Execution Timestamp**: `{now_iso}`  
+> **Circadian Phase**: `02:00 AM Local Deep SWS -> REM Reconsolidation`  
+> **Navigation**: [[Home]] | [[Cognitive-Memory-Matrix]] | [[Knowledge-Graph-Telemetry]]
+
+## 1. Stage 1 — NREM Slow-Wave Delta (`0.5–4 Hz`): Glymphatic Clearance (AQP4 Flush)
+- **Broken Symlinks Flushed**: `{heal_summary['broken_symlinks_count']}`
+- **Duplicate SHA-256 Engrams Cleared**: `{deduped_count}`
+- **Transient L0 Sensory Debris Flushed**: `{l0_flushed_count}`
+- **Orphan Notes Indexed**: `{heal_summary['orphan_notes_count']}`
+
+## 2. Stage 2 — NREM Slow-Wave Sleep: Synaptic Homeostasis Hypothesis (SHY Downscaling)
+- **Global Homeostatic Downscale Factor ($\\gamma_{{\\text{{SHY}}}}$)**: `{shy_downscale_factor}`
+- **Synapses Renormalized (`L1/L2` with `<3` recalls)**: `{downscaled_count}`
+- **Weak Engrams Pruned to `L4_ARCHIVE` ($R < 0.25$)**: `{len(shy_pruned_keys) + heal_summary['decayed_memories_count']}`
+
+## 3. Stage 3 — Thalamic Spindles (`11–16 Hz`) + Hippocampal Sharp-Wave Ripples (`150–250 Hz` SWR Replay)
+{chr(10).join(swr_lines)}
+
+## 4. Stage 4 — REM Theta-Gamma Coupling (`4–8 Hz`): Predictive Coding & Dream Bridges
+- **High-Dissonance Beliefs Extinguished**: `{len(dissonance_quarantined)}`
+- **Associative Cross-Cortical Dream Bridges**:
+{chr(10).join(bridge_lines)}
+
+---
+*Autonomous Neuro-Biological Circadian Sleep Engine (`tools/cognitive_secondbrain_engine.py --sleep-cycle`).*
+"""
+            sleep_report_path.write_text(journal_md, encoding="utf-8")
+        except Exception:
+            pass
+
+        return {
+            "timestamp": now_iso,
+            "circadian_window": "02:00_AM_SWS_REM",
+            "stage1_glymphatic": {
+                "broken_symlinks_flushed": heal_summary["broken_symlinks_count"],
+                "duplicates_cleared": deduped_count,
+                "l0_flushed": l0_flushed_count,
+                "orphans_indexed": heal_summary["orphan_notes_count"],
+            },
+            "stage2_synaptic_homeostasis": {
+                "downscale_factor": shy_downscale_factor,
+                "synapses_renormalized": downscaled_count,
+                "pruned_to_l4_count": len(shy_pruned_keys) + heal_summary["decayed_memories_count"],
+            },
+            "stage3_swr_hippocampal_replay": {
+                "replayed_count": len(swr_consolidated),
+                "consolidated_engrams": swr_consolidated,
+            },
+            "stage4_rem_dream_reconsolidation": {
+                "dissonance_extinguished": dissonance_quarantined,
+                "associative_dream_bridges_count": len(dream_bridges),
+                "sleep_journal_path": str(sleep_report_path),
+            },
+            "seed_summary": seed_summary,
+            "matrix_path": heal_summary["matrix_path"],
+        }
+
 
 # ==============================================================================
 # 5. MODULE-LEVEL CONVENIENCE INTERFACES & CLI
@@ -1140,6 +1456,10 @@ def self_heal_secondbrain(vault_path: Optional[Path] = None) -> Dict[str, Any]:
     return get_default_engine().self_heal_secondbrain(vault_path)
 
 
+def run_circadian_sleep_cycle(vault_path: Optional[Path] = None) -> Dict[str, Any]:
+    return get_default_engine().run_circadian_sleep_cycle(vault_path)
+
+
 def assemble_harness_context(
     query: str,
     harness_mode: str = "fast",
@@ -1150,10 +1470,11 @@ def assemble_harness_context(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Sovereign Cognitive SecondBrain Engine (Bloom + Hegelian Critique + Self-Healing)"
+        description="Sovereign Cognitive SecondBrain Engine (Neuro-Biological 02:00 AM Sleep + Bloom + Hegelian Critique)"
     )
     parser.add_argument("--seed-from-vault", action="store_true", help="Seed cognitive memories from SecondBrain vault & ADRs")
     parser.add_argument("--self-heal", action="store_true", help="Run self-healing maintenance & Ebbinghaus decay on SecondBrain")
+    parser.add_argument("--sleep-cycle", action="store_true", help="Execute full 4-stage 02:00 AM Neuro-Biological Circadian Sleep Consolidation Cycle")
     parser.add_argument("--harness-query", type=str, default="", help="Test stratified context assembly for a query")
     parser.add_argument("--mode", type=str, default="fast", choices=["fast", "deep_tot", "dialectic_audit", "creative_synthesis"])
     parser.add_argument("--reinforce", type=str, default="", help="Reinforce a specific mem_key")
@@ -1162,11 +1483,14 @@ def main() -> None:
     engine = get_default_engine()
     output: Dict[str, Any] = {}
 
-    if args.seed_from_vault:
-        output["seed_report"] = engine.seed_from_secondbrain_vault()
+    if args.sleep_cycle:
+        output["sleep_cycle_report"] = engine.run_circadian_sleep_cycle()
+    else:
+        if args.seed_from_vault:
+            output["seed_report"] = engine.seed_from_secondbrain_vault()
 
-    if args.self_heal:
-        output["self_heal_report"] = engine.self_heal_secondbrain()
+        if args.self_heal:
+            output["self_heal_report"] = engine.self_heal_secondbrain()
 
     if args.reinforce:
         output["reinforce_report"] = engine.reinforce_memory(args.reinforce)
@@ -1177,7 +1501,8 @@ def main() -> None:
     if not output:
         output["matrix_stats"] = {
             "status_counts": engine.get_matrix_stats()["status_counts"],
-            "recent_audits_count": len(engine.get_matrix_stats()["recent_audits"])
+            "recent_audits_count": len(engine.get_matrix_stats()["recent_audits"]),
+            "brain_region_map": BRAIN_REGION_MAP,
         }
 
     print(json.dumps(output, indent=2, ensure_ascii=False))
@@ -1185,3 +1510,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

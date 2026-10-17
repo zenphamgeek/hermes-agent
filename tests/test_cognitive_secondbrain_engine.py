@@ -360,3 +360,71 @@ def test_secondbrain_memory_provider_plugin_lifecycle(tmp_path: Path) -> None:
     assert stats_data["status_counts"].get("ACTIVE", 0) >= 2
 
     provider.shutdown()
+
+
+def test_circadian_sleep_cycle_four_neuro_stages(tmp_path: Path) -> None:
+    db_path = tmp_path / "test_sleep.db"
+    vault_path = tmp_path / "SecondBrain"
+    (vault_path / "20-Projects" / "Active").mkdir(parents=True)
+    tombstone_path = tmp_path / "tombstones.jsonl"
+
+    engine = CognitiveSecondBrainEngine(
+        db_path=db_path, vault_path=vault_path, tombstone_path=tombstone_path
+    )
+
+    # 1. Insert L0 sensory debris (to be flushed by Stage 1 Glymphatic Clearance)
+    engine.store_memory(
+        mem_key="l0:sensory-noise",
+        title="Transient L0 Scratchpad",
+        content="Temporary turn buffer fragment.",
+        tier=MemoryTier.L0_SENSORY.value,
+    )
+
+    # 2. Insert a high-salience L1 Hippocampal episode (to be replayed & consolidated to L2 in Stage 3 SWR)
+    engine.store_memory(
+        mem_key="l1:high-salience-episode",
+        title="Hippocampal Fast Episode on SQLite FTS5",
+        content="Verified workflow for SQLite FTS5 indexing and BM25 ranking.",
+        tier=MemoryTier.L1_EPISODIC.value,
+        bloom_level=BloomLevel.B1_REMEMBER,
+        synaptic_strength=0.75,
+        evidence_score=0.75,
+    )
+
+    # 3. Insert a high-dissonance low-evidence belief (to be extinguished in Stage 4 REM)
+    engine.store_memory(
+        mem_key="l2:contradicted-myth",
+        title="Mythical Unverified Config",
+        content="False claim with repeated contradictions.",
+        tier=MemoryTier.L2_SEMANTIC.value,
+        synaptic_strength=0.50,
+        evidence_score=0.25,
+    )
+    with engine.db.get_connection() as conn:
+        conn.execute(
+            "UPDATE cognitive_memories SET contradiction_count = 3 WHERE mem_key = 'l2:contradicted-myth';"
+        )
+        conn.commit()
+
+    report = engine.run_circadian_sleep_cycle(vault_path=vault_path)
+    assert report["circadian_window"] == "02:00_AM_SWS_REM"
+    assert report["stage1_glymphatic"]["l0_flushed"] == 1
+    assert engine.get_memory("l0:sensory-noise") is None
+
+    # Verify Stage 3 SWR Replay promoted l1:high-salience-episode -> L2 and Bloom > B1
+    replayed_mem = engine.get_memory("l1:high-salience-episode")
+    assert replayed_mem is not None
+    assert replayed_mem["tier"] == "L2"
+    assert replayed_mem["bloom_level"] >= int(BloomLevel.B2_UNDERSTAND)
+
+    # Verify Stage 4 REM extinguished the contradicted myth into L4_ARCHIVE (ABANDONED)
+    myth_mem = engine.get_memory("l2:contradicted-myth")
+    assert myth_mem is not None
+    assert myth_mem["status"] == "ABANDONED"
+    assert myth_mem["tier"] == "L4"
+
+    # Verify Sleep Journal was written
+    journal_path = Path(report["stage4_rem_dream_reconsolidation"]["sleep_journal_path"])
+    assert journal_path.exists()
+    assert "Circadian 02:00 AM Neuro-Biological Sleep Consolidation" in journal_path.read_text(encoding="utf-8")
+

@@ -64,6 +64,7 @@ SECONDBRAIN_COGNITIVE_SCHEMA: Dict[str, Any] = {
                     "reinforce",
                     "critique",
                     "self_heal",
+                    "sleep_cycle",
                     "matrix_stats",
                 ],
                 "description": "Cognitive operation to execute.",
@@ -356,6 +357,10 @@ class SecondBrainMemoryProvider(MemoryProvider):
 
             elif action == "self_heal":
                 report = self._engine.self_heal_secondbrain()
+                return json.dumps(report, ensure_ascii=False)
+
+            elif action == "sleep_cycle":
+                report = self._engine.run_circadian_sleep_cycle()
                 return json.dumps(report, ensure_ascii=False)
 
             elif action == "matrix_stats":
