@@ -75,6 +75,7 @@ class InFlightLeaseLedger:
 
     def __init__(self):
         self._leases: Dict[str, InFlightLease] = {}
+        self._idempotency_map: Dict[str, str] = {}
         self._lock = threading.Lock()
 
     @classmethod
@@ -87,6 +88,9 @@ class InFlightLeaseLedger:
     def prune_expired(self) -> None:
         with self._lock:
             self._leases = {k: v for k, v in self._leases.items() if not v.is_expired}
+            self._idempotency_map = {
+                ik: jid for ik, jid in self._idempotency_map.items() if jid in self._leases
+            }
 
     def total_in_flight_cost(self) -> float:
         self.prune_expired()
@@ -100,9 +104,15 @@ class InFlightLeaseLedger:
         remaining_credits: float,
         min_required_credits: float,
         ttl_s: float = 180.0,
+        idempotency_key: Optional[str] = None,
     ) -> Tuple[bool, str]:
         self.prune_expired()
         with self._lock:
+            if idempotency_key and idempotency_key in self._idempotency_map:
+                existing_id = self._idempotency_map[idempotency_key]
+                if existing_id in self._leases and not self._leases[existing_id].is_expired:
+                    return True, f"Idempotent reuse of active lease for job {existing_id}"
+
             current_in_flight = sum(v.estimated_cost for v in self._leases.values())
             effective_remaining = remaining_credits - current_in_flight
             if effective_remaining - estimated_cost < min_required_credits:
@@ -113,15 +123,21 @@ class InFlightLeaseLedger:
                     f"<= ${min_required_credits:.2f} threshold (In-flight: ${current_in_flight:.2f})"
                 )
             self._leases[job_id] = InFlightLease(job_id, estimated_cost, ttl_s)
+            if idempotency_key:
+                self._idempotency_map[idempotency_key] = job_id
             return True, "Lease acquired"
 
     def release_lease(self, job_id: str) -> None:
         with self._lock:
             self._leases.pop(job_id, None)
+            self._idempotency_map = {
+                ik: jid for ik, jid in self._idempotency_map.items() if jid != job_id
+            }
 
     def clear(self) -> None:
         with self._lock:
             self._leases.clear()
+            self._idempotency_map.clear()
 
 
 class ModalCircuitBreaker:

@@ -62,3 +62,29 @@ def test_cwe20_validate_fleet_node_id() -> None:
     for malicious in ["node-4; rm -rf /", "node$(id)", "../etc/passwd", ""]:
         with pytest.raises(ValueError, match="CWE-20"):
             validate_fleet_node_id(malicious)
+
+
+def test_whatif_3g_virtual_escrow_retry_storm_deadlock_mitigation() -> None:
+    from tools.modal_budget_guard import InFlightLeaseLedger
+
+    ledger = InFlightLeaseLedger()
+    ledger.clear()
+
+    # 5 consecutive 3G network retries with distinct job_ids but identical idempotency_key
+    for attempt in range(1, 6):
+        ok, msg = ledger.acquire_lease(
+            job_id=f"job-3g-attempt-{attempt}",
+            estimated_cost=1.50,
+            remaining_credits=12.00,
+            min_required_credits=10.00,
+            ttl_s=180.0,
+            idempotency_key="req-3g-edge-001",
+        )
+        assert ok is True
+        if attempt == 1:
+            assert msg == "Lease acquired"
+        else:
+            assert "Idempotent reuse of active lease for job job-3g-attempt-1" in msg
+
+    assert ledger.total_in_flight_cost() == pytest.approx(1.50)
+
