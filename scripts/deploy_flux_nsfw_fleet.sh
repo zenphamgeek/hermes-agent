@@ -5,12 +5,16 @@
 
 set -euo pipefail
 
-WORKSPACE_TARGETS=("pvvsf" "asmr" "vi2vi")
+WORKSPACE_TARGETS=("nhatrophamvu" "pvvsf" "asmr" "vi2vi")
 MODAL_BIN="/home/zen/hermes-agent/.venv/bin/modal"
 APP_FILE="skills/creative/modal-comfyui/modal_flux_fill_nsfw.py"
 
+if [[ $# -gt 0 ]]; then
+    WORKSPACE_TARGETS=("$@")
+fi
+
 echo "======================================================================"
-echo "🚀 [Modal Fleet] Deploying 3x FLUX.1 Fill [dev] NSFW Workers"
+echo "🚀 [Modal Fleet] Deploying FLUX.1 Fill [dev] NSFW Workers"
 echo "Target Nodes (High Quota / Active): ${WORKSPACE_TARGETS[*]}"
 echo "======================================================================"
 
@@ -19,6 +23,16 @@ mkdir -p "$DEPLOY_LOGS_DIR"
 
 for WS in "${WORKSPACE_TARGETS[@]}"; do
     echo ""
+    # Invariant Guard: CWE-20 / CWE-78 Alphanumeric Workspace Identifier Validation
+    if [[ ! "$WS" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        echo "[SECURITY ERROR] CWE-20 Invalid workspace identifier: $WS" >&2
+        exit 1
+    fi
+    echo "▶️ [Pre-Flight Credit Gate] Checking Workspace Profile: $WS (> \$15.00 required)"
+    if ! python3 tools/modal_budget_guard.py check --profile "$WS" --action deploy; then
+        echo "⛔ Skipping $WS due to Modal Credit Gate Violation."
+        continue
+    fi
     echo "▶️ [Deploying Worker] Target Workspace Profile: $WS"
     LOG_FILE="$DEPLOY_LOGS_DIR/deploy_${WS}_$(date +%Y%m%d_%H%M%S).log"
     
