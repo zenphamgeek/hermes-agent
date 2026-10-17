@@ -1344,13 +1344,22 @@ class CognitiveSecondBrainEngine:
                     )
                     dissonance_quarantined.append(r["mem_key"])
                 else:
-                    # High-evidence paradox (C >= 2.2): queue for AGY-Fleet Pro node dialectical synthesis
+                    # High-evidence paradox (C >= 2.2): plan & queue for AGY-Fleet Pro node Gemini 4 Argon synthesis
+                    paradox_c = round(min(4.0, 2.2 + 0.25 * int(r["contradiction_count"])), 2)
+                    argon_plan = self.plan_argon_pro_task(
+                        prompt=f"Resolve dialectical paradox for memory {r['mem_key']} ({r['title']})",
+                        complexity=paradox_c,
+                    )
                     paradox_escalations.append({
                         "mem_key": r["mem_key"],
                         "title": r["title"],
                         "contradictions": r["contradiction_count"],
                         "evidence_score": r["evidence_score"],
-                        "routing": "AGY_FLEET_PRO_DEFERRED (C >= 2.2)",
+                        "routing": "AGY_FLEET_PRO_GEMINI_4_ARGON (C >= 2.2)",
+                        "planned_model": argon_plan["canonical_model"],
+                        "planned_tier": argon_plan["tier"],
+                        "task_level": argon_plan["level"],
+                        "argon_plan": argon_plan,
                     })
 
             # Discover Associative Dream Bridges across L2/L3 notes
@@ -1480,6 +1489,27 @@ class CognitiveSecondBrainEngine:
             "stage5_cortical_myelination": myelination_summary,
             "seed_summary": seed_summary,
             "matrix_path": heal_summary["matrix_path"],
+        }
+
+    @staticmethod
+    def plan_argon_pro_task(prompt: str, complexity: float = 2.4) -> Dict[str, Any]:
+        """4-level Gemini 4 Argon task planner for Standard Pro nodes (tier='pro')."""
+        if complexity < 1.2:
+            level, model, synth = "L1_TRIVIAL", "gemini-4-argon-low", False
+        elif complexity < 2.2:
+            level, model, synth = "L2_STANDARD", "gemini-4-argon-medium", False
+        elif complexity < 3.0:
+            level, model, synth = "L3_COMPLEX", "gemini-4-argon-high", False
+        else:
+            level, model, synth = "L4_SOVEREIGN", "gemini-4-argon-high", True
+        return {
+            "level": level,
+            "complexity": round(float(complexity), 2),
+            "canonical_model": model,
+            "tier": "pro",
+            "dialectical_synthesis": synth,
+            "fleet_plan_args": {"prompt": prompt, "model": model, "tier": "pro"},
+            "fleet_run_args": {"prompt": prompt, "model": model, "tier": "pro"},
         }
 
     # --------------------------------------------------------------------------

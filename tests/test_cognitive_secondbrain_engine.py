@@ -507,3 +507,25 @@ def test_stage5_cortical_myelination_lora_and_onnx_export(tmp_path: Path) -> Non
     assert 1 <= pred["bloom_level"] <= 6
 
 
+def test_plan_argon_pro_task_four_levels() -> None:
+    p1 = CognitiveSecondBrainEngine.plan_argon_pro_task("Format docstring", complexity=0.8)
+    assert p1["level"] == "L1_TRIVIAL"
+    assert p1["canonical_model"] == "gemini-4-argon-low"
+    assert p1["tier"] == "pro"
+
+    p2 = CognitiveSecondBrainEngine.plan_argon_pro_task("Write unit test suite", complexity=1.6)
+    assert p2["level"] == "L2_STANDARD"
+    assert p2["canonical_model"] == "gemini-4-argon-medium"
+    assert p2["tier"] == "pro"
+
+    p3 = CognitiveSecondBrainEngine.plan_argon_pro_task("Resolve REM paradox", complexity=2.5)
+    assert p3["level"] == "L3_COMPLEX"
+    assert p3["canonical_model"] == "gemini-4-argon-high"
+    assert p3["tier"] == "pro"
+
+    p4 = CognitiveSecondBrainEngine.plan_argon_pro_task("Formal Byzantine consensus proof", complexity=3.4)
+    assert p4["level"] == "L4_SOVEREIGN"
+    assert p4["canonical_model"] == "gemini-4-argon-high"
+    assert p4["dialectical_synthesis"] is True
+    assert p4["fleet_plan_args"]["model"] == "gemini-4-argon-high"
+    assert p4["fleet_plan_args"]["tier"] == "pro"
