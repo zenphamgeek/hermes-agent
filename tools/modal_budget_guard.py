@@ -52,6 +52,57 @@ ACTIVE_POLL_INTERVAL_SECONDS = 30      # 15s - 30s when active container running
 TOML_PATH = Path(os.path.expanduser("~/.modal.toml"))
 LOG_PATH = Path("/home/zen/hermes-agent/output/modal_budget_guard.log")
 
+CANONICAL_APP_IDS: Tuple[str, ...] = (
+    "r2rgraph_worker",
+    "motion_geometry_engine",
+    "diatts_voice_synth",
+    "mojopham_avatar",
+    "mvlm_vision_audit",
+    "vrag_indexer",
+    "vi2vi_swapface",
+    "jev27b_vl",
+)
+
+
+def _sanitize_modal_fleet_policy(policy: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    SEC-001 (CWE-20) Hardening: Sanitizes modal_fleet_policy dictionary so no untrusted
+    swarm payload can raise budget_ceiling_hard_kill_usd above $25.00 or lower credit gates
+    below $15.00 (deploy) / $10.00 (inference).
+    """
+    sanitized = dict(policy or {})
+    credit_policy = dict(sanitized.get("credit_policy") or {})
+
+    raw_ceiling = float(credit_policy.get("budget_ceiling_hard_kill_usd", HARD_KILL_CEILING))
+    raw_deploy_min = float(credit_policy.get("deploy_min_credits_usd", DEPLOY_MIN_CREDITS_USD))
+    raw_infer_min = float(credit_policy.get("inference_min_credits_usd", INFERENCE_MIN_CREDITS_USD))
+
+    credit_policy["budget_ceiling_hard_kill_usd"] = min(HARD_KILL_CEILING, max(1.0, raw_ceiling))
+    credit_policy["deploy_min_credits_usd"] = max(DEPLOY_MIN_CREDITS_USD, raw_deploy_min)
+    credit_policy["inference_min_credits_usd"] = max(INFERENCE_MIN_CREDITS_USD, raw_infer_min)
+    sanitized["credit_policy"] = credit_policy
+    return sanitized
+
+
+def _resolve_active_and_failover(
+    policy: Dict[str, Any],
+    fallback_candidates: Optional[List[str]] = None,
+) -> Tuple[List[str], List[str]]:
+    """
+    SEC-002 (CWE-400) & SEC-004 (CWE-682) Hardening:
+    Resolves (active_fleet, failover_pool) while strictly excluding any workspace listed in
+    `credit_blocked` or `disabled_workspaces`, even along the fallback path.
+    """
+    sanitized = _sanitize_modal_fleet_policy(policy)
+    blocked = set(sanitized.get("credit_blocked") or []) | set(sanitized.get("disabled_workspaces") or [])
+    raw_active = [w for w in (sanitized.get("active_fleet") or []) if w not in blocked]
+    raw_failover = [w for w in (sanitized.get("failover_pool") or []) if w not in blocked and w not in raw_active]
+
+    if not raw_active and fallback_candidates:
+        raw_active = [w for w in fallback_candidates if w not in blocked]
+
+    return raw_active, raw_failover
+
 
 class InFlightLease:
     """Represents a provisional in-flight budget escrow token with monotonic bounded TTL."""

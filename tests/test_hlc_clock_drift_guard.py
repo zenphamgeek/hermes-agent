@@ -147,3 +147,41 @@ def test_acoustic_clause_guard_and_passive_credit_rule() -> None:
     rule_text = rule_path.read_text(encoding="utf-8")
     assert "Passive Mathematical Credit Calculation (0 Outbound Scraping)" in rule_text
     assert ".modal_billing_ledger.json" in rule_text
+
+
+def test_sec001_to_sec004_modal_policy_and_catalog_drift_guard() -> None:
+    from tools.modal_budget_guard import (
+        CANONICAL_APP_IDS,
+        _resolve_active_and_failover,
+        _sanitize_modal_fleet_policy,
+    )
+
+    # SEC-003: Canonical app catalog includes jev27b_vl as the 8th workload
+    assert len(CANONICAL_APP_IDS) == 8
+    assert "jev27b_vl" in CANONICAL_APP_IDS
+
+    # SEC-001 (CWE-20): Untrusted policy attempting to raise hard-kill ceiling to $999 or lower gates
+    tampered_policy = {
+        "credit_policy": {
+            "budget_ceiling_hard_kill_usd": 999.0,
+            "deploy_min_credits_usd": 1.0,
+            "inference_min_credits_usd": 0.5,
+        },
+        "active_fleet": ["nhatrophamvu", "exhausted_ws"],
+        "failover_pool": ["r2rgraph", "motion", "exhausted_ws"],
+        "credit_blocked": ["exhausted_ws", "low_credit_ws"],
+    }
+    clean = _sanitize_modal_fleet_policy(tampered_policy)
+    assert clean["credit_policy"]["budget_ceiling_hard_kill_usd"] == 25.00
+    assert clean["credit_policy"]["deploy_min_credits_usd"] == 15.00
+    assert clean["credit_policy"]["inference_min_credits_usd"] == 10.00
+
+    # SEC-002 & SEC-004: credit_blocked workspaces strictly excluded in both primary and fallback paths
+    active, failover = _resolve_active_and_failover(
+        tampered_policy,
+        fallback_candidates=["exhausted_ws", "low_credit_ws", "r2rgraph"],
+    )
+    assert "exhausted_ws" not in active
+    assert "exhausted_ws" not in failover
+    assert active == ["nhatrophamvu"]
+    assert failover == ["r2rgraph", "motion"]
