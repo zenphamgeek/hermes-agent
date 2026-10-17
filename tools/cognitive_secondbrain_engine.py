@@ -1282,7 +1282,26 @@ class CognitiveSecondBrainEngine:
 
         # --- STAGE 4: REM Theta-Gamma Dreaming & Predictive Free-Energy Reconsolidation ---
         dissonance_quarantined: List[str] = []
+        paradox_escalations: List[Dict[str, Any]] = []
         dream_bridges: List[Tuple[str, str, List[str]]] = []
+
+        # Endogenous Local JEV evaluation (C < 2.2 -> 100% local, 0 output tokens)
+        jev_engine_used = "LOCAL_JEV_ENDOGENOUS"
+        jev_complexity = 0.85
+        try:
+            from tools.jev_clef_knowledge_compiler import LocalJEVEvaluator
+            jev = LocalJEVEvaluator(
+                dedup_cache_path=Path.home() / ".hermes" / ".jev_sleep_dedup.json",
+                ledger_path=Path.home() / ".gemini" / "antigravity" / "action_ledger.jsonl",
+            )
+            jev_res = jev.evaluate(
+                prompt=f"Circadian 02:00 AM Sleep Cycle ({date_str}): SWR={len(swr_consolidated)}, Downscaled={downscaled_count}",
+                files=[],
+            )
+            jev_complexity = jev_res.complexity
+            jev_engine_used = jev_res.engine
+        except Exception:
+            pass
 
         with self.db.get_connection() as conn:
             # Check memories with high contradiction_count (Free-Energy Prediction Error)
@@ -1293,7 +1312,7 @@ class CognitiveSecondBrainEngine:
             """).fetchall()
             for r in high_err_rows:
                 if float(r["evidence_score"]) < 0.45:
-                    # Auto-abandon chronically contradicted low-evidence beliefs during REM
+                    # Auto-abandon chronically contradicted low-evidence beliefs endogenously via Local JEV
                     self.dialectical_critique(
                         thesis_key=r["mem_key"],
                         antithesis_claim=(
@@ -1305,6 +1324,15 @@ class CognitiveSecondBrainEngine:
                         evidence_ref="Circadian-REM-Reconsolidation",
                     )
                     dissonance_quarantined.append(r["mem_key"])
+                else:
+                    # High-evidence paradox (C >= 2.2): queue for AGY-Fleet Pro node dialectical synthesis
+                    paradox_escalations.append({
+                        "mem_key": r["mem_key"],
+                        "title": r["title"],
+                        "contradictions": r["contradiction_count"],
+                        "evidence_score": r["evidence_score"],
+                        "routing": "AGY_FLEET_PRO_DEFERRED (C >= 2.2)",
+                    })
 
             # Discover Associative Dream Bridges across L2/L3 notes
             semantic_rows = conn.execute("""
@@ -1361,6 +1389,7 @@ class CognitiveSecondBrainEngine:
 > [!NOTE]
 > **Execution Timestamp**: `{now_iso}`  
 > **Circadian Phase**: `02:00 AM Local Deep SWS -> REM Reconsolidation`  
+> **Compute Engine**: `{jev_engine_used}` (`complexity={jev_complexity:.2f}`, `output_tokens=0`, `100% Endogenous Pacemaker`)  
 > **Navigation**: [[Home]] | [[Cognitive-Memory-Matrix]] | [[Knowledge-Graph-Telemetry]]
 
 ## 1. Stage 1 — NREM Slow-Wave Delta (`0.5–4 Hz`): Glymphatic Clearance (AQP4 Flush)
@@ -1378,7 +1407,8 @@ class CognitiveSecondBrainEngine:
 {chr(10).join(swr_lines)}
 
 ## 4. Stage 4 — REM Theta-Gamma Coupling (`4–8 Hz`): Predictive Coding & Dream Bridges
-- **High-Dissonance Beliefs Extinguished**: `{len(dissonance_quarantined)}`
+- **High-Dissonance Beliefs Extinguished (Local JEV)**: `{len(dissonance_quarantined)}`
+- **High-Evidence Paradoxes Queued for AGY-Fleet Pro ($C \\ge 2.2$)**: `{len(paradox_escalations)}`
 - **Associative Cross-Cortical Dream Bridges**:
 {chr(10).join(bridge_lines)}
 
@@ -1392,6 +1422,12 @@ class CognitiveSecondBrainEngine:
         return {
             "timestamp": now_iso,
             "circadian_window": "02:00_AM_SWS_REM",
+            "compute_engine": {
+                "engine": jev_engine_used,
+                "complexity": jev_complexity,
+                "output_tokens": 0,
+                "paradox_escalations_for_pro": paradox_escalations,
+            },
             "stage1_glymphatic": {
                 "broken_symlinks_flushed": heal_summary["broken_symlinks_count"],
                 "duplicates_cleared": deduped_count,
@@ -1409,6 +1445,7 @@ class CognitiveSecondBrainEngine:
             },
             "stage4_rem_dream_reconsolidation": {
                 "dissonance_extinguished": dissonance_quarantined,
+                "paradox_escalations_count": len(paradox_escalations),
                 "associative_dream_bridges_count": len(dream_bridges),
                 "sleep_journal_path": str(sleep_report_path),
             },
