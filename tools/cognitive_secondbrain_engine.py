@@ -1664,6 +1664,7 @@ class CognitiveSecondBrainEngine:
         train_bloom_labels: List[int] = []
         train_mode_labels: List[int] = []
         train_argon_labels: List[int] = []
+        train_texts: List[str] = []
 
         mode_to_idx = {"fast": 0, "deep_tot": 1, "dialectic_audit": 2, "creative_synthesis": 3}
 
@@ -1702,6 +1703,7 @@ class CognitiveSecondBrainEngine:
 
                 text_sample = f"{title}\n{content[:800]}"
                 train_features.append(self.featurize_text_256d(text_sample))
+                train_texts.append(text_sample)
                 train_bloom_labels.append(bloom - 1)
                 train_mode_labels.append(mode_to_idx[target_mode])
                 train_argon_labels.append(_bloom_tier_to_argon_idx(bloom, tier))
@@ -1732,6 +1734,7 @@ class CognitiveSecondBrainEngine:
                 s_tier = str(sr["tier"])
 
                 train_features.append(self.featurize_text_256d(q_txt))
+                train_texts.append(f"{q_txt}\n{c_txt[:400]}")
                 train_bloom_labels.append(b_lvl - 1)
                 train_mode_labels.append(mode_to_idx[h_mode])
                 train_argon_labels.append(_bloom_tier_to_argon_idx(b_lvl, s_tier))
@@ -1884,67 +1887,110 @@ class CognitiveSecondBrainEngine:
                     return self.head_bloom(h), self.head_mode(h), self.head_argon(h)
 
             torch.manual_seed(42)
-            model = MyelinatedCorticalRouter(lora_rank=8)
-
             if not train_features:
-                train_features = [self.featurize_text_256d("Sovereign ADR invariant architecture")]
+                _fallback = "Sovereign ADR invariant architecture"
+                train_features = [self.featurize_text_256d(_fallback)]
+                train_texts = [_fallback]
                 train_bloom_labels = [5]
                 train_mode_labels = [1]
                 train_argon_labels = [3]
 
-            x_tensor = torch.tensor(train_features, dtype=torch.float32)
+            # PDCA Loop 5: deterministic 80/20 holdout -> real validation metrics (not train-set loss only)
+            n_samples = len(train_features)
+            perm = torch.randperm(n_samples, generator=torch.Generator().manual_seed(42))
+            n_val = max(1, n_samples // 5) if n_samples >= 5 else 0
+            val_idx = perm[:n_val].tolist()
+            tr_idx = perm[n_val:].tolist()
+
+            x_all = torch.tensor(train_features, dtype=torch.float32)
             y_bloom = torch.tensor(train_bloom_labels, dtype=torch.long)
             y_mode = torch.tensor(train_mode_labels, dtype=torch.long)
             y_argon = torch.tensor(train_argon_labels, dtype=torch.long)
-
-            optimizer = torch.optim.AdamW(model.parameters(), lr=0.015, weight_decay=1e-4)
             criterion = nn.CrossEntropyLoss()
 
+            def _three_head_loss(m: nn.Module, idx: List[int]) -> torch.Tensor:
+                ob, om, oa = m(x_all[idx])
+                return criterion(ob, y_bloom[idx]) + criterion(om, y_mode[idx]) + criterion(oa, y_argon[idx])
+
+            model = MyelinatedCorticalRouter(lora_rank=8)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=0.015, weight_decay=1e-4)
             model.train()
+            train_loss = 0.0
             for _ in range(epochs):
                 optimizer.zero_grad()
-                b_logits, m_logits, a_logits = model(x_tensor)
-                loss = (
-                    criterion(b_logits, y_bloom)
-                    + criterion(m_logits, y_mode)
-                    + criterion(a_logits, y_argon)
-                )
+                loss = _three_head_loss(model, tr_idx)
                 loss.backward()
                 optimizer.step()
-                final_loss = float(loss.item())
+                train_loss = float(loss.item())
 
-            model.eval()
+            val_loss = val_acc_bloom = val_acc_mode = val_acc_argon = None
+            if val_idx:
+                model.eval()
+                with torch.no_grad():
+                    vob, vom, voa = model(x_all[val_idx])
+                    val_loss = round(float(_three_head_loss(model, val_idx).item()), 4)
+                    val_acc_bloom = round(float((vob.argmax(1) == y_bloom[val_idx]).float().mean()), 4)
+                    val_acc_mode = round(float((vom.argmax(1) == y_mode[val_idx]).float().mean()), 4)
+                    val_acc_argon = round(float((voa.argmax(1) == y_argon[val_idx]).float().mean()), 4)
+            validation_metrics = {
+                "train_loss": round(train_loss, 4),
+                "val_loss": val_loss,
+                "val_acc_bloom": val_acc_bloom,
+                "val_acc_mode": val_acc_mode,
+                "val_acc_argon": val_acc_argon,
+                "train_size": len(tr_idx),
+                "val_size": len(val_idx),
+            }
+            final_loss = train_loss
+
+            def _extract_tensors(m: nn.Module) -> Dict[str, Any]:
+                names = (
+                    "lora_A.weight", "lora_B.weight", "base_fc.weight", "base_fc.bias",
+                    "head_bloom.weight", "head_bloom.bias", "head_mode.weight", "head_mode.bias",
+                    "head_argon.weight", "head_argon.bias",
+                )
+                sd = m.state_dict()
+                return {k: sd[k].detach().cpu().contiguous() for k in names}
 
             # 1. Export Master LoRA Adapter (r=8) & 3-Head Router Weights to .safetensors (CWE-502 safe serialization)
-            lora_tensors = {
-                "lora_A.weight": model.lora_A.weight.detach().cpu().contiguous(),
-                "lora_B.weight": model.lora_B.weight.detach().cpu().contiguous(),
-                "base_fc.weight": model.base_fc.weight.detach().cpu().contiguous(),
-                "base_fc.bias": model.base_fc.bias.detach().cpu().contiguous(),
-                "head_bloom.weight": model.head_bloom.weight.detach().cpu().contiguous(),
-                "head_bloom.bias": model.head_bloom.bias.detach().cpu().contiguous(),
-                "head_mode.weight": model.head_mode.weight.detach().cpu().contiguous(),
-                "head_mode.bias": model.head_mode.bias.detach().cpu().contiguous(),
-                "head_argon.weight": model.head_argon.weight.detach().cpu().contiguous(),
-                "head_argon.bias": model.head_argon.bias.detach().cpu().contiguous(),
-            }
-            safetensors.torch.save_file(lora_tensors, str(lora_path))
+            safetensors.torch.save_file(_extract_tensors(model), str(lora_path))
 
-            # PDCA Loop 3: Export 3 Domain-Specialized r=16 LoRA Adapters (.safetensors, shape 16x256 and 64x16)
-            domain_seeds = {
-                "graydoom_codex_harness": "Gray Doom gd-<slug>.json TravianZ 3dbe9c71 26-character tri-lock 40-slot 2.5D lot mapping",
-                "odoo20_owl_rule29": "Odoo 20 Insilos Owl Component useState useService QWeb t-out t-key Rule 29 Borderless Canvas",
-                "adversarial_security_tot": "Adversarial ToT CWE-20 CWE-78 HLC 5-min clock drift Lamport epoch lease fencing Modal credit gate",
+            # PDCA Loop 5b: REAL domain LoRA fine-tuning (frozen base + heads, trainable r=16 A/B)
+            domain_keywords = {
+                "graydoom_codex_harness": ["gray doom", "graydoom", "travianz", "gd-", "character", "game art", "codex"],
+                "odoo20_owl_rule29": ["odoo", "owl", "qweb", "insilos", "rule 29", "t-out"],
+                "adversarial_security_tot": ["cwe", "security", "adversarial", "lease", "clock", "credit gate", "injection"],
             }
-            base_a_r16 = model.lora_A.weight.detach().cpu().repeat(2, 1)  # (16, 256)
-            base_b_r16 = model.lora_B.weight.detach().cpu().repeat(1, 2) * 0.5  # (64, 16)
-            for dom_name, dom_prompt in domain_seeds.items():
-                dom_vec = torch.tensor([self.featurize_text_256d(dom_prompt)], dtype=torch.float32)
-                dom_delta_a = base_a_r16 + 0.05 * dom_vec.repeat(16, 1)
-                dom_tensors = dict(lora_tensors)
-                dom_tensors["lora_A.weight"] = dom_delta_a.contiguous()
-                dom_tensors["lora_B.weight"] = base_b_r16.contiguous()
-                safetensors.torch.save_file(dom_tensors, domain_lora_paths[dom_name])
+            frozen_prefixes = ("base_fc.", "head_bloom.", "head_mode.", "head_argon.")
+            base_sd = {k: v.clone() for k, v in model.state_dict().items() if k.startswith(frozen_prefixes)}
+            domain_lora_metrics: Dict[str, Dict[str, Any]] = {}
+            for dom_name, kws in domain_keywords.items():
+                d_idx = [i for i, t in enumerate(train_texts) if any(k in t.lower() for k in kws)]
+                dm = MyelinatedCorticalRouter(lora_rank=16)
+                dm.load_state_dict(base_sd, strict=False)
+                for p_name, p in dm.named_parameters():
+                    if p_name.startswith(frozen_prefixes):
+                        p.requires_grad_(False)
+                nn.init.kaiming_uniform_(dm.lora_A.weight, a=5 ** 0.5)
+                nn.init.zeros_(dm.lora_B.weight)
+                if len(d_idx) >= 4:
+                    dm.train()
+                    d_opt = torch.optim.AdamW([p for p in dm.parameters() if p.requires_grad], lr=0.01, weight_decay=1e-4)
+                    d_loss = 0.0
+                    for _ in range(epochs):
+                        d_opt.zero_grad()
+                        dl = _three_head_loss(dm, d_idx)
+                        dl.backward()
+                        d_opt.step()
+                        d_loss = float(dl.item())
+                    d_status, d_final = "TRAINED", round(d_loss, 4)
+                else:
+                    nn.init.zeros_(dm.lora_A.weight)  # honest zero-delta no-op adapter
+                    d_status, d_final = "INSUFFICIENT_DATA", None
+                safetensors.torch.save_file(_extract_tensors(dm), domain_lora_paths[dom_name])
+                domain_lora_metrics[dom_name] = {"samples": len(d_idx), "status": d_status, "final_loss": d_final}
+
+            model.eval()
 
             # 2. Export 3-Head executable ONNX graph + Dynamic INT8 Quantized ONNX graph
             dummy_in = torch.zeros(1, 256, dtype=torch.float32)
@@ -1998,6 +2044,8 @@ class CognitiveSecondBrainEngine:
             "onnx_int8_model_path": str(onnx_int8_path),
             "training_samples": len(train_features),
             "final_loss": round(final_loss, 4),
+            "validation_metrics": validation_metrics,
+            "domain_lora_metrics": domain_lora_metrics,
             "onnx_inference_latency_ms": onnx_latency_ms,
         }
         try:
@@ -2005,6 +2053,42 @@ class CognitiveSecondBrainEngine:
         except Exception:
             pass
         return report_payload
+
+    def hot_swap_domain_lora(self, domain: str, myelination_dir: Optional[Path] = None) -> Dict[str, Any]:
+        """Hot-swap a domain LoRA adapter (allowlisted, traversal-safe) and measure latency vs the <15 ms KPI."""
+        import re as _re
+        import time as _time
+        import safetensors.torch
+
+        allowlist = ("graydoom_codex_harness", "odoo20_owl_rule29", "adversarial_security_tot")
+        if not _re.fullmatch(r"[a-z0-9_]{1,64}", str(domain)) or domain not in allowlist:
+            raise ValueError(f"Domain {domain!r} not in allowlist {allowlist}")
+        if myelination_dir is not None:
+            base = Path(myelination_dir)
+        elif getattr(self, "myelination_dir", None):
+            base = Path(self.myelination_dir)
+        else:
+            base = Path.home() / ".hermes" / "jev_myelination"
+        path = base / f"lora_{domain}.safetensors"
+        if not path.exists():
+            raise FileNotFoundError(str(path))
+
+        t0 = _time.perf_counter()
+        tensors = safetensors.torch.load_file(str(path))
+        lora_a = tensors["lora_A.weight"]
+        lora_b = tensors["lora_B.weight"]
+        delta = (lora_b @ lora_a) * 2.0
+        ms = (_time.perf_counter() - t0) * 1000.0
+        self._active_domain_lora = {"domain": domain, "delta": delta, "rank": int(lora_a.shape[0])}
+        return {
+            "domain": domain,
+            "path": str(path),
+            "rank": int(lora_a.shape[0]),
+            "delta_shape": list(delta.shape),
+            "delta_norm": round(float(delta.norm()), 6),
+            "hot_swap_latency_ms": round(ms, 3),
+            "within_kpi_15ms": ms < 15.0,
+        }
 
     def predict_with_onnx_surrogate(
         self,

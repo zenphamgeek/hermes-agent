@@ -547,3 +547,44 @@ def test_plan_argon_pro_task_four_levels() -> None:
     assert p4["dialectical_synthesis"] is True
     assert p4["fleet_plan_args"]["model"] == "gemini-4-argon-high"
     assert p4["fleet_plan_args"]["tier"] == "pro"
+
+
+def test_hot_swap_domain_lora_latency_and_traversal_guard(tmp_path: Path) -> None:
+    import safetensors.torch
+    import torch
+
+    engine = CognitiveSecondBrainEngine(
+        db_path=tmp_path / "hs.db", vault_path=tmp_path / "V", tombstone_path=tmp_path / "t.jsonl"
+    )
+    d = tmp_path / "jev_myelination"
+    d.mkdir(parents=True, exist_ok=True)
+    safetensors.torch.save_file(
+        {"lora_A.weight": torch.randn(16, 256), "lora_B.weight": torch.randn(64, 16)},
+        str(d / "lora_odoo20_owl_rule29.safetensors"),
+    )
+    r = engine.hot_swap_domain_lora("odoo20_owl_rule29")
+    assert r["rank"] == 16 and r["delta_shape"] == [64, 256] and r["within_kpi_15ms"]
+    for bad in ("../etc/passwd", "unknown_domain"):
+        with pytest.raises(ValueError):
+            engine.hot_swap_domain_lora(bad)
+    with pytest.raises(FileNotFoundError):
+        engine.hot_swap_domain_lora("graydoom_codex_harness")
+
+
+def test_stage5_reports_validation_and_real_domain_metrics(tmp_path: Path) -> None:
+    engine = CognitiveSecondBrainEngine(
+        db_path=tmp_path / "vm.db", vault_path=tmp_path / "V", tombstone_path=tmp_path / "t.jsonl"
+    )
+    for i in range(12):
+        engine.store_memory(
+            mem_key=f"l2:sec-{i}", title=f"CWE-20 lease security invariant {i}",
+            content="Adversarial clock drift and credit gate injection defense.",
+            tier=MemoryTier.L2_SEMANTIC.value, bloom_level=BloomLevel.B4_ANALYZE,
+        )
+    rep = engine.myelinate_jev_lora_and_onnx(output_dir=tmp_path / "out", epochs=5)
+    vm = rep["validation_metrics"]
+    assert vm["val_size"] >= 1 and vm["train_size"] + vm["val_size"] == rep["training_samples"]
+    assert 0.0 <= vm["val_acc_bloom"] <= 1.0
+    dm = rep["domain_lora_metrics"]
+    assert dm["adversarial_security_tot"]["status"] == "TRAINED"
+    assert dm["odoo20_owl_rule29"]["status"] == "INSUFFICIENT_DATA"
