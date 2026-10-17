@@ -12,6 +12,45 @@ from typing import Any, Dict, Tuple
 
 FLEET_NODE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
+GROUP_B_PRO_NODES = {
+    "insilos", "node-4", "node-5", "node-6", "team-3", "binhthuong",
+    "justaskgao", "sunward", "ai-digimate", "codegeekvn", "gaopham",
+    "zenonmind", "immoon0009-gmail-com", "nahlaleah102",
+    "tsmei0209-gmail-com", "fast", "agy-home", "coderedgen", "zenphamgeek", "zeninallgeek", "just.ask.mr.zen",
+}
+
+DIRECT_ARGON_MODELS = {
+    "gemini-4-argon-high",
+    "gemini-4-argon-medium",
+    "gemini-4-argon-low",
+}
+
+CLAUDE_ADAPTATION_MAP = {
+    "claude-opus-5-5-high": "claude-opus-4-6-thinking",
+    "claude-opus-5-5-medium": "claude-opus-4.6",
+    "claude-sonnet-5-5-high": "claude-sonnet-4-6",
+}
+
+
+def resolve_model_for_node(
+    node_id: str,
+    requested_model: str,
+    adapt_argon_to_flash: bool = False,
+) -> Tuple[str, bool]:
+    """
+    Resolve requested model for Group B Pro nodes:
+    - Group B Pro nodes natively support 4-Level Gemini 4 Argon (`gemini-4-argon-high/medium/low`),
+      or optionally adapt to `gemini-3.8-flash-*` when `adapt_argon_to_flash=True`.
+    - Claude 5.5 models dynamically adapt to Claude 4.6 (`claude-opus-4-6-thinking`, `claude-sonnet-4-6`).
+    """
+    validate_fleet_node_id(node_id.replace(".", "_"))
+    if node_id in GROUP_B_PRO_NODES:
+        if requested_model in CLAUDE_ADAPTATION_MAP:
+            return CLAUDE_ADAPTATION_MAP[requested_model], True
+        if adapt_argon_to_flash and requested_model in DIRECT_ARGON_MODELS:
+            return requested_model.replace("gemini-4-argon-", "gemini-3.8-flash-"), True
+    return requested_model, False
+
 
 def validate_fleet_node_id(node_id: str) -> str:
     """Enforce strict CWE-20 / CWE-78 alphanumeric validation for Fleet & Modal identifiers."""

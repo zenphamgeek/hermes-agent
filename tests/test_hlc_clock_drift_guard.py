@@ -101,3 +101,33 @@ def test_inflight_lease_monotonic_expiration_under_ntp_step() -> None:
     assert lease.is_expired is True
 
 
+def test_atomic_release_lease_and_model_resolver() -> None:
+    from tools.hlc_clock_drift_guard import resolve_model_for_node
+    from tools.modal_budget_guard import InFlightLeaseLedger
+
+    ledger = InFlightLeaseLedger()
+    ledger.clear()
+    ok, _ = ledger.acquire_lease(
+        job_id="job-cas-1",
+        estimated_cost=1.50,
+        remaining_credits=20.0,
+        min_required_credits=10.0,
+        idempotency_key="payload-sha256-xyz",
+    )
+    assert ok is True
+    # Wrong idempotency_key must fail atomic release
+    assert ledger.release_lease("job-cas-1", idempotency_key="wrong-key") is False
+    # Exact idempotency_key succeeds once, and duplicate release returns False
+    assert ledger.release_lease("job-cas-1", idempotency_key="payload-sha256-xyz") is True
+    assert ledger.release_lease("job-cas-1", idempotency_key="payload-sha256-xyz") is False
+
+    # Group B model resolution: native Argon support + Claude 5.5 -> 4.6 adaptation
+    m1, adapted1 = resolve_model_for_node("insilos", "gemini-4-argon-high")
+    assert m1 == "gemini-4-argon-high" and adapted1 is False
+    m2, adapted2 = resolve_model_for_node("insilos", "claude-opus-5-5-high")
+    assert m2 == "claude-opus-4-6-thinking" and adapted2 is True
+    m3, adapted3 = resolve_model_for_node("insilos", "gemini-4-argon-high", adapt_argon_to_flash=True)
+    assert m3 == "gemini-3.8-flash-high" and adapted3 is True
+
+
+

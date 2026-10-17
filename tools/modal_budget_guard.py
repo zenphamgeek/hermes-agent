@@ -70,10 +70,11 @@ class InFlightLease:
         self.expires_at = self.created_at + ttl_s
         self.created_at_mono = time.monotonic()
         self.expires_at_mono = self.created_at_mono + ttl_s
+        self.released = False
 
     @property
     def is_expired(self) -> bool:
-        return (time.monotonic() > self.expires_at_mono) or (time.time() > self.expires_at)
+        return self.released or (time.monotonic() > self.expires_at_mono) or (time.time() > self.expires_at)
 
 
 class InFlightLeaseLedger:
@@ -136,12 +137,23 @@ class InFlightLeaseLedger:
             self._idempotency_map[key] = job_id
             return True, "Lease acquired"
 
-    def release_lease(self, job_id: str) -> None:
+    def release_lease(self, job_id: str, idempotency_key: Optional[str] = None) -> bool:
+        import hmac
+
         with self._lock:
+            lease = self._leases.get(job_id)
+            if lease is None or lease.released:
+                return False
+            if idempotency_key is not None and not hmac.compare_digest(
+                str(lease.idempotency_key), str(idempotency_key)
+            ):
+                return False
+            lease.released = True
             self._leases.pop(job_id, None)
             self._idempotency_map = {
                 ik: jid for ik, jid in self._idempotency_map.items() if jid != job_id
             }
+            return True
 
     def clear(self) -> None:
         with self._lock:
