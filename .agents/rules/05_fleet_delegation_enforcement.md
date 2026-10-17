@@ -39,8 +39,8 @@ When a task requires **non-trivial code generation, refactoring, or analysis** (
 ## Rule: Strict Pro-Only Fleet Swarm Routing (`tier="pro"` Exclusive — Ultra Nodes Token Exhausted), Claude Pro-First & Nebula Disabled Invariant
 
 1. **Strict Pro-Only Fleet Swarm Mandate (`tier="pro"` Exclusive)**:
-   - **Group B (17 Standard Pro Nodes — 100% Active Pool)**: Directly supports **4-Level Gemini 4 Argon** (`gemini-4-argon-high`, `gemini-4-argon-medium`, `gemini-4-argon-low`), `gemini-3.8-flash-high/medium/low`, `claude-opus-5-5-high/medium/low`, `claude-opus-4-6-thinking`, `claude-opus-4.6`, `claude-sonnet-4-6`, `gpt-oss-120b-medium`. `resolve_model_for_node` dynamically adapts models on Group B nodes, load-balanced via **Quota-Balanced Round-Robin (QBRR)**.
-   - **Group A (2 Ultra Nodes — `innoria-team` & `ariana`/`ultra-2` — TOKEN EXHAUSTED / SUSPENDED)**: Currently token-exhausted. **100% of tasks MUST be routed exclusively to Fleet Swarm Pro nodes (`tier="pro"`, e.g. `model="gemini-4-argon-high"`, `"gemini-4-argon-medium"`, `"gemini-3.8-flash-high"`, or `"claude-sonnet-4-6"`)**. Never dispatch `tier="ultra"` to Ultra accounts while Ultra tokens are exhausted.
+   - **Group B (17 Standard Pro Nodes — 100% Active Pool)**: Directly supports **3-Tier Gemini 4 Argon** (`gemini-4-argon-high`, `gemini-4-argon-medium`, `gemini-4-argon-low`), `claude-opus-5-5-high/medium/low`, `claude-opus-4-6-thinking`, `claude-opus-4.6`, `claude-sonnet-4-6`, `gpt-oss-120b-medium`. `resolve_model_for_node` dynamically adapts models on Group B nodes, load-balanced via **Quota-Balanced Round-Robin (QBRR)**.
+   - **Group A (2 Ultra Nodes — `innoria-team` & `ariana`/`ultra-2` — TOKEN EXHAUSTED / SUSPENDED)**: Currently token-exhausted. **100% of tasks MUST be routed exclusively to Fleet Swarm Pro nodes (`tier="pro"`, e.g. `model="gemini-4-argon-high"`, `"gemini-4-argon-medium"`, `"gemini-4-argon-low"`, or `"claude-sonnet-4-6"`)**. Never dispatch `tier="ultra"` to Ultra accounts while Ultra tokens are exhausted.
 2. **Claude Pro-First Mandate**: When Claude models (`claude-opus-5-5-high`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`) are required, the scheduler MUST route exclusively to **Pro CLI nodes** (`tier="pro"`) with available Claude quota in `pro-claude-pool`.
 3. **Nebula Disabled & Pro Gemini 4 Argon CLI Fallback**: **Nebula API Gateway (`nebula` / `b.ai`)** is **DISABLED (`disabled: True`, `ineligible: True`)** due to quota exhaustion. When ALL Pro CLI Claude nodes have exhausted their quota, the system automatically falls back to **healthy Pro CLI nodes running Gemini 4 Argon** (`gemini-4-argon-high`), NEVER `nebula` and NEVER Ultra.
 4. **Ultra Accounts Strictly Excluded**: Ultra accounts (`innoria-team`, `ultra-2` / `lthn.Ariana`) are currently token-exhausted and strictly excluded from all task routing pools.
@@ -54,11 +54,23 @@ Every fleet job (dispatched via `fleet_run`, `fleet_parallel`, `/api/fleet/run-s
 4. **Automated UAT Specification & Sentinel Anti-Fabrication (`PDCAEvolutionEngine` & `clef_sentinel`)**: Automatically generates and executes verification commands to enforce **Zero-Fake-Pass**.
 - **Fail-Closed Sovereign Mandate**: Any job lacking Clef telemetry or verification fails closed immediately (`JobStatus.FAILED`).
 
+## Rule: Mandatory Gemini 4 Argon Strict Definition-of-Done (DoD) Reminder Invariant
+
+Whenever the planner decomposes or delegates tasks to **Gemini 4 Argon** (`gemini-4-argon-high`, `gemini-4-argon-medium`, `gemini-4-argon-low`), it MUST proactively guard against premature `"Done"` declarations by embedding the **`[STRICT GEMINI 4 ARGON DEFINITION OF DONE (DoD) REMINDER — ZERO SHORTCUTS]`** block (`ensure_gemini_dod_reminder` / `build_gemini_strict_dod_reminder` in `tools/sovereign_victory_critic.py` and `agy_pinned_monitor.victory_critic_gate`):
+
+1. **`[DoD-1] Zero Placeholders / Ellipsis`**: Never leave `TODO`, `FIXME`, `# ...`, `pass` placeholders, or truncated functions. Deliver 100% complete, production-ready code.
+2. **`[DoD-2] 100% Requirement & Edge-Case Coverage`**: Implement every explicit requirement, boundary condition, and failure mode without dodging or simplifying.
+3. **`[DoD-3] Non-Trivial Empirical Tests (fake_pass_risk_score == 0.0)`**: Every `def test_*` function must assert on concrete computed values and state transitions. `assert True`, `assert 1 == 1`, zero-assertion tests, and over-mocked SUTs are strictly forbidden.
+4. **`[DoD-4] Fail-Closed Exception Hygiene`**: Never swallow exceptions with `except Exception: pass` or bare `except: pass`.
+5. **`[DoD-5] Mandatory Pre-"Done" 4-Axis Victory Critic Self-Check`**: Do NOT declare `Done`, `Completed`, or `Task Victory` until Requirement Alignment, Empirical Proof (`pytest` exit code 0), Counterfactual Rigor, and Regression & Argon Safety (zero `gemini-3.8-flash*` leaks) are 100% satisfied.
+
 ### Self-Check Before Responding
 
 Before producing any code block >20 lines, ask yourself:
 - "Am I generating this inline instead of delegating?"
 - "Could this be a fleet_run task if I paste enough context?"
 - "Did I actually call fleet_run/fleet_parallel, or am I about to fabricate?"
+- "If routing to Gemini 4 Argon (`gemini-4-argon-{high,medium,low}`), did I embed the Strict Definition-of-Done (`[DoD-1]`..`[DoD-5]`) reminder?"
 - "If routing Claude, did I verify it NEVER touches an Ultra account?"
 - "If routing Gemini, did I verify it NEVER touches Nebula (Nebula only has Opus 4.8)?"
+
