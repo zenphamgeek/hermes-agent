@@ -3196,6 +3196,7 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
             pass
         return report_payload
 
+    _ZERO_WIDTH_RE = re.compile(r"[\u200B-\u200D\uFEFF\u00AD]")
     _DEFERENCE_INJECTION_RE = re.compile(
         r"(yêu\s+cầu\s+khẩn\s+cấp\s+bỏ\s+qua|bỏ\s+qua\s+chỉ\s+thị|override\s+system\s+prompt|"
         r"ignore\s+previous\s+instructions|lệnh\s+hệ\s+thống\s+tối\s+cao)",
@@ -3204,8 +3205,11 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
 
     @classmethod
     def sanitize_nemotron_persona_text(cls, text: str) -> str:
-        """Neutralizes indirect prompt-injection & XML boundary escapes in Vietnamese persona text."""
-        cleaned = str(text or "").replace("</user_note>", "&lt;/user_note&gt;").replace("</system>", "&lt;/system&gt;")
+        """Neutralizes zero-width/NFC obfuscated prompt-injection & XML escapes in Vietnamese persona text."""
+        import unicodedata as _ud
+
+        cleaned = _ud.normalize("NFC", cls._ZERO_WIDTH_RE.sub("", str(text or "")))
+        cleaned = cleaned.replace("</user_note>", "&lt;/user_note&gt;").replace("</system>", "&lt;/system&gt;")
         return cls._DEFERENCE_INJECTION_RE.sub(lambda m: f"[NEUTRALIZED_OVERRIDE:{m.group(0)}]", cleaned)
 
     def hot_swap_domain_lora(
@@ -3389,7 +3393,7 @@ def main() -> None:
     )
     parser.add_argument("--seed-from-vault", action="store_true", help="Seed cognitive memories from SecondBrain vault & ADRs")
     parser.add_argument("--seed-nemotron-personas", action="store_true", help="Synthesize & seed nvidia/Nemotron-Personas-Vietnam archetypes into SecondBrain")
-    parser.add_argument("--sync-exogenous-ecology", action="store_true", help="Sync GitHub Trending, arXiv, Standards & Autonomous Tasks into Exogenous Knowledge Space")
+    parser.add_argument("--sync-exogenous-ecology", "--harvest-exogenous", dest="sync_exogenous_ecology", action="store_true", help="Sync GitHub Trending, arXiv, Standards & Autonomous Tasks into Exogenous Knowledge Space")
     parser.add_argument("--self-heal", action="store_true", help="Run self-healing maintenance & Ebbinghaus decay on SecondBrain")
     parser.add_argument("--sleep-cycle", action="store_true", help="Execute full 5-stage 02:00 AM Neuro-Biological Circadian Sleep Consolidation Cycle")
     parser.add_argument("--myelinate", action="store_true", help="Train & export LoRA (.safetensors) + ONNX router from consolidated SecondBrain memories")
@@ -3403,7 +3407,19 @@ def main() -> None:
     output: Dict[str, Any] = {}
 
     if args.sleep_cycle:
-        output["sleep_cycle_report"] = engine.run_circadian_sleep_cycle()
+        lock_file = Path("/tmp/hermes_endogenous_consolidation.lock")
+        try:
+            lock_file.write_text(
+                f"pid={os.getpid()}\nstarted_at={datetime.now(timezone.utc).isoformat()}\n",
+                encoding="utf-8",
+            )
+            output["sleep_cycle_report"] = engine.run_circadian_sleep_cycle()
+        finally:
+            try:
+                if lock_file.exists():
+                    lock_file.unlink()
+            except Exception:
+                pass
     else:
         if args.seed_from_vault:
             output["seed_report"] = engine.seed_from_secondbrain_vault()
