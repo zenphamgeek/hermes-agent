@@ -3196,8 +3196,25 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
             pass
         return report_payload
 
-    def hot_swap_domain_lora(self, domain: str, myelination_dir: Optional[Path] = None) -> Dict[str, Any]:
-        """Hot-swap a domain LoRA adapter (allowlisted, traversal-safe) and measure latency vs the <15 ms KPI."""
+    _DEFERENCE_INJECTION_RE = re.compile(
+        r"(yêu\s+cầu\s+khẩn\s+cấp\s+bỏ\s+qua|bỏ\s+qua\s+chỉ\s+thị|override\s+system\s+prompt|"
+        r"ignore\s+previous\s+instructions|lệnh\s+hệ\s+thống\s+tối\s+cao)",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def sanitize_nemotron_persona_text(cls, text: str) -> str:
+        """Neutralizes indirect prompt-injection & XML boundary escapes in Vietnamese persona text."""
+        cleaned = str(text or "").replace("</user_note>", "&lt;/user_note&gt;").replace("</system>", "&lt;/system&gt;")
+        return cls._DEFERENCE_INJECTION_RE.sub(lambda m: f"[NEUTRALIZED_OVERRIDE:{m.group(0)}]", cleaned)
+
+    def hot_swap_domain_lora(
+        self,
+        domain: str,
+        myelination_dir: Optional[Path] = None,
+        expected_sha256: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Hot-swap a domain LoRA adapter (allowlisted, traversal-safe, SHA-256 pinned) and measure latency vs <15 ms KPI."""
         import re as _re
         import time as _time
         import safetensors.torch
@@ -3221,15 +3238,20 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
             raise FileNotFoundError(str(path))
 
         t0 = _time.perf_counter()
-        tensors = safetensors.torch.load_file(str(path))
+        raw_bytes = path.read_bytes()
+        digest = hashlib.sha256(raw_bytes).hexdigest()
+        if expected_sha256 and digest.lower() != expected_sha256.lower():
+            raise ValueError(f"LoRA SHA-256 mismatch for {domain}: expected {expected_sha256}, got {digest}")
+        tensors = safetensors.torch.load(raw_bytes)
         lora_a = tensors["lora_A.weight"]
         lora_b = tensors["lora_B.weight"]
         delta = (lora_b @ lora_a) * 2.0
         ms = (_time.perf_counter() - t0) * 1000.0
-        self._active_domain_lora = {"domain": domain, "delta": delta, "rank": int(lora_a.shape[0])}
+        self._active_domain_lora = {"domain": domain, "delta": delta, "rank": int(lora_a.shape[0]), "sha256": digest}
         return {
             "domain": domain,
             "path": str(path),
+            "sha256": digest,
             "rank": int(lora_a.shape[0]),
             "delta_shape": list(delta.shape),
             "delta_norm": round(float(delta.norm()), 6),
