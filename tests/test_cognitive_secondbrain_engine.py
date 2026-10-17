@@ -637,4 +637,187 @@ def test_nemotron_personas_vietnam_synthesis_and_domain_lora_myelination(tmp_pat
     assert "Dạ thưa anh" in sanitized
 
 
+def test_bloom_anti_inflation_and_negation_guards() -> None:
+    """R1: Verify anti-inflation guards prevent superficial keyword matching and short/negated statements from falsely escalating to B6_CREATE."""
+    # 1. Short unigram trigger (< 30 chars or < 5 words) should be gated to B1
+    assert classify_bloom_level("sovereign rule", tier="L1") == BloomLevel.B1_REMEMBER
+    assert classify_bloom_level("invariant", tier="L1") == BloomLevel.B1_REMEMBER
+
+    # 2. Negated invariant claims must NOT trigger B6_CREATE; they are critiques (B5) or observations
+    negated_sample = "This proposal is not an adr and has no sovereign invariant established."
+    assert classify_bloom_level(negated_sample, tier="L2") != BloomLevel.B6_CREATE
+    assert classify_bloom_level(negated_sample, tier="L2") in (BloomLevel.B5_EVALUATE, BloomLevel.B2_UNDERSTAND)
+
+    # 3. Counterfactual refutation of formal proof must be classified as B5_EVALUATE
+    refuted_sample = "We refuted the formal proof and rejected the constitutional rule due to contradiction."
+    assert classify_bloom_level(refuted_sample, tier="L2") == BloomLevel.B5_EVALUATE
+
+    # 4. Legitimate, structurally grounded B6_CREATE affirmation
+    legit_b6 = "ADR-20261017-007 formally establishes the sovereign invariant for reference-driven change packets and 7-lane verification."
+    assert classify_bloom_level(legit_b6, tier="L3") == BloomLevel.B6_CREATE
+
+    # 5. Passive / backward negation refutations must NOT trigger B6_CREATE
+    s_en = "The sovereign invariant has been refuted by the audit team."
+    assert classify_bloom_level(s_en, tier="L2") != BloomLevel.B6_CREATE
+    assert classify_bloom_level(s_en, tier="L2") in (BloomLevel.B5_EVALUATE, BloomLevel.B2_UNDERSTAND)
+
+    s_en2 = "sovereign rule is not present in this unverified document at all."
+    assert classify_bloom_level(s_en2, tier="L2") != BloomLevel.B6_CREATE
+    assert classify_bloom_level(s_en2, tier="L2") in (BloomLevel.B5_EVALUATE, BloomLevel.B2_UNDERSTAND)
+
+    # 6. Vietnamese compound negation and backward refutations
+    s_vi1 = "Hội đồng bác bỏ sovereign invariant này vì thiếu bằng chứng thực nghiệm."
+    assert classify_bloom_level(s_vi1, tier="L2") != BloomLevel.B6_CREATE
+    assert classify_bloom_level(s_vi1, tier="L2") in (BloomLevel.B5_EVALUATE, BloomLevel.B2_UNDERSTAND)
+
+    s_vi2 = "quy tắc sovereign không được áp dụng trong tài liệu này."
+    assert classify_bloom_level(s_vi2, tier="L2") != BloomLevel.B6_CREATE
+    assert classify_bloom_level(s_vi2, tier="L2") in (BloomLevel.B5_EVALUATE, BloomLevel.B2_UNDERSTAND)
+
+    s_vi3 = "Chúng tôi bác bỏ sovereign invariant này vì có lỗi."
+    assert classify_bloom_level(s_vi3, tier="L2") != BloomLevel.B6_CREATE
+
+
+def test_cortical_feature_bigrams_negation_and_validation_loss_gate(tmp_path: Path) -> None:
+    """R2: Verify 256-D cortical featurizer captures local bigram context, negation signals, and achieves val_loss < 0.55."""
+    import json
+    import math
+
+    engine = CognitiveSecondBrainEngine(
+        db_path=tmp_path / "feat.db", vault_path=tmp_path / "V", tombstone_path=tmp_path / "t.jsonl"
+    )
+
+    # 1. 256-D vector shape and unit norm on hash projections
+    vec = engine.featurize_text_256d("Audit security of SSRF guard and Clef JEV verdict")
+    assert len(vec) == 256
+    norm_248 = math.sqrt(sum(v * v for v in vec[:248]))
+    assert math.isclose(norm_248, 1.0, rel_tol=1e-3)
+
+    # 2. Bigram sensitivity: token reordering must produce distinct feature vectors
+    v_ordered = engine.featurize_text_256d("sovereign invariant architecture paradigm")
+    v_reversed = engine.featurize_text_256d("paradigm architecture invariant sovereign")
+    assert v_ordered != v_reversed
+
+    # 3. Negation channel activation: negation particles must activate counterfactual detector
+    v_pos = engine.featurize_text_256d("Verified formal proof and constitutional rule")
+    v_neg = engine.featurize_text_256d("Not a formal proof, rejected and refuted the constitutional rule")
+    assert v_neg[248:] != v_pos[248:]
+    assert v_pos[249] == 1.0
+    assert v_neg[249] == 0.0
+
+    # 4. Production cortical myelination holdout validation loss gate (val_loss < 0.55, val_acc_bloom > 0.8923)
+    manifest_path = Path.home() / ".hermes" / "jev_myelination" / "myelination_manifest.json"
+    assert manifest_path.exists(), f"Production myelination manifest missing at {manifest_path}"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    val_metrics = manifest.get("validation_metrics", {})
+    assert "val_loss" in val_metrics, "Manifest missing validation_metrics.val_loss"
+    val_loss = float(val_metrics["val_loss"])
+    assert val_loss < 0.55, f"Validation loss gate failed: {val_loss} >= 0.55"
+    assert float(val_metrics.get("val_acc_bloom", 0.0)) > 0.8923, (
+        f"Validation Bloom accuracy gate failed: {val_metrics.get('val_acc_bloom')} <= 0.8923"
+    )
+
+    # 5. Accented Vietnamese negation in featurizer
+    v_vi_neg = engine.featurize_text_256d("không có bằng chứng sovereign invariant")
+    assert v_vi_neg[249] == 0.0
+
+    # 6. Hyphenated token matching for root-cause in channel 251
+    v_rca = engine.featurize_text_256d("root-cause analysis of performance degradation")
+    assert v_rca[251] == 1.0
+
+
+def test_evaluate_evolution_kpis_calibration_and_grounding(tmp_path: Path) -> None:
+    """R3: Verify evaluate_evolution_kpis computes deterministic, bounded metrics (ECE, negation sensitivity, grounding fidelity)."""
+    engine = CognitiveSecondBrainEngine(
+        db_path=tmp_path / "kpi.db", vault_path=tmp_path / "V", tombstone_path=tmp_path / "t.jsonl"
+    )
+
+    # Seed 10 verified grounded memories
+    for i in range(10):
+        engine.store_memory(
+            mem_key=f"m:grounded-{i}",
+            title=f"Verified Invariant Component {i}",
+            content=f"Empirical validation of memory subsystem component {i} with verified test execution trace.",
+            tier="L3",
+            synaptic_strength=0.90,
+            evidence_score=0.92,
+            evidence_ref=f"tests/test_cognitive_secondbrain_engine.py::test_case_{i}",
+        )
+
+    kpis = engine.evaluate_evolution_kpis()
+    assert "ece_score" in kpis
+    assert "negation_sensitivity_rate" in kpis
+    assert "grounding_fidelity_ratio" in kpis
+    assert "anti_goodhart_verdict" in kpis
+
+    assert 0.0 <= kpis["ece_score"] <= 1.0
+    assert 0.0 <= kpis["negation_sensitivity_rate"] <= 1.0
+    assert 0.0 <= kpis["grounding_fidelity_ratio"] <= 1.0
+    assert kpis["grounding_fidelity_ratio"] >= 0.80  # Grounded memories seeded
+    assert kpis["anti_goodhart_verdict"] in ("SOUND_EVOLUTION", "MONITOR_DRIFT", "REJECT_GOODHART_INFLATION")
+
+
+def test_compile_claude_codex_agy_harness_packet_schema_and_pinning(tmp_path: Path) -> None:
+    """R4: Verify compile_claude_codex_agy_harness_packet generates a valid 7-lane change packet with pinned SHA-256 hashes, dialectical ToT, and Pro-first Argon routing."""
+    import hashlib
+
+    engine = CognitiveSecondBrainEngine(
+        db_path=tmp_path / "packet.db", vault_path=tmp_path / "V", tombstone_path=tmp_path / "t.jsonl"
+    )
+
+    out_dir = tmp_path / "changes"
+    packet = engine.compile_claude_codex_agy_harness_packet(
+        slug="cognitive-secondbrain-r4-harness",
+        intent="Synthesize unified Claude-Codex-AGY execution harness packet",
+        thesis="Single-model ad-hoc execution suffices for complex agent workflows.",
+        antithesis="Ad-hoc execution leads to context drift, unverified assertions, and token exhaustion without multi-perspective gating.",
+        synthesis="Tri-Engine Dialectical Council with 7-lane verification and SHA-256 rule pinning ensures zero-fake-pass execution.",
+        lanes=["backbone", "gameplay", "code", "story", "campaign", "dossier", "art"],
+        files=["tools/cognitive_secondbrain_engine.py", "tests/test_cognitive_secondbrain_engine.py"],
+        canon=["AGENTS.md"],
+        reference_rules=[
+            {
+                "id": "Rule 1.11",
+                "revision": "HEAD",
+                "sourcePath": "AGENTS.md",
+                "cases": ["tests/test_cognitive_secondbrain_engine.py::test_plan_argon_pro_task_four_levels"],
+            }
+        ],
+        complexity=2.8,
+        output_dir=out_dir,
+    )
+
+    # 1. Packet identity & 7-lane structure
+    assert packet["id"] == "csb-cognitive-secondbrain-r4-harness"
+    assert packet["lanes"] == ["backbone", "gameplay", "code", "story", "campaign", "dossier", "art"]
+    assert len(packet["lanes"]) == 7
+    assert "tools/cognitive_secondbrain_engine.py" in packet["files"]
+
+    # 2. Cryptographic SHA-256 rule and canon pinning
+    assert "AGENTS.md" in packet["canon_hashes"]
+    expected_agents_sha = hashlib.sha256(Path("AGENTS.md").read_bytes()).hexdigest()
+    assert packet["canon_hashes"]["AGENTS.md"] == expected_agents_sha
+    assert len(packet["packet_sha256"]) == 64
+
+    # 3. Claude Dialectics
+    assert packet["claude_dialectics"]["verdict"] == "PASS"
+    assert packet["claude_dialectics"]["thesis"] != ""
+    assert packet["claude_dialectics"]["antithesis"] != ""
+    assert packet["claude_dialectics"]["synthesis"] != ""
+
+    # 4. AGY Fleet Pro-first routing
+    assert packet["agy_fleet_routing"]["tier"] == "pro"
+    assert packet["agy_fleet_routing"]["canonical_model"] == "gemini-4-argon-high"
+    assert packet["agy_fleet_routing"]["level"] == "L3_COMPLEX"
+    assert packet["agy_fleet_routing"]["complexity"] == 2.8
+
+    # 5. Disk persistence roundtrip
+    saved_path = Path(packet["saved_packet_path"])
+    assert saved_path.exists()
+    loaded = json.loads(saved_path.read_text(encoding="utf-8"))
+    assert loaded["packet_sha256"] == packet["packet_sha256"]
+    assert loaded["id"] == packet["id"]
+
+
+
 
