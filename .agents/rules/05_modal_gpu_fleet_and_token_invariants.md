@@ -60,3 +60,28 @@ When a remote worker encounters HTTP 429 (Rate Limit) or compute quota exhaustio
 1. **Zero-Leaked-Containers**: After every batch dispatch completes or errors out, verify `modal container list --json` is empty (`[]`).
 2. **Emergency Cleanup**: If runaway containers persist, invoke `bash scripts/kill_modal.sh --all` immediately.
 3. **Usage Monitoring**: Run `python3 scripts/modal_fleet_monitor.py` to maintain audit logs in `output/modal_fleet_status.json`.
+
+---
+
+## 4. Modal GPU Remote Execution Credit Gate Invariant (Deploy > $15, Inference > $10)
+
+Per sovereign decree, all remote Modal GPU operations across all pipelines, scripts, agents, and coordinators are bound by two strict credit thresholds:
+
+### 4.1. Passive Mathematical Credit Calculation (0 Outbound Scraping)
+$$\text{Committed Spend} = \text{Settled MTD Spend (via .modal\_billing\_ledger.json)} + \sum \text{Active In-Flight Leases}$$
+$$\text{Remaining Credits} = \$30.00 - \text{Committed Spend}$$
+- **Zero-Outbound-Scraping Invariant**: Credit gates MUST evaluate locally via passive cached ledger state (`.modal_billing_ledger.json`) combined with monotonic in-flight lease reservations (`tools/modal_budget_guard.py`: `$2.50` deploy lease / `$0.50` inference lease, enforced via `time.monotonic()` TTL and `idempotency_key` deduplication), generating **0 outbound HTTP billing scrape requests** during admission control to prevent `HTTP 429` rate-limiting.
+
+### 4.2. Pre-Flight Execution Gates
+1. **Deploy Gate (Strict > $15.00 Remaining Credits)**:
+   - Any long-running app deployment (`modal deploy`, persistent worker, ComfyUI server, Live Avatar daemon) is **STRICTLY AND ABSOLUTELY FORBIDDEN** unless the target workspace has strictly **more than $15.00 USD in remaining credits** ($\text{Remaining Credits} > \$15.00 \iff \text{Committed Spend} < \$15.00$).
+   - Any workspace with $\le \$15.00$ remaining credits is immediately rejected by admission control (`RuntimeError: Modal Credit Gate Violation`).
+2. **Inference Gate (Strict > $10.00 Remaining Credits)**:
+   - Any remote GPU inference job (`modal run`, webhook invocation, remote model execution) is **STRICTLY AND ABSOLUTELY FORBIDDEN** unless the target workspace has strictly **more than $10.00 USD in remaining credits** ($\text{Remaining Credits} > \$10.00 \iff \text{Committed Spend} < \$20.00$).
+   - Any workspace with $\le \$10.00$ remaining credits is hard-blocked from receiving jobs (`RuntimeError: Modal Credit Gate Violation`).
+3. **Hard-Kill Ceiling ($25.00 USD Watchdog)**:
+   - If a workspace cost reaches $\ge \$25.00$, `tools/modal_budget_guard.py` automatically executes an emergency shutdown (`modal app stop` and `modal container stop`) within 30 seconds.
+4. **Hermes-Clef-Decision Permanent Retirement**:
+   - `hermes-clef-decision` on Modal GPU is permanently decommissioned. 100% of Clef cognitive pre-routing and classification tasks MUST resolve via Cloudflare Workers AI Cloud (@cf/cloudflare/clef-flash) or Local Air-Gapped Surrogate ($0.00 Modal GPU cost).
+
+

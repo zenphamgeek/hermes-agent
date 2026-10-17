@@ -303,6 +303,41 @@ def sense_process_text(text: str) -> str:
     return processed.strip()
 
 
+def _segment_acoustic_clauses(text: str, max_chars: int = 75) -> List[str]:
+    """
+    Acoustic Clause Guard: Splits text into fine-grained synthesis clauses <= max_chars (default 75).
+    Replaces any residual ellipsis '...' with ', ' and splits cleanly along punctuation or word
+    boundaries so no unsegmented clause exceeds max_chars.
+    """
+    if not text or not text.strip():
+        return []
+    cleaned = re.sub(r"\.{3,}", ", ", text.strip())
+    raw_parts = re.split(r"(?<=[.,!?;:])\s+", cleaned)
+    clauses: List[str] = []
+    for part in raw_parts:
+        part = part.strip()
+        if not part:
+            continue
+        if len(part) <= max_chars:
+            clauses.append(part)
+            continue
+        words = part.split()
+        current: List[str] = []
+        current_len = 0
+        for w in words:
+            add_len = len(w) if not current else len(w) + 1
+            if current and current_len + add_len > max_chars:
+                clauses.append(" ".join(current))
+                current = [w]
+                current_len = len(w)
+            else:
+                current.append(w)
+                current_len += add_len
+        if current:
+            clauses.append(" ".join(current))
+    return clauses
+
+
 # ---------------------------------------------------------------------------
 # Pillar 3: Smart Silence Gate
 # ---------------------------------------------------------------------------
@@ -379,21 +414,25 @@ def clean_silence_gaps(
 # ---------------------------------------------------------------------------
 
 class TtsV0SenseEngine:
-    def __init__(self, ref_wav: Optional[Path] = None, device: str = "cuda"):
+    def __init__(self, ref_wav: Optional[Path] = None, voice: Optional[str] = None, device: str = "cuda"):
         if Vieneu is None:
             raise ImportError(
                 "Vieneu package not found. Run with: "
                 f"{REPO_ROOT}/vieneu_tts_test/.venv/bin/python"
             )
+        self.voice = voice.strip() if voice else None
         self.ref_wav = Path(ref_wav) if ref_wav else DEFAULT_REF_WAV
-        if not self.ref_wav.exists():
+        if not self.voice and not self.ref_wav.exists():
             raise FileNotFoundError(f"Reference audio not found: {self.ref_wav}")
 
         print(f"[*] Initializing TTS V0-Sense Engine on {device.upper()}...")
         t0 = time.time()
         self.engine = Vieneu()
         print(f"✓ TTS V0-Sense Engine ready in {time.time() - t0:.2f}s")
-        print(f"  Voice Reference: {self.ref_wav.name}")
+        if self.voice:
+            print(f"  Voice Preset: {self.voice}")
+        else:
+            print(f"  Voice Reference: {self.ref_wav.name}")
 
     def synthesize(
         self,
@@ -439,28 +478,37 @@ class TtsV0SenseEngine:
         print(f"\n[TTS V0-Sense] Synthesizing Scene {scene_index:02d} (temper={temper:.2f}, {words_count} words)...")
         t0 = time.time()
 
-        # 2. Direct Raw CUDA Inference with Paragraph-Level Natural Pacing
-        # Preserve natural sentence flow within each thought block.
-        # Between major paragraphs (\n\n), allow a light natural pause (0.35s).
+        # 2. Direct Raw CUDA Inference with Acoustic Clause Guard (<= 75 chars)
+        # Preserve natural sentence flow within each thought block while guaranteeing
+        # every synthesis unit respects the <= 75 char Acoustic Clause Guard.
         paragraphs = [p.strip() for p in processed_text.split("\n\n") if p.strip()]
         if not paragraphs:
             paragraphs = [processed_text]
 
-        print(f"  -> VieNeu V0-Expression: {len(paragraphs)} paragraph block(s)")
+        clauses: List[str] = []
+        for para in paragraphs:
+            clauses.extend(_segment_acoustic_clauses(para, max_chars=75))
+        if not clauses:
+            clauses = paragraphs
+
+        print(f"  -> VieNeu V0-Expression: {len(paragraphs)} paragraph block(s), {len(clauses)} acoustic clause(s) (<=75 chars)")
         wav_chunks = []
         para_pause = np.zeros(int(pause_between_paragraphs_s * 48000), dtype=np.float32)
 
-        for idx, para in enumerate(paragraphs):
-            para_audio = self.engine.infer(
-                para,
-                ref_audio=str(self.ref_wav),
-                denoise=True,
-                temperature=temper,
-                repetition_penalty=1.12,
-                top_k=20,
-                top_p=0.92,
-                max_chars=180
-            )
+        for idx, para in enumerate( paragraphs ):
+            infer_kwargs = {
+                "denoise": True,
+                "temperature": temper,
+                "repetition_penalty": 1.12,
+                "top_k": 20,
+                "top_p": 0.92,
+                "max_chars": 75,
+            }
+            if self.voice:
+                infer_kwargs["voice"] = self.voice
+            else:
+                infer_kwargs["ref_audio"] = str(self.ref_wav)
+            para_audio = self.engine.infer(para, **infer_kwargs)
             wav_chunks.append(para_audio)
             if idx < len(paragraphs) - 1:
                 wav_chunks.append(para_pause)
@@ -554,6 +602,7 @@ def main():
     parser.add_argument("--temper", type=float, default=None, help="Sampling temperature")
     parser.add_argument("--scene-index", type=int, default=2, help="Scene index for dynamic temper")
     parser.add_argument("--ref-wav", type=Path, default=None, help="Reference voice wav")
+    parser.add_argument("--voice", type=str, default=None, help="VieNeu preset voice name (e.g. 'Thiện Minh', 'Thái Sơn', 'Ngọc Linh')")
     parser.add_argument("--target-wpm", type=float, default=None, help="Target cadence WPM (default: None for natural VieNeu speed)")
     parser.add_argument("--tempo", type=float, default=None, help="Direct tempo scaling factor (default: None)")
     parser.add_argument("--target-lufs", type=float, default=-14.5, help="EBU R128 target LUFS (default: -14.5)")
@@ -568,7 +617,7 @@ def main():
         print("Error: must provide either --text-file or --text")
         sys.exit(1)
 
-    engine = TtsV0SenseEngine(ref_wav=args.ref_wav)
+    engine = TtsV0SenseEngine(ref_wav=args.ref_wav, voice=args.voice)
     engine.synthesize(
         raw_text=raw_text,
         output_wav=args.output,

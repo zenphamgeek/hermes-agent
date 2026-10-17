@@ -130,4 +130,20 @@ def test_atomic_release_lease_and_model_resolver() -> None:
     assert m3 == "gemini-3.8-flash-high" and adapted3 is True
 
 
+def test_acoustic_clause_guard_and_passive_credit_rule() -> None:
+    from pathlib import Path
+    from assets.scripts_video.tts_v0_sense_synthesizer import _segment_acoustic_clauses
 
+    sample = (
+        "Trong thế giới tối ưu hóa phi lồi... các điểm yên ngựa xuất hiện dày đặc hơn cực tiểu cục bộ "
+        "theo cấp số nhân khi số chiều không gian tăng lên hàng triệu tham số."
+    )
+    clauses = _segment_acoustic_clauses(sample, max_chars=75)
+    assert len(clauses) >= 2
+    assert all(len(c) <= 75 for c in clauses)
+    assert all("..." not in c for c in clauses)
+
+    rule_path = Path(__file__).resolve().parents[1] / ".agents" / "rules" / "05_modal_gpu_fleet_and_token_invariants.md"
+    rule_text = rule_path.read_text(encoding="utf-8")
+    assert "Passive Mathematical Credit Calculation (0 Outbound Scraping)" in rule_text
+    assert ".modal_billing_ledger.json" in rule_text
