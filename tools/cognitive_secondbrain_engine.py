@@ -320,7 +320,8 @@ class CognitiveSecondBrainEngine:
         self,
         db_path: Optional[Path] = None,
         vault_path: Optional[Path] = None,
-        tombstone_path: Optional[Path] = None
+        tombstone_path: Optional[Path] = None,
+        myelination_dir: Optional[Path] = None,
     ):
         self.db = CognitiveMemoryDB(db_path)
         self.vault_path = Path(vault_path) if vault_path else Path("/home/zen/Obsidian/SecondBrain")
@@ -331,6 +332,15 @@ class CognitiveSecondBrainEngine:
         else:
             self.tombstone_path = Path.home() / ".hermes" / "l3_tombstones.jsonl"
         self.tombstone_path.parent.mkdir(parents=True, exist_ok=True)
+        # Production-artifact isolation: a sandboxed engine (custom db_path) must never
+        # overwrite the production ~/.hermes/jev_myelination dataset/adapters. None means
+        # "production default" and enables external DPO harvesting (Gray Doom, evolution ledger).
+        if myelination_dir is not None:
+            self.myelination_dir: Optional[Path] = Path(myelination_dir)
+        elif db_path is not None:
+            self.myelination_dir = Path(db_path).parent / "jev_myelination"
+        else:
+            self.myelination_dir = None
 
     # --------------------------------------------------------------------------
     # Storage & Memory Ingestion
@@ -1398,7 +1408,7 @@ class CognitiveSecondBrainEngine:
         heal_summary = self.self_heal_secondbrain(target_vault)
 
         # --- STAGE 5: Oligodendrocyte Cortical Myelination (LoRA .safetensors + ONNX Surrogate) ---
-        myelination_summary = self.myelinate_jev_lora_and_onnx()
+        myelination_summary = self.myelinate_jev_lora_and_onnx(output_dir=self.myelination_dir)
 
         # Write Nightly Sleep Consolidation Journal to SecondBrain
         sleep_dir = target_vault / "10-Areas" / "AI Engineering" / "Sleep-Consolidation"

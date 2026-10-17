@@ -428,6 +428,10 @@ def test_circadian_sleep_cycle_four_neuro_stages(tmp_path: Path) -> None:
     assert journal_path.exists()
     assert "Circadian 02:00 AM Neuro-Biological Sleep Consolidation" in journal_path.read_text(encoding="utf-8")
 
+    # Production-artifact isolation: Stage 5 must never write into ~/.hermes/jev_myelination
+    assert engine.myelination_dir == tmp_path / "jev_myelination"
+    assert (tmp_path / "jev_myelination" / "myelination_manifest.json").exists()
+
 
 def test_stage5_cortical_myelination_lora_and_onnx_export(tmp_path: Path) -> None:
     db_path = tmp_path / "test_myelin.db"
