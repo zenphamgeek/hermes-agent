@@ -20,6 +20,7 @@ from enum import Enum, IntEnum
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import sqlite3
