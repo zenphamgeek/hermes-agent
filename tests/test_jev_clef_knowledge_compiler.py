@@ -476,3 +476,50 @@ class TestRearchitectSkillsAndRoot:
         assert "fleet_manager.py" not in sources
         # No files are mutated
         assert result["note"] and "No files mutated" in result["note"]
+
+    def test_compile_delta_skips_unchanged_and_recompiles_modified(self, tmp_path):
+        """compile_delta must compile on first run, skip unchanged on second, and recompile modified."""
+        db = KnowledgeCompilerDB(db_path=tmp_path / "kg.db")
+        try:
+            tools_dir = tmp_path / "tools"
+            tools_dir.mkdir(parents=True)
+            f1 = tools_dir / "mod_a.py"
+            f1.write_text("def alpha():\n    return 1\n")
+
+            res1 = db.compile_delta(repo_root=tmp_path, subdirs=["tools"])
+            assert res1["scanned"] == 1
+            assert res1["recompiled"] == 1
+            assert res1["skipped_unchanged"] == 0
+
+            res2 = db.compile_delta(repo_root=tmp_path, subdirs=["tools"])
+            assert res2["scanned"] == 1
+            assert res2["recompiled"] == 0
+            assert res2["skipped_unchanged"] == 1
+
+            f1.write_text("def alpha():\n    return 2\n")
+            res3 = db.compile_delta(repo_root=tmp_path, subdirs=["tools"])
+            assert res3["scanned"] == 1
+            assert res3["recompiled"] == 1
+            assert res3["skipped_unchanged"] == 0
+        finally:
+            db.close()
+
+    def test_deduplicate_and_relocate_skills_archives_and_writes_tombstone(self, tmp_path):
+        """deduplicate_and_relocate_skills must merge missing files, archive duplicate, and write tombstone."""
+        from tools.rearchitect_skills_and_root import deduplicate_and_relocate_skills
+
+        canon = tmp_path / ".agents" / "skills" / "manim-director"
+        dup = tmp_path / "skills" / "creative" / "manim-director"
+        canon.mkdir(parents=True)
+        dup.mkdir(parents=True)
+        (canon / "SKILL.md").write_text("---\nname: manim-director\ndescription: Canonical skill.\n---\n")
+        (dup / "SKILL.md").write_text("---\nname: manim-director\ndescription: Duplicate skill.\n---\n")
+        (dup / "extra_helper.py").write_text("# extra\n")
+
+        tomb = tmp_path / "tombstones.jsonl"
+        res = deduplicate_and_relocate_skills(tmp_path, tomb, dry_run=False)
+        assert res["action_count"] >= 1
+        assert not dup.exists(), "Duplicate skill directory must be archived/removed."
+        assert (canon / "extra_helper.py").exists(), "Missing helper file from duplicate must be merged into canonical."
+        assert tomb.exists(), "Tombstone JSONL must be written."
+

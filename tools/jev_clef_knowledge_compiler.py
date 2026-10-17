@@ -804,3 +804,178 @@ class KnowledgeCompilerDB:
 
         logger.info("isolated_git_commit: %s", commit_sha)
         return commit_sha
+
+    def compile_delta(
+        self,
+        repo_root: str | Path,
+        subdirs: Optional[List[str]] = None,
+        repo_name: str = "hermes-agent",
+    ) -> Dict[str, Any]:
+        """Incrementally compiles Python files by comparing SHA-256 hashes against SQLite cache."""
+        if subdirs is None:
+            subdirs = ["agent", "tools", "tests", ".agents/skills"]
+
+        root = Path(repo_root).resolve()
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT file_path, sha256 FROM nodes WHERE node_type='FILE' AND repo=?",
+            (repo_name,),
+        )
+        existing_shas: Dict[str, str] = {row[0]: row[1] for row in cursor.fetchall()}
+
+        total_scanned = 0
+        recompiled = 0
+        skipped_unchanged = 0
+        recompiled_files: List[str] = []
+
+        for subdir in subdirs:
+            target_dir = root / subdir
+            if not target_dir.exists() or not target_dir.is_dir():
+                continue
+
+            for pf in sorted(target_dir.rglob("*.py")):
+                if not pf.is_file():
+                    continue
+
+                total_scanned += 1
+                resolved_path = str(pf.resolve())
+                current_sha = self._sha256_file(pf)
+
+                if resolved_path in existing_shas and existing_shas[resolved_path] == current_sha:
+                    skipped_unchanged += 1
+                else:
+                    try:
+                        self.compile_python_file(pf, repo_name=repo_name)
+                        recompiled += 1
+                        recompiled_files.append(resolved_path)
+                    except SyntaxError:
+                        pass
+
+        return {
+            "scanned": total_scanned,
+            "recompiled": recompiled,
+            "skipped_unchanged": skipped_unchanged,
+            "recompiled_files": recompiled_files,
+        }
+
+    def audit_upstream_commits(
+        self,
+        evaluator: "LocalJEVEvaluator",
+        api_url: str = "https://api.github.com/repos/nousresearch/hermes-agent/commits?per_page=5",
+        timeout: int = 8,
+    ) -> Dict[str, Any]:
+        """Validates GitHub API URL with SSRFGuard, fetches recent commits, and evaluates with LocalJEVEvaluator."""
+        import urllib.request
+
+        validated_url = SSRFGuard.validate_url(api_url)
+        commits: List[Dict[str, str]] = []
+        try:
+            req = urllib.request.Request(
+                validated_url,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "Hermes-Knowledge-Compiler/1.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status == 200:
+                    payload = json.loads(resp.read().decode("utf-8"))
+                    if isinstance(payload, list):
+                        for c in payload:
+                            try:
+                                sha = c["sha"][:8]
+                                msg = c["commit"]["message"].splitlines()[0]
+                                date = c["commit"]["committer"]["date"]
+                                commits.append({"sha": sha, "message": msg, "date": date})
+                            except (KeyError, IndexError, TypeError):
+                                continue
+        except Exception:
+            commits = []
+
+        jev_res = evaluator.evaluate(
+            prompt=f"Audit upstream commits: {len(commits)}",
+            files=[],
+        )
+
+        return {
+            "validated_url": validated_url,
+            "commits_fetched": len(commits),
+            "commits": commits,
+            "jev_engine": jev_res.engine,
+            "jev_complexity": jev_res.complexity,
+        }
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """CLI entry point for JEV CLEF Knowledge Compiler."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="JEV CLEF Knowledge Compiler CLI - Incremental Delta & Upstream Audit"
+    )
+    parser.add_argument(
+        "--db-path",
+        default="~/.hermes/knowledge_compiler.db",
+        help="Path to SQLite knowledge database (default: ~/.hermes/knowledge_compiler.db)",
+    )
+    parser.add_argument(
+        "--repo-root",
+        default=".",
+        help="Target repository root path (default: .)",
+    )
+    parser.add_argument(
+        "--delta",
+        action="store_true",
+        help="Run incremental delta compilation on repository files",
+    )
+    parser.add_argument(
+        "--upstream-audit",
+        action="store_true",
+        help="Audit upstream commits and run JEV evaluation",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print execution summary formatted as JSON",
+    )
+
+    args = parser.parse_args(argv)
+
+    db_path = Path(os.path.expanduser(args.db_path)).resolve()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    repo_root = Path(os.path.expanduser(args.repo_root)).resolve()
+
+    compiler_db = KnowledgeCompilerDB(db_path=db_path)
+    results: Dict[str, Any] = {}
+
+    if args.delta:
+        results["delta"] = compiler_db.compile_delta(repo_root=repo_root)
+
+    if args.upstream_audit:
+        evaluator = LocalJEVEvaluator()
+        results["upstream_audit"] = compiler_db.audit_upstream_commits(evaluator=evaluator)
+
+    if args.json:
+        print(json.dumps(results, indent=2, default=str))
+    else:
+        if "delta" in results:
+            d = results["delta"]
+            print(
+                f"[Delta] Scanned: {d.get('scanned', 0)} | "
+                f"Recompiled: {d.get('recompiled', 0)} | "
+                f"Skipped Unchanged: {d.get('skipped_unchanged', 0)}"
+            )
+        if "upstream_audit" in results:
+            u = results["upstream_audit"]
+            print(
+                f"[Upstream Audit] Fetched: {u.get('commits_fetched', 0)} | "
+                f"Engine: {u.get('jev_engine')} | "
+                f"Complexity: {u.get('jev_complexity')}"
+            )
+
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
