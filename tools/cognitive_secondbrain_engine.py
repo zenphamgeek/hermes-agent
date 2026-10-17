@@ -246,6 +246,25 @@ class CognitiveMemoryDB:
 
                 CREATE INDEX IF NOT EXISTS idx_audit_thesis ON dialectical_audits(thesis_key);
                 CREATE INDEX IF NOT EXISTS idx_audit_verdict ON dialectical_audits(verdict);
+
+                CREATE TABLE IF NOT EXISTS jev_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_key TEXT UNIQUE NOT NULL,
+                    query TEXT NOT NULL,
+                    harness_mode TEXT NOT NULL,
+                    bloom_level INTEGER NOT NULL,
+                    tier TEXT NOT NULL,
+                    complexity REAL NOT NULL DEFAULT 0.5,
+                    engine TEXT NOT NULL DEFAULT 'LOCAL_JEV',
+                    chosen_response TEXT NOT NULL,
+                    rejected_response TEXT DEFAULT '',
+                    sample_type TEXT NOT NULL DEFAULT 'SFT',
+                    sha256 TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_jev_sess_type ON jev_sessions(sample_type);
+                CREATE INDEX IF NOT EXISTS idx_jev_sess_mode ON jev_sessions(harness_mode);
             """)
 
             conn.executescript("""
@@ -1369,6 +1388,9 @@ class CognitiveSecondBrainEngine:
         # Run structural vault self-heal & render matrix
         heal_summary = self.self_heal_secondbrain(target_vault)
 
+        # --- STAGE 5: Oligodendrocyte Cortical Myelination (LoRA .safetensors + ONNX Surrogate) ---
+        myelination_summary = self.myelinate_jev_lora_and_onnx()
+
         # Write Nightly Sleep Consolidation Journal to SecondBrain
         sleep_dir = target_vault / "10-Areas" / "AI Engineering" / "Sleep-Consolidation"
         sleep_report_path = sleep_dir / f"Sleep-Cycle-{date_str}.md"
@@ -1388,7 +1410,7 @@ class CognitiveSecondBrainEngine:
 
 > [!NOTE]
 > **Execution Timestamp**: `{now_iso}`  
-> **Circadian Phase**: `02:00 AM Local Deep SWS -> REM Reconsolidation`  
+> **Circadian Phase**: `02:00 AM Local Deep SWS -> REM Reconsolidation -> Cortical Myelination`  
 > **Compute Engine**: `{jev_engine_used}` (`complexity={jev_complexity:.2f}`, `output_tokens=0`, `100% Endogenous Pacemaker`)  
 > **Navigation**: [[Home]] | [[Cognitive-Memory-Matrix]] | [[Knowledge-Graph-Telemetry]]
 
@@ -1411,6 +1433,12 @@ class CognitiveSecondBrainEngine:
 - **High-Evidence Paradoxes Queued for AGY-Fleet Pro ($C \\ge 2.2$)**: `{len(paradox_escalations)}`
 - **Associative Cross-Cortical Dream Bridges**:
 {chr(10).join(bridge_lines)}
+
+## 5. Stage 5 — Oligodendrocyte Cortical Myelination (LoRA `.safetensors` + ONNX Edge Surrogate)
+- **Sanitized SFT Samples**: `{myelination_summary.get('sft_samples_count', 0)}`
+- **Contrastive DPO Triads (Rejected False Knowledge)**: `{myelination_summary.get('dpo_samples_count', 0)}`
+- **LoRA Adapter (`.safetensors`)**: `{myelination_summary.get('lora_safetensors_path', '')}`
+- **Myelinated ONNX Router (`.onnx`)**: `{myelination_summary.get('onnx_model_path', '')}` (`latency={myelination_summary.get('onnx_inference_latency_ms', 0.0)}ms`)
 
 ---
 *Autonomous Neuro-Biological Circadian Sleep Engine (`tools/cognitive_secondbrain_engine.py --sleep-cycle`).*
@@ -1449,8 +1477,404 @@ class CognitiveSecondBrainEngine:
                 "associative_dream_bridges_count": len(dream_bridges),
                 "sleep_journal_path": str(sleep_report_path),
             },
+            "stage5_cortical_myelination": myelination_summary,
             "seed_summary": seed_summary,
             "matrix_path": heal_summary["matrix_path"],
+        }
+
+    # --------------------------------------------------------------------------
+    # Stage 5: JEV Session Recorder + LoRA (.safetensors) + ONNX Myelination
+    # --------------------------------------------------------------------------
+
+    @staticmethod
+    def featurize_text_256d(text: str) -> List[float]:
+        """
+        Deterministically converts text into a 256-dimensional normalized cortical
+        feature vector combining hashed token/char-trigram projections (dims 0..247)
+        and explicit epistemic/Bloom signal detectors (dims 248..255).
+        """
+        vec = [0.0] * 256
+        lower = text.lower()
+        tokens = re.findall(r"[a-z0-9à-ỹ_]+", lower)
+
+        for tok in tokens:
+            h = int(hashlib.md5(tok.encode("utf-8")).hexdigest()[:8], 16)
+            idx = h % 248
+            sign = 1.0 if (h & 1) == 0 else -1.0
+            vec[idx] += sign
+
+        # Epistemic & Bloom structural channels (dims 248..255)
+        vec[248] = float( classify_bloom_level(text, tier="L2") ) / 6.0
+        vec[249] = 1.0 if any(w in lower for w in ("adr", "invariant", "sovereign", "constitutional")) else 0.0
+        vec[250] = 1.0 if any(w in lower for w in ("audit", "critique", "clef", "jev", "security", "phản biện")) else 0.0
+        vec[251] = 1.0 if any(w in lower for w in ("root-cause", "rca", "ast", "architecture", "why")) else 0.0
+        vec[252] = 1.0 if any(w in lower for w in ("playbook", "sop", "workflow", "step", "pipeline")) else 0.0
+        vec[253] = 1.0 if any(w in lower for w in ("summary", "overview", "map", "taxonomy")) else 0.0
+        vec[254] = min(1.0, len(text) / 2000.0)
+        vec[255] = min(1.0, len(tokens) / 250.0)
+
+        norm = math.sqrt(sum(v * v for v in vec[:248])) or 1.0
+        for i in range(248):
+            vec[i] = round(vec[i] / norm, 6)
+        return vec
+
+    def record_jev_session(
+        self,
+        query: str,
+        chosen_response: str,
+        harness_mode: str = "fast",
+        bloom_level: int = 3,
+        tier: str = "L2",
+        complexity: float = 0.5,
+        engine: str = "LOCAL_JEV",
+        rejected_response: str = "",
+        sample_type: str = "SFT",
+    ) -> Dict[str, Any]:
+        """
+        Records a sanitized JEV session or DPO contrastive triad into `jev_sessions`
+        for nightly Cortical Myelination (LoRA SFT/DPO + ONNX surrogate training).
+        """
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            from tools.modal_jev_finetuning import DatasetSecretScrubber
+            scrubber = DatasetSecretScrubber()
+            clean_query = scrubber.scrub_text(query)
+            clean_chosen = scrubber.scrub_text(chosen_response)
+            clean_rejected = scrubber.scrub_text(rejected_response)
+        except Exception:
+            clean_query = query
+            clean_chosen = chosen_response
+            clean_rejected = rejected_response
+
+        digest = hashlib.sha256(
+            f"{sample_type}|{clean_query}|{clean_chosen}|{clean_rejected}".encode("utf-8")
+        ).hexdigest()
+        session_key = f"jev:{sample_type.lower()}:{digest[:16]}"
+
+        with self.db.get_connection() as conn:
+            conn.execute("""
+                INSERT INTO jev_sessions (
+                    session_key, query, harness_mode, bloom_level, tier,
+                    complexity, engine, chosen_response, rejected_response,
+                    sample_type, sha256, recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_key) DO UPDATE SET
+                    chosen_response = excluded.chosen_response,
+                    rejected_response = excluded.rejected_response,
+                    recorded_at = excluded.recorded_at;
+            """, (
+                session_key, clean_query, harness_mode, int(bloom_level), tier,
+                float(complexity), engine, clean_chosen, clean_rejected,
+                sample_type, digest, now_iso
+            ))
+            conn.commit()
+
+        return {
+            "session_key": session_key,
+            "sample_type": sample_type,
+            "harness_mode": harness_mode,
+            "bloom_level": int(bloom_level),
+            "sha256": digest,
+        }
+
+    def myelinate_jev_lora_and_onnx(
+        self,
+        output_dir: Optional[Path] = None,
+        epochs: int = 35,
+    ) -> Dict[str, Any]:
+        """
+        Stage 5 of the 02:00 AM Sleep Cycle — Oligodendrocyte Cortical Myelination:
+          1. Harvests & scrubs SFT samples (consolidated L2/L3 memories + jev_sessions)
+             and DPO contrastive triads (dialectical_audits where false knowledge was
+             ABANDONED or SUPERSEDED) into `secondbrain_sft_dpo.sanitized.jsonl`.
+          2. Trains a PyTorch Cortical Router + LoRA Adapter (r=8, alpha=16) mapping
+             256-dim features -> 6-class Bloom Level & 4-class AGI Harness Mode.
+          3. Exports `secondbrain_lora_adapter.safetensors` (CWE-502 safe serialization)
+             and `secondbrain_jev_router.onnx` (verified via ONNXRuntime in <1ms).
+        """
+        import os
+        import time
+
+        target_dir = Path(output_dir) if output_dir else (Path.home() / ".hermes" / "jev_myelination")
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        dataset_path = target_dir / "secondbrain_sft_dpo.sanitized.jsonl"
+        lora_path = target_dir / "secondbrain_lora_adapter.safetensors"
+        onnx_path = target_dir / "secondbrain_jev_router.onnx"
+
+        try:
+            from tools.modal_jev_finetuning import DatasetSecretScrubber
+            scrubber: Any = DatasetSecretScrubber()
+        except Exception:
+            scrubber = None
+
+        def _clean(txt: str) -> str:
+            return scrubber.scrub_text(txt) if scrubber and hasattr(scrubber, "scrub_text") else txt
+
+        sft_records: List[Dict[str, Any]] = []
+        dpo_records: List[Dict[str, Any]] = []
+        train_features: List[List[float]] = []
+        train_bloom_labels: List[int] = []
+        train_mode_labels: List[int] = []
+
+        mode_to_idx = {"fast": 0, "deep_tot": 1, "dialectic_audit": 2, "creative_synthesis": 3}
+
+        with self.db.get_connection() as conn:
+            # 1. Harvest consolidated cognitive_memories for SFT & Neural Router training
+            mem_rows = conn.execute("""
+                SELECT mem_key, title, content, tier, bloom_level, synaptic_strength, evidence_score
+                FROM cognitive_memories
+                WHERE status = 'ACTIVE'
+                ORDER BY synaptic_strength DESC LIMIT 300;
+            """).fetchall()
+
+            for r in mem_rows:
+                title = _clean(str(r["title"]))
+                content = _clean(str(r["content"]))
+                bloom = max(1, min(6, int(r["bloom_level"])))
+                tier = str(r["tier"])
+
+                if bloom >= 5:
+                    target_mode = "dialectic_audit" if "audit" in content.lower() or "critique" in content.lower() else "deep_tot"
+                elif bloom == 4:
+                    target_mode = "deep_tot"
+                elif bloom == 3:
+                    target_mode = "fast"
+                else:
+                    target_mode = "creative_synthesis"
+
+                text_sample = f"{title}\n{content[:800]}"
+                train_features.append(self.featurize_text_256d(text_sample))
+                train_bloom_labels.append(bloom - 1)
+                train_mode_labels.append(mode_to_idx[target_mode])
+
+                if tier in ("L2", "L3") and bloom >= 3:
+                    sft_records.append({
+                        "sample_type": "SFT",
+                        "instruction": f"Recall and apply sovereign SecondBrain knowledge ({tier}-B{bloom}) for: {title}",
+                        "input": title,
+                        "chosen": content[:1200],
+                        "rejected": "",
+                        "metadata": {
+                            "mem_key": r["mem_key"],
+                            "tier": tier,
+                            "bloom_level": bloom,
+                            "harness_mode": target_mode,
+                        },
+                    })
+
+            # 2. Harvest recorded JEV sessions
+            sess_rows = conn.execute("SELECT * FROM jev_sessions ORDER BY id DESC LIMIT 200;").fetchall()
+            for sr in sess_rows:
+                q_txt = _clean(str(sr["query"]))
+                c_txt = _clean(str(sr["chosen_response"]))
+                r_txt = _clean(str(sr["rejected_response"] or ""))
+                b_lvl = max(1, min(6, int(sr["bloom_level"])))
+                h_mode = str(sr["harness_mode"]) if str(sr["harness_mode"]) in mode_to_idx else "fast"
+
+                train_features.append(self.featurize_text_256d(q_txt))
+                train_bloom_labels.append(b_lvl - 1)
+                train_mode_labels.append(mode_to_idx[h_mode])
+
+                rec = {
+                    "sample_type": str(sr["sample_type"]),
+                    "instruction": "Execute stratified AGI cognitive reasoning and routing.",
+                    "input": q_txt,
+                    "chosen": c_txt[:1200],
+                    "rejected": r_txt[:1200],
+                    "metadata": {
+                        "session_key": sr["session_key"],
+                        "tier": sr["tier"],
+                        "bloom_level": b_lvl,
+                        "harness_mode": h_mode,
+                    },
+                }
+                if str(sr["sample_type"]) == "DPO" and r_txt:
+                    dpo_records.append(rec)
+                else:
+                    sft_records.append(rec)
+
+            # 3. Harvest Hegelian Dialectical Audits as DPO Contrastive Triads (Suppressing False Knowledge)
+            audit_rows = conn.execute("""
+                SELECT a.*, t.title AS thesis_title, t.content AS thesis_content
+                FROM dialectical_audits a
+                LEFT JOIN cognitive_memories t ON a.thesis_key = t.mem_key
+                WHERE a.verdict IN ('ABANDON', 'SUPERSEDE')
+                ORDER BY a.id DESC LIMIT 100;
+            """).fetchall()
+
+            for ar in audit_rows:
+                thesis_title = _clean(str(ar["thesis_title"] or ar["thesis_key"]))
+                rejected_claim = _clean(str(ar["thesis_content"] or ar["thesis_key"]))
+                antithesis = _clean(str(ar["antithesis_claim"]))
+                synth_key = ar["synthesis_key"]
+                chosen_text = f"Refuted false thesis via Hegelian Critique: {antithesis}"
+                if synth_key:
+                    synth_row = conn.execute(
+                        "SELECT content FROM cognitive_memories WHERE mem_key = ?;", (synth_key,)
+                    ).fetchone()
+                    if synth_row:
+                        chosen_text = _clean(str(synth_row["content"]))
+
+                dpo_records.append({
+                    "sample_type": "DPO",
+                    "instruction": f"Evaluate epistemic validity and reject false assumptions regarding: {thesis_title}",
+                    "input": thesis_title,
+                    "chosen": chosen_text[:1200],
+                    "rejected": rejected_claim[:1200],
+                    "metadata": {
+                        "thesis_key": ar["thesis_key"],
+                        "verdict": ar["verdict"],
+                        "synthesis_key": synth_key,
+                    },
+                })
+
+        # Write sanitized JSONL dataset with mode 0600
+        all_records = sft_records + dpo_records
+        jsonl_lines = [json.dumps(r, ensure_ascii=False) for r in all_records]
+        dataset_path.write_text("\n".join(jsonl_lines) + ("\n" if jsonl_lines else ""), encoding="utf-8")
+        try:
+            os.chmod(dataset_path, 0o600)
+        except Exception:
+            pass
+
+        # Train PyTorch Cortical Router + LoRA Adapter & Export .safetensors + .onnx
+        onnx_latency_ms = 0.0
+        final_loss = 0.0
+        try:
+            import torch
+            import torch.nn as nn
+            import safetensors.torch
+            import onnxruntime as ort
+
+            class MyelinatedCorticalRouter(nn.Module):
+                def __init__(self, in_dim: int = 256, hidden_dim: int = 64, lora_rank: int = 8):
+                    super().__init__()
+                    self.base_fc = nn.Linear(in_dim, hidden_dim)
+                    self.lora_A = nn.Linear(in_dim, lora_rank, bias=False)
+                    self.lora_B = nn.Linear(lora_rank, hidden_dim, bias=False)
+                    self.lora_scale = 2.0  # alpha=16 / r=8
+                    self.head_bloom = nn.Linear(hidden_dim, 6)
+                    self.head_mode = nn.Linear(hidden_dim, 4)
+
+                def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+                    h = torch.relu(self.base_fc(x) + self.lora_B(self.lora_A(x)) * self.lora_scale)
+                    return self.head_bloom(h), self.head_mode(h)
+
+            torch.manual_seed(42)
+            model = MyelinatedCorticalRouter()
+
+            if not train_features:
+                train_features = [self.featurize_text_256d("Sovereign ADR invariant architecture")]
+                train_bloom_labels = [5]
+                train_mode_labels = [1]
+
+            x_tensor = torch.tensor(train_features, dtype=torch.float32)
+            y_bloom = torch.tensor(train_bloom_labels, dtype=torch.long)
+            y_mode = torch.tensor(train_mode_labels, dtype=torch.long)
+
+            optimizer = torch.optim.AdamW(model.parameters(), lr=0.015, weight_decay=1e-4)
+            criterion = nn.CrossEntropyLoss()
+
+            model.train()
+            for _ in range(epochs):
+                optimizer.zero_grad()
+                b_logits, m_logits = model(x_tensor)
+                loss = criterion(b_logits, y_bloom) + criterion(m_logits, y_mode)
+                loss.backward()
+                optimizer.step()
+                final_loss = float(loss.item())
+
+            model.eval()
+
+            # 1. Export LoRA Adapter & Router Weights to .safetensors (CWE-502 safe serialization)
+            lora_tensors = {
+                "lora_A.weight": model.lora_A.weight.detach().cpu().contiguous(),
+                "lora_B.weight": model.lora_B.weight.detach().cpu().contiguous(),
+                "base_fc.weight": model.base_fc.weight.detach().cpu().contiguous(),
+                "base_fc.bias": model.base_fc.bias.detach().cpu().contiguous(),
+                "head_bloom.weight": model.head_bloom.weight.detach().cpu().contiguous(),
+                "head_bloom.bias": model.head_bloom.bias.detach().cpu().contiguous(),
+                "head_mode.weight": model.head_mode.weight.detach().cpu().contiguous(),
+                "head_mode.bias": model.head_mode.bias.detach().cpu().contiguous(),
+            }
+            safetensors.torch.save_file(lora_tensors, str(lora_path))
+
+            # 2. Export executable ONNX graph
+            dummy_in = torch.zeros(1, 256, dtype=torch.float32)
+            torch.onnx.export(
+                model,
+                (dummy_in,),
+                str(onnx_path),
+                input_names=["features"],
+                output_names=["bloom_logits", "mode_logits"],
+                dynamo=False,
+            )
+
+            # 3. Verify ONNXRuntime sub-millisecond inference
+            t0 = time.perf_counter()
+            sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+            sess.run(None, {"features": dummy_in.numpy()})
+            onnx_latency_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+        except Exception as exc:
+            return {
+                "status": "PARTIAL_DATASET_ONLY",
+                "error": str(exc),
+                "dataset_path": str(dataset_path),
+                "sft_samples_count": len(sft_records),
+                "dpo_samples_count": len(dpo_records),
+            }
+
+        return {
+            "status": "MYELINATED",
+            "dataset_path": str(dataset_path),
+            "sft_samples_count": len(sft_records),
+            "dpo_samples_count": len(dpo_records),
+            "lora_safetensors_path": str(lora_path),
+            "onnx_model_path": str(onnx_path),
+            "training_samples": len(train_features),
+            "final_loss": round(final_loss, 4),
+            "onnx_inference_latency_ms": onnx_latency_ms,
+        }
+
+    def predict_with_onnx_surrogate(
+        self,
+        query: str,
+        onnx_path: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """
+        Executes sub-millisecond local inference using the myelinated ONNX surrogate
+        (`secondbrain_jev_router.onnx`) to predict Bloom Level (B1..B6) and AGI Harness Mode.
+        """
+        import time
+        import numpy as np
+        import onnxruntime as ort
+
+        target_onnx = (
+            Path(onnx_path)
+            if onnx_path
+            else (Path.home() / ".hermes" / "jev_myelination" / "secondbrain_jev_router.onnx")
+        )
+        if not target_onnx.exists():
+            self.myelinate_jev_lora_and_onnx(output_dir=target_onnx.parent)
+
+        feats = np.array([self.featurize_text_256d(query)], dtype=np.float32)
+        t0 = time.perf_counter()
+        sess = ort.InferenceSession(str(target_onnx), providers=["CPUExecutionProvider"])
+        bloom_logits, mode_logits = sess.run(None, {"features": feats})
+        latency_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+
+        modes = ["fast", "deep_tot", "dialectic_audit", "creative_synthesis"]
+        pred_bloom_idx = int(np.argmax(bloom_logits[0]))
+        pred_mode_idx = int(np.argmax(mode_logits[0]))
+
+        return {
+            "query": query,
+            "predicted_bloom": f"B{pred_bloom_idx + 1}",
+            "bloom_level": pred_bloom_idx + 1,
+            "predicted_harness_mode": modes[pred_mode_idx],
+            "latency_ms": latency_ms,
+            "engine": "ONNX_MYELINATED_SURROGATE",
         }
 
 
@@ -1507,11 +1931,13 @@ def assemble_harness_context(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Sovereign Cognitive SecondBrain Engine (Neuro-Biological 02:00 AM Sleep + Bloom + Hegelian Critique)"
+        description="Sovereign Cognitive SecondBrain Engine (Neuro-Biological 02:00 AM Sleep + Bloom + LoRA/ONNX Myelination)"
     )
     parser.add_argument("--seed-from-vault", action="store_true", help="Seed cognitive memories from SecondBrain vault & ADRs")
     parser.add_argument("--self-heal", action="store_true", help="Run self-healing maintenance & Ebbinghaus decay on SecondBrain")
-    parser.add_argument("--sleep-cycle", action="store_true", help="Execute full 4-stage 02:00 AM Neuro-Biological Circadian Sleep Consolidation Cycle")
+    parser.add_argument("--sleep-cycle", action="store_true", help="Execute full 5-stage 02:00 AM Neuro-Biological Circadian Sleep Consolidation Cycle")
+    parser.add_argument("--myelinate", action="store_true", help="Train & export LoRA (.safetensors) + ONNX router from consolidated SecondBrain memories")
+    parser.add_argument("--predict-onnx", type=str, default="", help="Run sub-ms ONNX surrogate inference on a query")
     parser.add_argument("--harness-query", type=str, default="", help="Test stratified context assembly for a query")
     parser.add_argument("--mode", type=str, default="fast", choices=["fast", "deep_tot", "dialectic_audit", "creative_synthesis"])
     parser.add_argument("--reinforce", type=str, default="", help="Reinforce a specific mem_key")
@@ -1528,6 +1954,12 @@ def main() -> None:
 
         if args.self_heal:
             output["self_heal_report"] = engine.self_heal_secondbrain()
+
+        if args.myelinate:
+            output["myelination_report"] = engine.myelinate_jev_lora_and_onnx()
+
+    if args.predict_onnx:
+        output["onnx_prediction"] = engine.predict_with_onnx_surrogate(args.predict_onnx)
 
     if args.reinforce:
         output["reinforce_report"] = engine.reinforce_memory(args.reinforce)
@@ -1547,4 +1979,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 

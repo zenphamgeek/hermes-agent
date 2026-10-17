@@ -65,6 +65,8 @@ SECONDBRAIN_COGNITIVE_SCHEMA: Dict[str, Any] = {
                     "critique",
                     "self_heal",
                     "sleep_cycle",
+                    "myelinate",
+                    "predict_onnx",
                     "matrix_stats",
                 ],
                 "description": "Cognitive operation to execute.",
@@ -245,6 +247,33 @@ class SecondBrainMemoryProvider(MemoryProvider):
             )
         return None
 
+    def sync_turn(
+        self,
+        user_content: str,
+        assistant_content: str,
+        *,
+        session_id: str = "",
+        messages: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        """Record completed turns into `jev_sessions` for nightly 02:00 AM Cortical Myelination."""
+        if not self._engine or not user_content or not assistant_content:
+            return
+        if len(user_content.strip()) < 15 or len(assistant_content.strip()) < 25:
+            return
+        try:
+            mode = _infer_harness_mode(user_content)
+            self._engine.record_jev_session(
+                query=user_content[:600],
+                chosen_response=assistant_content[:1200],
+                harness_mode=mode,
+                bloom_level=int(BloomLevel.B3_APPLY),
+                tier=MemoryTier.L2_SEMANTIC.value,
+                engine="LOCAL_JEV",
+                sample_type="SFT",
+            )
+        except Exception as exc:
+            logger.debug("SecondBrain sync_turn JEV recording failed: %s", exc)
+
     def on_memory_write(
         self,
         action: str,
@@ -362,6 +391,17 @@ class SecondBrainMemoryProvider(MemoryProvider):
             elif action == "sleep_cycle":
                 report = self._engine.run_circadian_sleep_cycle()
                 return json.dumps(report, ensure_ascii=False)
+
+            elif action == "myelinate":
+                report = self._engine.myelinate_jev_lora_and_onnx()
+                return json.dumps(report, ensure_ascii=False)
+
+            elif action == "predict_onnx":
+                query = str(args.get("query", "")).strip()
+                if not query:
+                    return tool_error("predict_onnx requires 'query'.")
+                pred = self._engine.predict_with_onnx_surrogate(query=query)
+                return json.dumps(pred, ensure_ascii=False)
 
             elif action == "matrix_stats":
                 stats = self._engine.get_matrix_stats()

@@ -428,3 +428,82 @@ def test_circadian_sleep_cycle_four_neuro_stages(tmp_path: Path) -> None:
     assert journal_path.exists()
     assert "Circadian 02:00 AM Neuro-Biological Sleep Consolidation" in journal_path.read_text(encoding="utf-8")
 
+
+def test_stage5_cortical_myelination_lora_and_onnx_export(tmp_path: Path) -> None:
+    db_path = tmp_path / "test_myelin.db"
+    vault_path = tmp_path / "SecondBrain"
+    tombstone_path = tmp_path / "tombstones.jsonl"
+    out_dir = tmp_path / "jev_myelination"
+
+    engine = CognitiveSecondBrainEngine(
+        db_path=db_path, vault_path=vault_path, tombstone_path=tombstone_path
+    )
+
+    # 1. Seed a verified L3 B6 sovereign memory
+    engine.store_memory(
+        mem_key="adr:sovereign- compiler",
+        title="ADR Sovereign Compiler Architecture",
+        content="Sovereign invariant for compiling AST and SQLite FTS5 graphs.",
+        tier="L3",
+        bloom_level=BloomLevel.B6_CREATE,
+        synaptic_strength=0.95,
+        evidence_score=0.95,
+    )
+
+    # 2. Seed and refute a false thesis so a DPO contrastive triad is generated
+    engine.store_memory(
+        mem_key="false:manual-notes",
+        title="Manual Unindexed Notes",
+        content="Store notes without FTS5 or decay.",
+        tier="L2",
+    )
+    engine.dialectical_critique(
+        thesis_key="false:manual-notes",
+        antithesis_claim="Live compiler + Bloom decay outperforms static unindexed notes.",
+        new_content="Synthesized Sovereign SecondBrain Engine with Bloom B1..B6 and Ebbinghaus decay.",
+        evidence_score=0.95,
+        evidence_ref="ADR-20261017-006",
+    )
+
+    # 3. Record a JEV session trace
+    sess = engine.record_jev_session(
+        query="Audit security of SSRF guard and Clef JEV verdict",
+        chosen_response="Verified SSRF guard blocks RFC1918 and IMDS endpoints.",
+        harness_mode="dialectic_audit",
+        bloom_level=5,
+        tier="L3",
+        complexity=1.4,
+    )
+    assert sess["session_key"].startswith("jev:sft:")
+
+    # 4. Run Stage 5 Cortical Myelination (LoRA .safetensors + ONNX export)
+    report = engine.myelinate_jev_lora_and_onnx(output_dir=out_dir, epochs=25)
+    assert report["status"] == "MYELINATED"
+    assert report["sft_samples_count"] >= 2
+    assert report["dpo_samples_count"] >= 1
+
+    dataset_file = Path(report["dataset_path"])
+    lora_file = Path(report["lora_safetensors_path"])
+    onnx_file = Path(report["onnx_model_path"])
+    assert dataset_file.exists()
+    assert lora_file.exists()
+    assert onnx_file.exists()
+
+    # Verify LoRA .safetensors contains lora_A and lora_B weights
+    import safetensors.torch
+    tensors = safetensors.torch.load_file(str(lora_file))
+    assert "lora_A.weight" in tensors
+    assert "lora_B.weight" in tensors
+    assert tensors["lora_A.weight"].shape == (8, 256)
+    assert tensors["lora_B.weight"].shape == (64, 8)
+
+    # 5. Run sub-millisecond ONNXRuntime inference via predict_with_onnx_surrogate
+    pred = engine.predict_with_onnx_surrogate(
+        "Audit security of SSRF guard and Clef JEV verdict",
+        onnx_path=onnx_file,
+    )
+    assert pred["engine"] == "ONNX_MYELINATED_SURROGATE"
+    assert pred["predicted_harness_mode"] in ("fast", "deep_tot", "dialectic_audit", "creative_synthesis")
+    assert 1 <= pred["bloom_level"] <= 6
+
+
