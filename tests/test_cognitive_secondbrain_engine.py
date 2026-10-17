@@ -588,3 +588,34 @@ def test_stage5_reports_validation_and_real_domain_metrics(tmp_path: Path) -> No
     dm = rep["domain_lora_metrics"]
     assert dm["adversarial_security_tot"]["status"] == "TRAINED"
     assert dm["odoo20_owl_rule29"]["status"] == "INSUFFICIENT_DATA"
+
+
+def test_nemotron_personas_vietnam_synthesis_and_domain_lora_myelination(tmp_path: Path) -> None:
+    db_path = tmp_path / "nemotron.db"
+    vault_path = tmp_path / "SecondBrain"
+    out_dir = tmp_path / "jev_myelination"
+    engine = CognitiveSecondBrainEngine(
+        db_path=db_path, vault_path=vault_path, tombstone_path=tmp_path / "tombstones.jsonl"
+    )
+
+    synth_rep = engine.synthesize_nemotron_personas_vietnam(vault_path=vault_path)
+    assert synth_rep["dataset_ref"] == "nvidia/Nemotron-Personas-Vietnam"
+    assert synth_rep["archetypes_count"] == 6
+    assert len(synth_rep["seeded_memories"]) == 6
+    assert synth_rep["recorded_sessions_count"] == 12
+
+    arch_note = Path(synth_rep["architecture_note_path"])
+    assert arch_note.exists()
+    assert "nvidia/Nemotron-Personas-Vietnam" in arch_note.read_text(encoding="utf-8")
+
+    myelin_rep = engine.myelinate_jev_lora_and_onnx(output_dir=out_dir, epochs=15)
+    assert myelin_rep["status"] == "MYELINATED"
+    assert "nemotron_personas_vietnam" in myelin_rep["domain_lora_paths"]
+    assert myelin_rep["domain_lora_metrics"]["nemotron_personas_vietnam"]["status"] == "TRAINED"
+    assert myelin_rep["domain_lora_metrics"]["nemotron_personas_vietnam"]["samples"] >= 6
+
+    swap_rep = engine.hot_swap_domain_lora("nemotron_personas_vietnam", myelination_dir=out_dir)
+    assert swap_rep["domain"] == "nemotron_personas_vietnam"
+    assert swap_rep["rank"] == 16
+    assert swap_rep["within_kpi_15ms"] is True
+
