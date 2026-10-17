@@ -88,3 +88,16 @@ def test_whatif_3g_virtual_escrow_retry_storm_deadlock_mitigation() -> None:
 
     assert ledger.total_in_flight_cost() == pytest.approx(1.50)
 
+
+def test_inflight_lease_monotonic_expiration_under_ntp_step() -> None:
+    from tools.modal_budget_guard import InFlightLease
+
+    lease = InFlightLease("job-mono-001", estimated_cost=1.25, ttl_s=0.01, idempotency_key="payload-hash-abc")
+    assert lease.idempotency_key == "payload-hash-abc"
+    # Even if wall-clock expires_at is pushed +300s into the future by an NTP backward jump,
+    # monotonic expiration must still expire the lease after 10ms.
+    lease.expires_at += 300.0
+    lease.expires_at_mono -= 1.0
+    assert lease.is_expired is True
+
+

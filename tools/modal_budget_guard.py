@@ -54,17 +54,26 @@ LOG_PATH = Path("/home/zen/hermes-agent/output/modal_budget_guard.log")
 
 
 class InFlightLease:
-    """Represents a provisional in-flight budget escrow token with bounded TTL."""
+    """Represents a provisional in-flight budget escrow token with monotonic bounded TTL."""
 
-    def __init__(self, job_id: str, estimated_cost: float, ttl_s: float = 180.0):
+    def __init__(
+        self,
+        job_id: str,
+        estimated_cost: float,
+        ttl_s: float = 180.0,
+        idempotency_key: Optional[str] = None,
+    ):
         self.job_id = job_id
+        self.idempotency_key = idempotency_key or job_id
         self.estimated_cost = estimated_cost
         self.created_at = time.time()
         self.expires_at = self.created_at + ttl_s
+        self.created_at_mono = time.monotonic()
+        self.expires_at_mono = self.created_at_mono + ttl_s
 
     @property
     def is_expired(self) -> bool:
-        return time.time() > self.expires_at
+        return (time.monotonic() > self.expires_at_mono) or (time.time() > self.expires_at)
 
 
 class InFlightLeaseLedger:
@@ -108,8 +117,9 @@ class InFlightLeaseLedger:
     ) -> Tuple[bool, str]:
         self.prune_expired()
         with self._lock:
-            if idempotency_key and idempotency_key in self._idempotency_map:
-                existing_id = self._idempotency_map[idempotency_key]
+            key = idempotency_key or job_id
+            if key in self._idempotency_map:
+                existing_id = self._idempotency_map[key]
                 if existing_id in self._leases and not self._leases[existing_id].is_expired:
                     return True, f"Idempotent reuse of active lease for job {existing_id}"
 
@@ -122,9 +132,8 @@ class InFlightLeaseLedger:
                     f"minus job cost ${estimated_cost:.2f} leaves ${effective_remaining - estimated_cost:.2f} "
                     f"<= ${min_required_credits:.2f} threshold (In-flight: ${current_in_flight:.2f})"
                 )
-            self._leases[job_id] = InFlightLease(job_id, estimated_cost, ttl_s)
-            if idempotency_key:
-                self._idempotency_map[idempotency_key] = job_id
+            self._leases[job_id] = InFlightLease(job_id, estimated_cost, ttl_s, idempotency_key=key)
+            self._idempotency_map[key] = job_id
             return True, "Lease acquired"
 
     def release_lease(self, job_id: str) -> None:
