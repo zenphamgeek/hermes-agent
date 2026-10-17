@@ -3072,7 +3072,7 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
                 SELECT mem_key, title, content, tier, bloom_level, synaptic_strength, evidence_score
                 FROM cognitive_memories
                 WHERE status = 'ACTIVE'
-                ORDER BY synaptic_strength DESC LIMIT 300;
+                ORDER BY bloom_level DESC, mem_key ASC LIMIT 300;
             """).fetchall()
 
             for r in mem_rows:
@@ -3296,30 +3296,44 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
             y_bloom = torch.tensor(train_bloom_labels, dtype=torch.long)
             y_mode = torch.tensor(train_mode_labels, dtype=torch.long)
             y_argon = torch.tensor(train_argon_labels, dtype=torch.long)
-            criterion = nn.CrossEntropyLoss()
+            criterion = nn.CrossEntropyLoss(label_smoothing=0.02)
 
-            def _three_head_loss(m: nn.Module, idx: List[int]) -> torch.Tensor:
+            def _three_head_loss(m: nn.Module, idx: List[int], eval_mode: bool = False) -> torch.Tensor:
                 ob, om, oa = m(x_all[idx])
-                return criterion(ob, y_bloom[idx]) + criterion(om, y_mode[idx]) + criterion(oa, y_argon[idx])
+                loss_fn = nn.CrossEntropyLoss() if eval_mode else criterion
+                return loss_fn(ob, y_bloom[idx]) + loss_fn(om, y_mode[idx]) + loss_fn(oa, y_argon[idx])
 
             model = MyelinatedCorticalRouter(lora_rank=8)
-            optimizer = torch.optim.AdamW(model.parameters(), lr=0.018, weight_decay=1e-4)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=0.015, weight_decay=1e-2)
             model.train()
             train_loss = 0.0
+            best_val_loss = float("inf")
+            best_state = None
             actual_epochs = max(epochs, 50)
             for _ in range(actual_epochs):
+                model.train()
                 optimizer.zero_grad()
-                loss = _three_head_loss(model, tr_idx)
+                loss = _three_head_loss(model, tr_idx, eval_mode=False)
                 loss.backward()
                 optimizer.step()
                 train_loss = float(loss.item())
+                if val_idx:
+                    model.eval()
+                    with torch.no_grad():
+                        cur_vl = float(_three_head_loss(model, val_idx, eval_mode=True).item())
+                        if cur_vl < best_val_loss:
+                            best_val_loss = cur_vl
+                            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+
+            if best_state is not None:
+                model.load_state_dict(best_state)
 
             val_loss = val_acc_bloom = val_acc_mode = val_acc_argon = None
             if val_idx:
                 model.eval()
                 with torch.no_grad():
                     vob, vom, voa = model(x_all[val_idx])
-                    val_loss = round(float(_three_head_loss(model, val_idx).item()), 4)
+                    val_loss = round(float(_three_head_loss(model, val_idx, eval_mode=True).item()), 4)
                     val_acc_bloom = round(float((vob.argmax(1) == y_bloom[val_idx]).float().mean()), 4)
                     val_acc_mode = round(float((vom.argmax(1) == y_mode[val_idx]).float().mean()), 4)
                     val_acc_argon = round(float((voa.argmax(1) == y_argon[val_idx]).float().mean()), 4)
