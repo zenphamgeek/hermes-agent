@@ -496,6 +496,16 @@ def test_stage5_cortical_myelination_lora_and_onnx_export(tmp_path: Path) -> Non
     assert "lora_B.weight" in tensors
     assert tensors["lora_A.weight"].shape == (8, 256)
     assert tensors["lora_B.weight"].shape == (64, 8)
+    assert "head_argon.weight" in tensors
+
+    # Verify 3 Domain-Specialized r=16 LoRA adapters & INT8 ONNX model
+    assert Path(report["onnx_int8_model_path"]).exists()
+    for dom_key, dom_path in report["domain_lora_paths"].items():
+        dom_file = Path(dom_path)
+        assert dom_file.exists(), f"Missing domain LoRA {dom_key}"
+        dom_tensors = safetensors.torch.load_file(str(dom_file))
+        assert dom_tensors["lora_A.weight"].shape == (16, 256)
+        assert dom_tensors["lora_B.weight"].shape == (64, 16)
 
     # 5. Run sub-millisecond ONNXRuntime inference via predict_with_onnx_surrogate
     pred = engine.predict_with_onnx_surrogate(
@@ -504,7 +514,11 @@ def test_stage5_cortical_myelination_lora_and_onnx_export(tmp_path: Path) -> Non
     )
     assert pred["engine"] == "ONNX_MYELINATED_SURROGATE"
     assert pred["predicted_harness_mode"] in ("fast", "deep_tot", "dialectic_audit", "creative_synthesis")
+    assert pred["predicted_argon_level"] in ("L1_FAST", "L2_STANDARD", "L3_COMPLEX", "L4_SOVEREIGN")
+    assert pred["recommended_argon_model"] in ("gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high")
     assert 1 <= pred["bloom_level"] <= 6
+    assert pred["latency_ms"] < 2.50
+
 
 
 def test_plan_argon_pro_task_four_levels() -> None:
