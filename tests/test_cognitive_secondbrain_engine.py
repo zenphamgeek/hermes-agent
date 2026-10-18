@@ -1026,8 +1026,91 @@ def test_run_scientific_agi_sovereign_audit_and_upgrade_cli_and_entrypoint(tmp_p
     assert report["step3_ewc_continual_learning"]["onnx_inference_latency_ms"] < 2.50
     assert report["step5_circadian_sleep"]["passed"] is True
     assert report["step5_circadian_sleep"]["circadian_window"] == "02:00_AM_SWS_REM"
+    assert report["immutable_manifest"]["verified"] is True
 
 
+def test_immutable_agi_research_manifest_lock_and_tamper_resistance() -> None:
+    """Verifies ADR-000 Immutable Sovereign AGI Research Manifest cryptographic lock and fail-closed tamper resistance."""
+    from tools.cognitive_secondbrain_engine import (
+        IMMUTABLE_AGI_MANIFEST_SHA256,
+        IMMUTABLE_AGI_RESEARCH_MANIFEST,
+        verify_immutable_agi_manifest,
+    )
+
+    res = verify_immutable_agi_manifest(check_disk_artifacts=True)
+    assert res["verified"] is True
+    assert res["manifest_id"] == "ADR-000-SOVEREIGN-AGI-RESEARCH-MANIFEST"
+    assert res["manifest_sha256"] == IMMUTABLE_AGI_MANIFEST_SHA256
+    assert res["council_model"] == "claude-opus-5-5-high"
+    assert res["routing_tier"] == "pro"
+    assert res["ultra_nodes_allowed"] is False
+    assert res["opus55_council_nodes_count"] == 14
+    assert res["adr_exists"] is True
+    assert res["rule_exists"] is True
+
+    # Tamper 1: Attempt to disable immutability
+    tampered_flag = dict(IMMUTABLE_AGI_RESEARCH_MANIFEST)
+    tampered_flag["immutable"] = False
+    with pytest.raises(RuntimeError, match="Immutable AGI Manifest Violation"):
+        verify_immutable_agi_manifest(manifest_override=tampered_flag, check_disk_artifacts=False)
+
+    # Tamper 2: Attempt to downgrade council_model
+    tampered_model = dict(IMMUTABLE_AGI_RESEARCH_MANIFEST)
+    tampered_model["council_model"] = "gemini-3.8-flash-low"
+    with pytest.raises(RuntimeError, match="Immutable AGI Manifest Violation"):
+        verify_immutable_agi_manifest(manifest_override=tampered_model, check_disk_artifacts=False)
+
+    # Tamper 3: Attempt to enable Ultra nodes
+    tampered_ultra = dict(IMMUTABLE_AGI_RESEARCH_MANIFEST)
+    tampered_ultra["ultra_nodes_allowed"] = True
+    with pytest.raises(RuntimeError, match="Immutable AGI Manifest Violation"):
+        verify_immutable_agi_manifest(manifest_override=tampered_ultra, check_disk_artifacts=False)
+
+    # Tamper 4: Attempt to alter supreme_objective (SHA-256 mismatch)
+    tampered_obj = dict(IMMUTABLE_AGI_RESEARCH_MANIFEST)
+    tampered_obj["supreme_objective"] = "Drifted non-AGI objective"
+    with pytest.raises(RuntimeError, match="SHA-256 digest mismatch"):
+        verify_immutable_agi_manifest(manifest_override=tampered_obj, check_disk_artifacts=False)
 
 
+def test_orchestrate_opus55_research_and_delegate_pipeline(tmp_path: Path) -> None:
+    """Verifies Opus 5.5 Research-to-Execution Orchestration synthesizes SecondBrain knowledge, evaluates 6 capability axes, and emits Pro worker assignments."""
+    engine = CognitiveSecondBrainEngine(
+        db_path=tmp_path / "opus55_orch.db",
+        vault_path=tmp_path / "Vault",
+        tombstone_path=tmp_path / "t.jsonl",
+        myelination_dir=tmp_path / "myelination",
+    )
 
+    engine.store_memory(
+        mem_key="l3:agi-neuro-symbolic",
+        title="Provable Neuro-Symbolic Active Inference",
+        content="Variational Free Energy reduction with EWC Fisher continual learning and submodular causal curation.",
+        tier=MemoryTier.L3_SOVEREIGN.value,
+        bloom_level=BloomLevel.B6_CREATE,
+        evidence_score=0.96,
+        evidence_ref="tests/test_cognitive_secondbrain_engine.py",
+    )
+
+    orch = engine.orchestrate_opus55_research_and_delegate(
+        research_goal="Evaluate AI continual reasoning capabilities and delegate Pro swarm verification toward Sovereign AGI",
+        domain="hermes_agent",
+        k_memories=4,
+    )
+
+    assert orch["manifest_id"] == "ADR-000-SOVEREIGN-AGI-RESEARCH-MANIFEST"
+    assert orch["manifest_verified"] is True
+    assert orch["routing_invariants"]["council_model"] == "claude-opus-5-5-high"
+    assert orch["routing_invariants"]["routing_tier"] == "pro"
+    assert orch["routing_invariants"]["ultra_nodes_allowed"] is False
+    assert len(orch["routing_invariants"]["opus55_council_nodes"]) == 14
+    assert orch["knowledge_synthesis"]["curated_endogenous_count"] >= 1
+    assert "axes" in orch["ai_capability_evaluation"]
+    axes = orch["ai_capability_evaluation"]["axes"]
+    assert set(axes.keys()) == {"delta_f", "ewc_retention", "submodular_gain", "ece", "nsr", "gfr"}
+    assert axes["delta_f"]["value"] < 0.0
+    assert len(orch["worker_assignments"]) == 3
+    for stage in orch["worker_assignments"]:
+        assert stage["preferred_model"] == "claude-opus-5-5-high"
+        assert stage["target_tier"] == "pro"
+        assert len(stage["eligible_pro_nodes"]) >= 4
