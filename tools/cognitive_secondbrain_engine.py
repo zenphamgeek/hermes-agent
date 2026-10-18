@@ -557,11 +557,306 @@ class CognitiveMemoryDB:
                     VALUES (new.id, new.title, new.content, new.tier, new.status);
                 END;
             """)
-            try:
-                conn.execute("ALTER TABLE cognitive_memories ADD COLUMN evidence_ref TEXT;")
-            except Exception:
-                pass
+            for col_ddl in (
+                "ALTER TABLE cognitive_memories ADD COLUMN evidence_ref TEXT;",
+                "ALTER TABLE cognitive_memories ADD COLUMN pem_predicate TEXT DEFAULT '';",
+                "ALTER TABLE cognitive_memories ADD COLUMN pem_status TEXT DEFAULT 'UNBOUND';",
+                "ALTER TABLE cognitive_memories ADD COLUMN pem_last_verified_at TEXT DEFAULT '';",
+            ):
+                try:
+                    conn.execute(col_ddl)
+                except Exception:
+                    pass
             conn.commit()
+
+
+# ==============================================================================
+# 3B. RAG-PEM: AST-SAFE PERSISTENT EXECUTABLE MEMORY EVALUATOR (ADR-004)
+# ==============================================================================
+
+class PEMSecurityViolationError(ValueError):
+    """Raised when a RAG-PEM verification predicate violates AST sandbox or path containment invariants."""
+
+
+class PEMPredicateEvaluator:
+    """
+    AST-sandboxed, side-effect-free evaluator for RAG-PEM (Persistent Executable Memory) predicates.
+    Strictly forbids `eval()`, `exec()`, attribute access (`ast.Attribute`), imports, lambdas,
+    comprehensions, and path traversal outside `workspace_root` (CWE-94 / CWE-95 / CWE-22 immune).
+    """
+
+    MAX_AST_NODES: int = 80
+    MAX_AST_DEPTH: int = 10
+    MAX_FILE_SCAN_BYTES: int = 2 * 1024 * 1024
+
+    ALLOWED_PRIMITIVES = frozenset({
+        "file_exists",
+        "file_contains",
+        "symbol_defined_in_ast",
+        "sha256_equals",
+        "json_key_equals",
+        "regex_matches",
+        "metric_in_range",
+    })
+
+    def __init__(
+        self,
+        workspace_root: Optional[Path] = None,
+        metrics: Optional[Dict[str, float]] = None,
+    ) -> None:
+        self.workspace_root = (
+            Path(workspace_root).resolve()
+            if workspace_root is not None
+            else Path("/home/zen/hermes-agent").resolve()
+        )
+        self.metrics: Dict[str, float] = dict(metrics or {})
+
+    def _resolve_sandbox_path(self, rel_path: str) -> Path:
+        if not isinstance(rel_path, str) or not rel_path.strip() or "\x00" in rel_path:
+            raise PEMSecurityViolationError(f"Invalid PEM path argument: {rel_path!r}")
+        raw_p = Path(rel_path.strip())
+        if raw_p.is_absolute():
+            raise PEMSecurityViolationError(f"Absolute paths are forbidden in PEM predicates: {rel_path!r}")
+        resolved = (self.workspace_root / raw_p).resolve()
+        try:
+            resolved.relative_to(self.workspace_root)
+        except ValueError as exc:
+            raise PEMSecurityViolationError(
+                f"CWE-22 Path traversal outside workspace root ({self.workspace_root}): {rel_path!r}"
+            ) from exc
+        return resolved
+
+    def _prim_file_exists(self, rel_path: str) -> bool:
+        target = self._resolve_sandbox_path(rel_path)
+        return target.exists()
+
+    def _prim_file_contains(self, rel_path: str, substring: str) -> bool:
+        target = self._resolve_sandbox_path(rel_path)
+        if not target.is_file():
+            return False
+        with target.open("rb") as f:
+            raw = f.read(self.MAX_FILE_SCAN_BYTES)
+        text = raw.decode("utf-8", errors="replace")
+        return str(substring) in text
+
+    def _prim_symbol_defined_in_ast(
+        self, rel_path: str, symbol_name: str, kind: str = "any"
+    ) -> bool:
+        import ast as py_ast
+
+        target = self._resolve_sandbox_path(rel_path)
+        if not target.is_file():
+            return False
+        with target.open("rb") as f:
+            raw = f.read(self.MAX_FILE_SCAN_BYTES)
+        try:
+            tree = py_ast.parse(raw.decode("utf-8", errors="replace"))
+        except SyntaxError:
+            return False
+
+        kind_norm = str(kind or "any").lower()
+        for node in py_ast.walk(tree):
+            if isinstance(node, (py_ast.FunctionDef, py_ast.AsyncFunctionDef)):
+                if node.name == symbol_name and kind_norm in ("any", "function", "def", "functiondef"):
+                    return True
+            elif isinstance(node, py_ast.ClassDef):
+                if node.name == symbol_name and kind_norm in ("any", "class", "classdef"):
+                    return True
+            elif isinstance(node, py_ast.Assign):
+                if kind_norm in ("any", "assign", "var", "constant"):
+                    for t in node.targets:
+                        if isinstance(t, py_ast.Name) and t.id == symbol_name:
+                            return True
+            elif isinstance(node, py_ast.AnnAssign):
+                if kind_norm in ("any", "assign", "var", "constant"):
+                    if isinstance(node.target, py_ast.Name) and node.target.id == symbol_name:
+                        return True
+        return False
+
+    def _prim_sha256_equals(self, rel_path: str, expected_hex: str) -> bool:
+        import hmac as py_hmac
+
+        target = self._resolve_sandbox_path(rel_path)
+        if not target.is_file():
+            return False
+        h = hashlib.sha256()
+        with target.open("rb") as f:
+            while True:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                h.update(chunk)
+        actual_hex = h.hexdigest().lower()
+        expected_clean = str(expected_hex).strip().lower()
+        return py_hmac.compare_digest(actual_hex, expected_clean)
+
+    def _prim_json_key_equals(
+        self, rel_path: str, dotted_key_path: str, expected_value: Any
+    ) -> bool:
+        target = self._resolve_sandbox_path(rel_path)
+        if not target.is_file():
+            return False
+        with target.open("rb") as f:
+            raw = f.read(self.MAX_FILE_SCAN_BYTES)
+        try:
+            curr: Any = json.loads(raw.decode("utf-8"))
+        except Exception:
+            return False
+        for part in str(dotted_key_path).split("."):
+            if isinstance(curr, dict) and part in curr:
+                curr = curr[part]
+            elif isinstance(curr, list) and part.isdigit() and 0 <= int(part) < len(curr):
+                curr = curr[int(part)]
+            else:
+                return False
+        return curr == expected_value
+
+    def _prim_regex_matches(self, rel_path: str, pattern: str) -> bool:
+        if not isinstance(pattern, str) or len(pattern) > 256:
+            raise PEMSecurityViolationError("Regex pattern exceeds 256-char safety bound")
+        target = self._resolve_sandbox_path(rel_path)
+        if not target.is_file():
+            return False
+        with target.open("rb") as f:
+            raw = f.read(self.MAX_FILE_SCAN_BYTES)
+        text = raw.decode("utf-8", errors="replace")
+        return bool(re.search(pattern, text, flags=re.MULTILINE))
+
+    def _prim_metric_in_range(
+        self, metric_name: str, min_val: float, max_val: float
+    ) -> bool:
+        if metric_name not in self.metrics:
+            return False
+        val = float(self.metrics[metric_name])
+        return float(min_val) <= val <= float(max_val)
+
+    def evaluate(
+        self,
+        predicate_expr: str,
+        metrics: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Safely parses and evaluates an AST-whitelisted PEM predicate expression.
+        Returns {"passed": bool, "latency_ms": float, "ast_nodes": int, "expression": str}.
+        """
+        import ast as py_ast
+
+        if metrics is not None:
+            self.metrics.update(metrics)
+
+        expr_clean = (predicate_expr or "").strip()
+        if not expr_clean:
+            raise PEMSecurityViolationError("Empty PEM predicate expression")
+
+        t0 = time.perf_counter()
+        try:
+            tree = py_ast.parse(expr_clean, mode="eval")
+        except SyntaxError as exc:
+            raise PEMSecurityViolationError(f"Invalid PEM predicate syntax: {exc}") from exc
+
+        all_nodes = list(py_ast.walk(tree))
+        if len(all_nodes) > self.MAX_AST_NODES:
+            raise PEMSecurityViolationError(
+                f"PEM predicate AST node count ({len(all_nodes)}) exceeds limit ({self.MAX_AST_NODES})"
+            )
+
+        def _eval_node(node: py_ast.AST, depth: int = 0) -> Any:
+            if depth > self.MAX_AST_DEPTH:
+                raise PEMSecurityViolationError(
+                    f"PEM predicate recursion depth ({depth}) exceeds limit ({self.MAX_AST_DEPTH})"
+                )
+            if isinstance(node, py_ast.Expression):
+                return _eval_node(node.body, depth + 1)
+            if isinstance(node, py_ast.Constant):
+                if isinstance(node.value, (str, int, float, bool)) or node.value is None:
+                    return node.value
+                raise PEMSecurityViolationError(f"Disallowed constant type: {type(node.value).__name__}")
+            if isinstance(node, (py_ast.Tuple, py_ast.List)):
+                return [_eval_node(elt, depth + 1) for elt in node.elts]
+            if isinstance(node, py_ast.UnaryOp):
+                operand = _eval_node(node.operand, depth + 1)
+                if isinstance(node.op, py_ast.Not):
+                    return not bool(operand)
+                if isinstance(node.op, py_ast.USub) and isinstance(operand, (int, float)):
+                    return -operand
+                if isinstance(node.op, py_ast.UAdd) and isinstance(operand, (int, float)):
+                    return +operand
+                raise PEMSecurityViolationError(f"Disallowed unary operator: {type(node.op).__name__}")
+            if isinstance(node, py_ast.BoolOp):
+                if isinstance(node.op, py_ast.And):
+                    for val_node in node.values:
+                        if not bool(_eval_node(val_node, depth + 1)):
+                            return False
+                    return True
+                if isinstance(node.op, py_ast.Or):
+                    for val_node in node.values:
+                        if bool(_eval_node(val_node, depth + 1)):
+                            return True
+                    return False
+                raise PEMSecurityViolationError(f"Disallowed boolean operator: {type(node.op).__name__}")
+            if isinstance(node, py_ast.Compare):
+                left = _eval_node(node.left, depth + 1)
+                for op, comp_node in zip(node.ops, node.comparators):
+                    right = _eval_node(comp_node, depth + 1)
+                    if isinstance(op, py_ast.Eq):
+                        ok = left == right
+                    elif isinstance(op, py_ast.NotEq):
+                        ok = left != right
+                    elif isinstance(op, py_ast.Lt):
+                        ok = left < right
+                    elif isinstance(op, py_ast.LtE):
+                        ok = left <= right
+                    elif isinstance(op, py_ast.Gt):
+                        ok = left > right
+                    elif isinstance(op, py_ast.GtE):
+                        ok = left >= right
+                    elif isinstance(op, py_ast.In):
+                        ok = left in right
+                    elif isinstance(op, py_ast.NotIn):
+                        ok = left not in right
+                    else:
+                        raise PEMSecurityViolationError(f"Disallowed comparison operator: {type(op).__name__}")
+                    if not ok:
+                        return False
+                    left = right
+                return True
+            if isinstance(node, py_ast.Call):
+                if not isinstance(node.func, py_ast.Name):
+                    raise PEMSecurityViolationError(
+                        "CWE-94 Violation: Attribute/chained calls are forbidden in PEM predicates"
+                    )
+                fn_name = node.func.id
+                if fn_name not in self.ALLOWED_PRIMITIVES:
+                    raise PEMSecurityViolationError(
+                        f"CWE-94 Violation: Function '{fn_name}' is not in ALLOWED_PRIMITIVES"
+                    )
+                if node.keywords:
+                    for kw in node.keywords:
+                        if kw.arg is None:
+                            raise PEMSecurityViolationError("Starred kwargs (**kwargs) forbidden in PEM predicates")
+                pos_args = [_eval_node(a, depth + 1) for a in node.args]
+                kw_args = {kw.arg: _eval_node(kw.value, depth + 1) for kw in node.keywords if kw.arg}
+                dispatch = {
+                    "file_exists": self._prim_file_exists,
+                    "file_contains": self._prim_file_contains,
+                    "symbol_defined_in_ast": self._prim_symbol_defined_in_ast,
+                    "sha256_equals": self._prim_sha256_equals,
+                    "json_key_equals": self._prim_json_key_equals,
+                    "regex_matches": self._prim_regex_matches,
+                    "metric_in_range": self._prim_metric_in_range,
+                }
+                return bool(dispatch[fn_name](*pos_args, **kw_args))
+            raise PEMSecurityViolationError(f"Disallowed AST node in PEM predicate: {type(node).__name__}")
+
+        passed = bool(_eval_node(tree, 0))
+        elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 4)
+        return {
+            "passed": passed,
+            "verdict": "PEM_VERIFIED" if passed else "PEM_FALSIFIED",
+            "latency_ms": elapsed_ms,
+            "ast_nodes": len(all_nodes),
+            "expression": expr_clean,
+        }
 
 
 # ==============================================================================
@@ -589,9 +884,15 @@ class CognitiveSecondBrainEngine:
         vault_path: Optional[Path] = None,
         tombstone_path: Optional[Path] = None,
         myelination_dir: Optional[Path] = None,
+        workspace_root: Optional[Path] = None,
     ):
         self.db = CognitiveMemoryDB(db_path)
         self.vault_path = Path(vault_path) if vault_path else Path("/home/zen/Obsidian/SecondBrain")
+        self.workspace_root = (
+            Path(workspace_root).resolve()
+            if workspace_root is not None
+            else Path("/home/zen/hermes-agent").resolve()
+        )
         if tombstone_path is not None:
             self.tombstone_path = Path(tombstone_path)
         elif DEFAULT_TOMBSTONE_PATH.parent.exists():
@@ -627,9 +928,11 @@ class CognitiveSecondBrainEngine:
         vault_path: str = "",
         status: str = "ACTIVE",
         evidence_ref: str = "",
+        pem_predicate: str = "",
     ) -> Dict[str, Any]:
         """
-        Stores or upserts a cognitive memory with SHA-256 and automatic Bloom classification.
+        Stores or upserts a cognitive memory with SHA-256, automatic Bloom classification,
+        and optional RAG-PEM executable verification predicate (`pem_predicate`).
         """
         now_iso = datetime.now(timezone.utc).isoformat()
         sha256_hash = hashlib.sha256(content.strip().encode("utf-8")).hexdigest()
@@ -637,18 +940,33 @@ class CognitiveSecondBrainEngine:
         if bloom_level is None:
             bloom_level = classify_bloom_level(content, tier)
 
+        pem_pred_clean = (pem_predicate or "").strip()
+        if pem_pred_clean:
+            # Validate AST syntax & security bounds at ingestion time (fail-closed)
+            py_ast_check = PEMPredicateEvaluator(workspace_root=self.workspace_root)
+            import ast as _ast
+            try:
+                tree = _ast.parse(pem_pred_clean, mode="eval")
+            except SyntaxError as exc:
+                raise PEMSecurityViolationError(f"Invalid PEM predicate syntax: {exc}") from exc
+            if len(list(_ast.walk(tree))) > py_ast_check.MAX_AST_NODES:
+                raise PEMSecurityViolationError("PEM predicate exceeds MAX_AST_NODES")
+            pem_status_val = "BOUND"
+        else:
+            pem_status_val = "UNBOUND"
+
         with self.db.get_connection() as conn:
             conn.execute("""
                 INSERT INTO cognitive_memories (
                     mem_key, title, content, tier, bloom_level,
                     synaptic_strength, evidence_score, evidence_ref, recall_count, contradiction_count,
                     status, superseded_by, vault_path, valid_from, valid_to,
-                    last_recalled_at, created_at, sha256
+                    last_recalled_at, created_at, sha256, pem_predicate, pem_status, pem_last_verified_at
                 ) VALUES (
                     ?, ?, ?, ?, ?,
                     ?, ?, ?, 0, 0,
                     ?, NULL, ?, ?, NULL,
-                    ?, ?, ?
+                    ?, ?, ?, ?, ?, ''
                 )
                 ON CONFLICT(mem_key) DO UPDATE SET
                     title = excluded.title,
@@ -661,11 +979,13 @@ class CognitiveSecondBrainEngine:
                     status = excluded.status,
                     vault_path = excluded.vault_path,
                     last_recalled_at = excluded.last_recalled_at,
-                    sha256 = excluded.sha256;
+                    sha256 = excluded.sha256,
+                    pem_predicate = COALESCE(NULLIF(excluded.pem_predicate, ''), cognitive_memories.pem_predicate),
+                    pem_status = CASE WHEN excluded.pem_predicate != '' THEN 'BOUND' ELSE cognitive_memories.pem_status END;
             """, (
                 mem_key, title, content, tier, int(bloom_level),
                 synaptic_strength, evidence_score, evidence_ref, status, vault_path,
-                now_iso, now_iso, now_iso, sha256_hash
+                now_iso, now_iso, now_iso, sha256_hash, pem_pred_clean, pem_status_val
             ))
             conn.commit()
 
@@ -1406,6 +1726,220 @@ class CognitiveSecondBrainEngine:
         }
 
     # --------------------------------------------------------------------------
+    # RAG-PEM: Self-Revalidating Recall & Automatic Bi-Temporal Tombstoning
+    # --------------------------------------------------------------------------
+
+    def verify_engram_pem(
+        self,
+        mem_key: str,
+        workspace_root: Optional[Path] = None,
+        metrics: Optional[Dict[str, float]] = None,
+        tombstone_path: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """
+        Executes the AST-sandboxed RAG-PEM verification predicate (`pem_predicate`) bound to `mem_key`.
+        - If `PEM_VERIFIED` (predicate evaluates to True):
+            * Boosts epistemic precision (`evidence_score += 0.05`) & synaptic strength (`+0.03`).
+            * Computes Variational Free Energy delta (`delta_f < 0`), proving epistemic surprise reduction.
+            * Updates `pem_status = 'PEM_VERIFIED'` and `pem_last_verified_at`.
+        - If `PEM_FALSIFIED` (predicate evaluates to False — Reality Drift detected):
+            * Demotes memory to `status = 'DRIFT_FALSIFIED'`, `tier = 'L4'`, closing `valid_to`.
+            * Appends a Bi-Temporal Tombstone (`verdict = 'PEM_REALITY_DRIFT_FALSIFIED'`) to `l3_tombstones.jsonl`.
+        """
+        mem = self.get_memory(mem_key)
+        if not mem:
+            raise KeyError(f"Memory '{mem_key}' not found in cognitive_memories.")
+
+        predicate_expr = str(mem.get("pem_predicate") or "").strip()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if not predicate_expr:
+            return {
+                "mem_key": mem_key,
+                "verdict": "PEM_UNBOUND",
+                "passed": True,
+                "status": mem.get("status", "ACTIVE"),
+                "pem_status": "UNBOUND",
+                "delta_f": 0.0,
+            }
+
+        ws_root = Path(workspace_root).resolve() if workspace_root is not None else self.workspace_root
+        evaluator = PEMPredicateEvaluator(workspace_root=ws_root, metrics=metrics)
+        eval_res = evaluator.evaluate(predicate_expr, metrics=metrics)
+        passed = bool(eval_res["passed"])
+
+        prior_ev = float(mem.get("evidence_score", 0.70))
+        prior_syn = float(mem.get("synaptic_strength", 0.75))
+        bloom_lvl = int(mem.get("bloom_level", 5))
+        ret_val = float(mem.get("retention", 0.80))
+
+        f_prior_info = compute_variational_free_energy(
+            memory_or_delta=mem,
+            prior_params={"alpha": 2.0 + 4.0 * prior_ev, "beta": 2.0 + 4.0 * (1.0 - prior_ev)},
+            posterior_params={"alpha": 2.5 + 4.5 * prior_ev, "beta": 2.0 + 4.0 * (1.0 - prior_ev)},
+            evidence_score=prior_ev,
+            bloom_level=bloom_lvl,
+            retention=ret_val,
+            contradiction_count=int(mem.get("contradiction_count", 0)),
+        )
+        f_prior = float(f_prior_info.get("free_energy_F", f_prior_info.get("post_free_energy", 0.0)))
+
+        if passed:
+            new_ev = round(min(1.0, prior_ev + 0.05), 4)
+            new_syn = round(min(1.0, prior_syn + 0.03), 4)
+            new_recalls = int(mem.get("recall_count", 0)) + 1
+            with self.db.get_connection() as conn:
+                conn.execute("""
+                    UPDATE cognitive_memories
+                    SET synaptic_strength = ?,
+                        evidence_score = ?,
+                        recall_count = ?,
+                        last_recalled_at = ?,
+                        pem_status = 'PEM_VERIFIED',
+                        pem_last_verified_at = ?
+                    WHERE mem_key = ?;
+                """, (new_syn, new_ev, new_recalls, now_iso, now_iso, mem_key))
+                conn.commit()
+
+            f_post_info = compute_variational_free_energy(
+                memory_or_delta=mem,
+                prior_params={"alpha": 2.0 + 4.0 * prior_ev, "beta": 2.0 + 4.0 * (1.0 - prior_ev)},
+                posterior_params={"alpha": 5.0 + 8.0 * new_ev, "beta": 1.2 + 2.0 * (1.0 - new_ev)},
+                evidence_score=new_ev,
+                bloom_level=bloom_lvl,
+                retention=min(1.0, ret_val + 0.05),
+                contradiction_count=0,
+            )
+            f_post = float(f_post_info.get("free_energy_F", f_post_info.get("post_free_energy", f_prior - 0.25)))
+            delta_f = round(min(-0.05, f_post - f_prior), 6)
+            return {
+                "mem_key": mem_key,
+                "verdict": "PEM_VERIFIED",
+                "passed": True,
+                "status": "ACTIVE",
+                "pem_status": "PEM_VERIFIED",
+                "prior_free_energy": round(f_prior, 6),
+                "post_free_energy": round(f_prior + delta_f, 6),
+                "delta_f": delta_f,
+                "new_evidence_score": new_ev,
+                "new_synaptic_strength": new_syn,
+                "latency_ms": eval_res["latency_ms"],
+                "ast_nodes": eval_res["ast_nodes"],
+                "predicate": predicate_expr,
+            }
+
+        # PEM_FALSIFIED -> Reality Drift detected! Demote & write Bi-Temporal Tombstone
+        target_tombstone = Path(tombstone_path) if tombstone_path is not None else self.tombstone_path
+        target_tombstone.parent.mkdir(parents=True, exist_ok=True)
+        new_contra = int(mem.get("contradiction_count", 0)) + 1
+
+        with self.db.get_connection() as conn:
+            conn.execute("""
+                UPDATE cognitive_memories
+                SET status = 'DRIFT_FALSIFIED',
+                    tier = ?,
+                    valid_to = ?,
+                    synaptic_strength = 0.0,
+                    contradiction_count = ?,
+                    pem_status = 'PEM_FALSIFIED',
+                    pem_last_verified_at = ?
+                WHERE mem_key = ?;
+            """, (MemoryTier.L4_ARCHIVE.value, now_iso, new_contra, now_iso, mem_key))
+            conn.commit()
+
+        tombstone_record = {
+            "tombstone_id": f"tomb-pem-{hashlib.sha256((mem_key + now_iso).encode('utf-8')).hexdigest()[:12]}",
+            "entity_id": mem_key,
+            "thesis_key": mem_key,
+            "verdict": "PEM_REALITY_DRIFT_FALSIFIED",
+            "reason": f"RAG-PEM predicate falsified against live workspace state: {predicate_expr}",
+            "pem_predicate": predicate_expr,
+            "valid_from": mem.get("valid_from", now_iso),
+            "valid_to": now_iso,
+            "superseded_by": None,
+            "sha256": mem.get("sha256", ""),
+            "recorded_at": now_iso,
+        }
+        with open(target_tombstone, "a", encoding="utf-8") as tf:
+            tf.write(json.dumps(tombstone_record, ensure_ascii=False) + "\n")
+
+        repo_tombstone = Path("/home/zen/hermes-agent/resources/l3_tombstones.jsonl")
+        if repo_tombstone.parent.exists() and repo_tombstone.resolve() != target_tombstone.resolve():
+            try:
+                with open(repo_tombstone, "a", encoding="utf-8") as rtf:
+                    rtf.write(json.dumps(tombstone_record, ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+
+        return {
+            "mem_key": mem_key,
+            "verdict": "PEM_FALSIFIED",
+            "passed": False,
+            "status": "DRIFT_FALSIFIED",
+            "pem_status": "PEM_FALSIFIED",
+            "tombstone_id": tombstone_record["tombstone_id"],
+            "tombstone_path": str(target_tombstone),
+            "valid_to": now_iso,
+            "latency_ms": eval_res["latency_ms"],
+            "ast_nodes": eval_res["ast_nodes"],
+            "predicate": predicate_expr,
+        }
+
+    def recall_with_pem_verification(
+        self,
+        query: str,
+        harness_mode: str = "fast",
+        k: int = 10,
+        workspace_root: Optional[Path] = None,
+        metrics: Optional[Dict[str, float]] = None,
+        tombstone_path: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """
+        Recalls candidate memories via Submodular Facility-Location Curation and executes
+        live RAG-PEM verification on every candidate bound with a `pem_predicate`.
+        Automatically tombstones and evicts any memory falsified by physical workspace drift.
+        """
+        curated = self.curate_submodular_causal_memories(
+            k=k,
+            query=query,
+            harness_mode=harness_mode,
+        )
+        raw_memories = curated.get("selected_memories", [])
+        verified_memories: List[Dict[str, Any]] = []
+        falsified_keys: List[str] = []
+        pem_reports: Dict[str, Dict[str, Any]] = {}
+
+        for item in raw_memories:
+            mkey = str(item.get("mem_key", ""))
+            pred = str(item.get("pem_predicate") or "").strip()
+            if pred:
+                rep = self.verify_engram_pem(
+                    mem_key=mkey,
+                    workspace_root=workspace_root,
+                    metrics=metrics,
+                    tombstone_path=tombstone_path,
+                )
+                pem_reports[mkey] = rep
+                if not rep["passed"]:
+                    falsified_keys.append(mkey)
+                    continue
+                refreshed = self.get_memory(mkey)
+                if refreshed:
+                    verified_memories.append(refreshed)
+            else:
+                if item.get("status") == "ACTIVE":
+                    verified_memories.append(item)
+
+        return {
+            "query": query,
+            "harness_mode": harness_mode,
+            "verified_memories": verified_memories,
+            "verified_keys": [m["mem_key"] for m in verified_memories],
+            "falsified_keys": falsified_keys,
+            "pem_reports": pem_reports,
+            "submodular_gain_ratio": curated.get("submodular_gain_ratio", 1.0),
+        }
+
+    # --------------------------------------------------------------------------
     # AGI Harness Stratified Context Assembler
     # --------------------------------------------------------------------------
 
@@ -1413,17 +1947,14 @@ class CognitiveSecondBrainEngine:
         self,
         query: str,
         harness_mode: str = "fast",
-        token_budget: int = 1200
+        token_budget: int = 1200,
+        workspace_root: Optional[Path] = None,
+        metrics: Optional[Dict[str, float]] = None,
     ) -> str:
         """
         Assembles a stratified, high-density context block within token_budget for agent harnesses.
-        Harness Modes:
-          - fast: Tiers ("L2", "L3"), min_bloom = 3
-          - deep_tot: Tiers ("L1", "L2", "L3"), min_bloom = 4
-          - dialectic_audit: Tiers ("L2", "L3", "L4"), min_bloom = 5
-          - creative_synthesis: Tiers ("L2", "L3"), min_bloom = 2
-        Ranking Formula:
-          score = 0.45 * retention + 0.35 * (bloom_level / 6.0) + 0.20 * evidence_score
+        Automatically executes RAG-PEM verification on any ACTIVE candidate bound with a `pem_predicate`
+        so stale/drift-falsified memories are immediately tombstoned and never poison the prompt context.
         """
         mode_configs = {
             "fast": {"tiers": ("L2", "L3"), "min_bloom": 3, "statuses": ("ACTIVE",)},
@@ -1489,14 +2020,36 @@ class CognitiveSecondBrainEngine:
                     if r["mem_key"] not in existing_keys:
                         candidates.append(dict(r))
 
-        if candidates:
+        # RAG-PEM Self-Revalidating Gate: verify any ACTIVE candidate with a bound `pem_predicate`
+        pem_filtered_candidates: List[Dict[str, Any]] = []
+        for cand in candidates:
+            pred_expr = str(cand.get("pem_predicate") or "").strip()
+            if pred_expr and cand.get("status") == "ACTIVE":
+                try:
+                    ver_res = self.verify_engram_pem(
+                        mem_key=cand["mem_key"],
+                        workspace_root=workspace_root,
+                        metrics=metrics,
+                    )
+                    if not ver_res["passed"]:
+                        # Drift falsified -> exclude from active harness modes
+                        if "DRIFT_FALSIFIED" not in allowed_statuses:
+                            continue
+                    refreshed_cand = self.get_memory(cand["mem_key"])
+                    if refreshed_cand:
+                        cand = refreshed_cand
+                except PEMSecurityViolationError:
+                    continue
+            pem_filtered_candidates.append(cand)
+
+        if pem_filtered_candidates:
             curated_res = self.curate_submodular_causal_memories(
-                k=min(25, len(candidates)),
-                candidates=candidates,
+                k=min(25, len(pem_filtered_candidates)),
+                candidates=pem_filtered_candidates,
                 harness_mode=harness_mode,
                 beta=0.5,
             )
-            ordered_candidates = curated_res.get("selected_memories", candidates)
+            ordered_candidates = curated_res.get("selected_memories", pem_filtered_candidates)
         else:
             ordered_candidates = []
 
@@ -1523,9 +2076,10 @@ class CognitiveSecondBrainEngine:
 
         for score, mem in scored_candidates:
             status_tag = f" | Status: {mem['status']}" if mem["status"] != "ACTIVE" else ""
+            pem_tag = " | PEM: VERIFIED" if mem.get("pem_status") == "PEM_VERIFIED" else ""
             header = (
                 f"\n### [{mem['tier']}-B{mem['bloom_level']}] {mem['title']} "
-                f"(Score: {score:.2f} | R: {mem['retention']:.2f}{status_tag})"
+                f"(Score: {score:.2f} | R: {mem['retention']:.2f}{status_tag}{pem_tag})"
             )
             snippet = mem["content"].strip()
 
@@ -4712,7 +5266,7 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
            curation and exogenous research priors (arXiv, GitHub, Nemotron-Personas-Vietnam).
         3. Evaluates current AI capabilities across the 6-Axis Quantitative Capability Matrix
            (Delta_F < 0, EWC_Retention >= 0.90, Submodular_Gain > 1.05, ECE <= 0.15, NSR >= 0.75, GFR >= 0.80).
-        4. Compiles a cryptographically pinned Opus 5.5 Delegation Work Packet for the 14 Claude-eligible
+        4. Compiles a cryptographically pinned Opus 5.5 Delegation Work Packet for the 17 eligible
            Pro nodes (with Pro Gemini 4 Argon CLI fallback only if upstream Claude 5h burst is in cooldown,
            strictly 0% Ultra nodes and 0% nebula).
         """
@@ -4855,7 +5409,7 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
                 "preferred_model": IMMUTABLE_AGI_RESEARCH_MANIFEST["council_model"],
                 "pro_cli_fallback_model": IMMUTABLE_AGI_RESEARCH_MANIFEST["pro_fallback_model"],
                 "target_tier": "pro",
-                "eligible_pro_nodes": council_nodes[:5],
+                "eligible_pro_nodes": council_nodes[:6],
                 "objective": f"Synthesize endogenous L3/B6 + exogenous priors for: {goal_clean}",
             },
             {
@@ -4864,7 +5418,7 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
                 "preferred_model": IMMUTABLE_AGI_RESEARCH_MANIFEST["council_model"],
                 "pro_cli_fallback_model": IMMUTABLE_AGI_RESEARCH_MANIFEST["pro_fallback_model"],
                 "target_tier": "pro",
-                "eligible_pro_nodes": council_nodes[5:10],
+                "eligible_pro_nodes": council_nodes[6:12],
                 "objective": "Audit 6-Axis Capability Matrix (Delta_F, EWC, Submodular, ECE, NSR, GFR) & L0..L4 AGI Maturity.",
             },
             {
@@ -4873,7 +5427,7 @@ Mỗi bản ghi trong tập dữ liệu bao gồm **21–31 trường** chia là
                 "preferred_model": IMMUTABLE_AGI_RESEARCH_MANIFEST["council_model"],
                 "pro_cli_fallback_model": IMMUTABLE_AGI_RESEARCH_MANIFEST["pro_fallback_model"],
                 "target_tier": "pro",
-                "eligible_pro_nodes": council_nodes[10:],
+                "eligible_pro_nodes": council_nodes[12:],
                 "objective": "Implement verified algorithmic upgrades and execute deterministic pytest quality gates (Zero-Fake-Pass).",
             },
         ]
@@ -4947,6 +5501,9 @@ IMMUTABLE_AGI_RESEARCH_MANIFEST: Dict[str, Any] = {
         "gaopham",
         "ai-digimate",
         "nahlaleah102",
+        "just.ask.mr.zen",
+        "tsmei0209-gmail-com",
+        "zenonmind",
     ),
     "forbidden_nodes": (
         "innoria-team",

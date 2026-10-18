@@ -1044,7 +1044,7 @@ def test_immutable_agi_research_manifest_lock_and_tamper_resistance() -> None:
     assert res["council_model"] == "claude-opus-5-5-high"
     assert res["routing_tier"] == "pro"
     assert res["ultra_nodes_allowed"] is False
-    assert res["opus55_council_nodes_count"] == 14
+    assert res["opus55_council_nodes_count"] == 17
     assert res["adr_exists"] is True
     assert res["rule_exists"] is True
 
@@ -1103,7 +1103,7 @@ def test_orchestrate_opus55_research_and_delegate_pipeline(tmp_path: Path) -> No
     assert orch["routing_invariants"]["council_model"] == "claude-opus-5-5-high"
     assert orch["routing_invariants"]["routing_tier"] == "pro"
     assert orch["routing_invariants"]["ultra_nodes_allowed"] is False
-    assert len(orch["routing_invariants"]["opus55_council_nodes"]) == 14
+    assert len(orch["routing_invariants"]["opus55_council_nodes"]) == 17
     assert orch["knowledge_synthesis"]["curated_endogenous_count"] >= 1
     assert "axes" in orch["ai_capability_evaluation"]
     axes = orch["ai_capability_evaluation"]["axes"]
@@ -1114,3 +1114,161 @@ def test_orchestrate_opus55_research_and_delegate_pipeline(tmp_path: Path) -> No
         assert stage["preferred_model"] == "claude-opus-5-5-high"
         assert stage["target_tier"] == "pro"
         assert len(stage["eligible_pro_nodes"]) >= 4
+
+
+def test_rag_pem_predicate_evaluator_seven_primitives_and_sandbox_security(tmp_path: Path) -> None:
+    """Verifies ADR-004 PEMPredicateEvaluator across all 7 AST-safe primitives and CWE-94/CWE-22 sandbox rejection."""
+    import hashlib
+    from tools.cognitive_secondbrain_engine import (
+        PEMPredicateEvaluator,
+        PEMSecurityViolationError,
+    )
+
+    ws = tmp_path / "workspace"
+    ws.mkdir(parents=True)
+    py_file = ws / "core_module.py"
+    py_code = (
+        "MAX_RETRIES = 3\n"
+        "class SovereignGuard:\n"
+        "    pass\n"
+        "def verify_invariant(x: int) -> bool:\n"
+        "    return x > 0\n"
+    )
+    py_file.write_text(py_code, encoding="utf-8")
+    expected_sha = hashlib.sha256(py_code.encode("utf-8")).hexdigest()
+
+    cfg_file = ws / "config.json"
+    cfg_file.write_text(json.dumps({"routing": {"tier": "pro", "ultra_allowed": False}}), encoding="utf-8")
+
+    evaluator = PEMPredicateEvaluator(workspace_root=ws, metrics={"val_loss": 0.41, "ece": 0.012})
+
+    expr = (
+        "file_exists('core_module.py') and "
+        "file_contains('core_module.py', 'SovereignGuard') and "
+        "symbol_defined_in_ast('core_module.py', 'SovereignGuard', 'class') and "
+        "symbol_defined_in_ast('core_module.py', 'verify_invariant', 'function') and "
+        f"sha256_equals('core_module.py', '{expected_sha}') and "
+        "json_key_equals('config.json', 'routing.tier', 'pro') and "
+        "regex_matches('core_module.py', r'^MAX_RETRIES\\s*=\\s*3$') and "
+        "metric_in_range('val_loss', 0.0, 0.55) and not json_key_equals('config.json', 'routing.ultra_allowed', True)"
+    )
+    res = evaluator.evaluate(expr)
+    assert res["passed"] is True
+    assert res["verdict"] == "PEM_VERIFIED"
+    assert res["latency_ms"] < 50.0
+
+    # Verify CWE-94 arbitrary code execution / attribute access rejection
+    for malicious_expr in (
+        "__import__('os').system('id')",
+        "eval('1+1')",
+        "open('/etc/passwd')",
+        "file_exists.__class__",
+        "(lambda: True)()",
+    ):
+        with pytest.raises(PEMSecurityViolationError):
+            evaluator.evaluate(malicious_expr)
+
+    # Verify CWE-22 path traversal & absolute path rejection
+    for traversal_expr in (
+        "file_exists('../../etc/passwd')",
+        "file_exists('/etc/passwd')",
+    ):
+        with pytest.raises(PEMSecurityViolationError):
+            evaluator.evaluate(traversal_expr)
+
+
+def test_rag_pem_self_revalidating_recall_and_automatic_drift_tombstoning(tmp_path: Path) -> None:
+    """Verifies RAG-PEM Self-Revalidating Recall: Delta_F < 0 on PEM_VERIFIED and automatic DRIFT_FALSIFIED tombstoning on Reality Drift."""
+    ws = tmp_path / "workspace"
+    ws.mkdir(parents=True)
+    rule_file = ws / "fleet_policy.py"
+    rule_file.write_text(
+        "ROUTING_TIER = 'pro'\n"
+        "def enforce_pro_only_swarm() -> bool:\n"
+        "    return True\n"
+        "def legacy_deprecated_hook() -> bool:\n"
+        "    return True\n",
+        encoding="utf-8",
+    )
+
+    tombstone_file = tmp_path / "l3_tombstones.jsonl"
+    engine = CognitiveSecondBrainEngine(
+        db_path=tmp_path / "rag_pem.db",
+        vault_path=tmp_path / "Vault",
+        tombstone_path=tombstone_file,
+        myelination_dir=tmp_path / "myelination",
+        workspace_root=ws,
+    )
+
+    # Store L3/B6 Memory 1: bound to enforce_pro_only_swarm (will remain valid)
+    engine.store_memory(
+        mem_key="l3:pem-pro-swarm-invariant",
+        title="Pro Swarm Enforcement Invariant",
+        content="All fleet swarm routing must enforce enforce_pro_only_swarm in fleet_policy.py.",
+        tier=MemoryTier.L3_SOVEREIGN.value,
+        bloom_level=BloomLevel.B6_CREATE,
+        synaptic_strength=0.88,
+        evidence_score=0.90,
+        evidence_ref="fleet_policy.py",
+        pem_predicate="file_exists('fleet_policy.py') and symbol_defined_in_ast('fleet_policy.py', 'enforce_pro_only_swarm', 'function')",
+    )
+
+    # Store L3/B6 Memory 2: bound to legacy_deprecated_hook (will be removed in refactoring -> Reality Drift)
+    engine.store_memory(
+        mem_key="l3:pem-legacy-hook-rule",
+        title="Legacy Hook Contract",
+        content="All fleet swarm routing must call legacy_deprecated_hook in fleet_policy.py.",
+        tier=MemoryTier.L3_SOVEREIGN.value,
+        bloom_level=BloomLevel.B6_CREATE,
+        synaptic_strength=0.86,
+        evidence_score=0.88,
+        evidence_ref="fleet_policy.py",
+        pem_predicate="symbol_defined_in_ast('fleet_policy.py', 'legacy_deprecated_hook', 'function')",
+    )
+
+    # 1. Initial verification when both symbols exist on disk -> both PEM_VERIFIED with Delta_F < 0
+    v1 = engine.verify_engram_pem("l3:pem-pro-swarm-invariant")
+    assert v1["passed"] is True
+    assert v1["verdict"] == "PEM_VERIFIED"
+    assert v1["delta_f"] < 0.0
+    assert v1["new_evidence_score"] > 0.90
+
+    # 2. Simulate Reality Drift: codebase refactoring removes `legacy_deprecated_hook` from `fleet_policy.py`
+    rule_file.write_text(
+        "ROUTING_TIER = 'pro'\n"
+        "def enforce_pro_only_swarm() -> bool:\n"
+        "    return True\n",
+        encoding="utf-8",
+    )
+
+    # 3. Recall with PEM verification -> detects Reality Drift on l3:pem-legacy-hook-rule!
+    recall_res = engine.recall_with_pem_verification(
+        query="fleet swarm routing fleet_policy",
+        harness_mode="fast",
+        k=5,
+    )
+    assert "l3:pem-pro-swarm-invariant" in recall_res["verified_keys"]
+    assert "l3:pem-legacy-hook-rule" in recall_res["falsified_keys"]
+    assert "l3:pem-legacy-hook-rule" not in recall_res["verified_keys"]
+
+    # Verify DB state and Bi-Temporal Tombstone for falsified memory
+    drifted_mem = engine.get_memory("l3:pem-legacy-hook-rule")
+    assert drifted_mem is not None
+    assert drifted_mem["status"] == "DRIFT_FALSIFIED"
+    assert drifted_mem["tier"] == MemoryTier.L4_ARCHIVE.value
+    assert drifted_mem["pem_status"] == "PEM_FALSIFIED"
+    assert drifted_mem["valid_to"] is not None
+
+    assert tombstone_file.exists()
+    tomb_lines = [json.loads(line) for line in tombstone_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert any(
+        t["entity_id"] == "l3:pem-legacy-hook-rule" and t["verdict"] == "PEM_REALITY_DRIFT_FALSIFIED"
+        for t in tomb_lines
+    )
+
+    # 4. Verify assemble_harness_context includes PEM: VERIFIED tag and strictly excludes DRIFT_FALSIFIED memory
+    ctx = engine.assemble_harness_context("fleet swarm routing fleet_policy", harness_mode="fast")
+    assert "Pro Swarm Enforcement Invariant" in ctx
+    assert "PEM: VERIFIED" in ctx
+    assert "Legacy Hook Contract" not in ctx
+
