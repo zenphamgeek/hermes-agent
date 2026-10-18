@@ -6643,3 +6643,1016 @@ def test_wheresryan22_anatomy_ecology_integration_invariant():
     )
     assert "pass 4" in proc.stdout or "fail 0" in proc.stdout
 
+
+def test_hourly_digest_task_efficiency_pro_ultra_dual_quota_jev_and_7am_sleep_report(tmp_path):
+    """Verify:
+    1. _extract_clean_task_prompt unwraps <task_dispatch>, <objective>, <user_request>, <raw_prompt>, <context>, <constraints>.
+    2. check_stream_5_fleet_mesh filters 17 Google AGY Pro nodes (excluding oc_*, ineligible, disabled, zencode-ent),
+       tracks Pro vs Ultra 1h/7d token consumption, Pro Dual Quota (Gemini 5h/7d + Claude 5h/7d), and 4-Level Task Planning.
+    3. collect_jev_and_brain_sleep_telemetry parses myelination_manifest.json, knowledge_compiler.db, and Sleep-Cycle-*.md.
+    4. format_hourly_digest renders 4-Level Task Planning, Pro Dual Quota, JEV & SecondBrain, and conditional 07:00 AM Sleep report
+       while keeping length < 3900 chars (< 4096 Telegram limit).
+    """
+    from tools.hourly_digest_monitor import collect_jev_and_brain_sleep_telemetry
+
+    # 1. Verify _extract_clean_task_prompt on <task_dispatch> / <objective> / <user_request>
+    dispatch_xml = {
+        "prompt": (
+            "<task_dispatch><context>Hermes Router Context</context>"
+            "<objective>Execute 4-level Gemini 4 Argon task planning across 17 Pro nodes</objective>"
+            "<constraints>Pro-First QBRR</constraints></task_dispatch>"
+        )
+    }
+    assert (
+        _extract_clean_task_prompt(dispatch_xml)
+        == "Execute 4-level Gemini 4 Argon task planning across 17 Pro nodes"
+    )
+    user_req_xml = {
+        "prompt": "<context>System</context><user_request>Audit Dual Quota Gemini and Claude on Pro Fleet</user_request>"
+    }
+    assert (
+        _extract_clean_task_prompt(user_req_xml)
+        == "Audit Dual Quota Gemini and Claude on Pro Fleet"
+    )
+
+    # 2. Verify 17 Pro nodes filtering, Dual Quota, and 4-Level Task Planning in check_stream_5_fleet_mesh
+    now_ts = time.time()
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+        held_streams={1, 2, 3},
+    )
+    pro_17 = [
+        {
+            "name": f"pro-node-{i}",
+            "tier": "pro",
+            "requests_served": 20 + i,
+            "quota_weekly_capacity": 2500000,
+            "quota_weekly_consumed": 500000,
+            "quota_weekly_percent": 80.0,
+            "gemini_5h_consumed": 50000,
+            "gemini_5h_capacity": 500000,
+            "gemini_5h_percent": 90.0,
+            "gemini_weekly_consumed": 500000,
+            "gemini_weekly_capacity": 2500000,
+            "gemini_weekly_percent": 80.0,
+            "claude_5h_consumed": 30000,
+            "claude_5h_capacity": 300000,
+            "claude_5h_percent": 90.0,
+            "claude_weekly_consumed": 150000,
+            "claude_weekly_capacity": 1500000,
+            "claude_weekly_percent": 90.0,
+            "active_jobs": 0,
+            "status": "healthy",
+        }
+        for i in range(1, 18)
+    ]
+    extra_excluded_nodes = [
+        {"name": "oc_minimax", "tier": "pro", "provider": "opencode", "requests_served": 5},
+        {"name": "zencode-ent", "tier": "pro", "ineligible": True, "disabled": True, "requests_served": 0},
+        {"name": "innoria-team", "tier": "ultra", "requests_served": 2, "quota_weekly_capacity": 7000000, "quota_weekly_consumed": 50000, "quota_weekly_percent": 99.3},
+        {"name": "ariana", "tier": "ultra", "requests_served": 4, "quota_weekly_capacity": 7000000, "quota_weekly_consumed": 62526, "quota_weekly_percent": 99.1},
+    ]
+    nodes_payload = {"nodes": pro_17 + extra_excluded_nodes}
+    jobs_payload = {
+        "jobs": [
+            {"job_id": "j-l1", "node_name": "pro-node-1", "model": "gemini-4-argon-low", "status": "completed", "total_tokens": 4500, "latency_ms": 5200, "created_at": now_ts - 180.0, "prompt": "L1 quick check"},
+            {"job_id": "j-l2", "node_name": "pro-node-2", "model": "gemini-4-argon-medium", "status": "completed", "total_tokens": 12500, "latency_ms": 14200, "created_at": now_ts - 120.0, "prompt": "L2 refactor module"},
+            {"job_id": "j-l4", "node_name": "pro-node-3", "model": "claude-opus-5-5-high", "status": "completed", "total_tokens": 28000, "latency_ms": 24000, "created_at": now_ts - 60.0, "prompt": dispatch_xml["prompt"]},
+        ]
+    }
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = json.dumps({"online_nodes": 19, "total_nodes": 19}).encode("utf-8")
+        elif "mock-council" in url:
+            mock_obj.read.return_value = json.dumps({"composite_consensus_score": 100.0, "sla_passed": True}).encode("utf-8")
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = json.dumps(nodes_payload).encode("utf-8")
+        elif "mock-jobs" in url:
+            mock_obj.read.return_value = json.dumps(jobs_payload).encode("utf-8")
+        else:
+            mock_obj.read.return_value = b"{}"
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        s5 = detector.check_stream_5_fleet_mesh(now_ts=now_ts)
+
+    assert s5["pro_first_criterion"]["total_pro_nodes"] == 17
+    assert s5["pro_first_criterion"]["pro_tokens_1h"] == 45000
+    assert s5["pro_fleet_insight"]["total_pro_nodes"] == 17
+    assert s5["pro_fleet_insight"]["dual_ready_pro_count"] == 17
+    assert s5["pro_fleet_insight"]["pro_gemini_7d_rem_pct"] == 80.0
+    assert s5["pro_fleet_insight"]["pro_claude_7d_rem_pct"] == 90.0
+    assert s5["ultra_fleet_insight"]["ultra_tokens_1h"] == 0
+    assert s5["operational_efficiency"]["task_level_distribution"] == {
+        "L1_low": 1,
+        "L2_med": 1,
+        "L3_L4_high": 1,
+    }
+
+    # 3. Verify collect_jev_and_brain_sleep_telemetry with mock manifest, SQLite DB, and Sleep Journal
+    manifest_path = tmp_path / "myelination_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "status": "MYELINATED",
+                "sft_samples_count": 133,
+                "dpo_samples_count": 1,
+                "lora_safetensors_path": "/tmp/base_lora.safetensors",
+                "domain_lora_paths": {
+                    "graydoom_codex_harness": "/tmp/gd.safetensors",
+                    "odoo20_owl_rule29": "/tmp/odoo.safetensors",
+                    "adversarial_security_tot": "/tmp/sec.safetensors",
+                },
+                "onnx_inference_latency_ms": 0.061,
+            }
+        ),
+        encoding="utf-8",
+    )
+    kb_db_path = tmp_path / "knowledge_compiler.db"
+    conn = sqlite3.connect(str(kb_db_path))
+    conn.execute("CREATE TABLE cognitive_memories (status TEXT, tier TEXT, bloom_level INTEGER)")
+    conn.execute("CREATE TABLE jev_sessions (id TEXT)")
+    conn.execute("CREATE TABLE dialectical_audits (id TEXT)")
+    conn.executemany(
+        "INSERT INTO cognitive_memories VALUES (?, ?, ?)",
+        [
+            ("ACTIVE", "L3", 6),
+            ("ACTIVE", "L3", 5),
+            ("ACTIVE", "L2", 6),
+            ("ACTIVE", "L1", 2),
+            ("SUPERSEDED", "L4", 2),
+        ],
+    )
+    conn.executemany("INSERT INTO jev_sessions VALUES (?)", [("s1",), ("s2",)])
+    conn.execute("INSERT INTO dialectical_audits VALUES ('a1')")
+    conn.commit()
+    conn.close()
+
+    sleep_dir = tmp_path / "Sleep-Consolidation"
+    sleep_dir.mkdir()
+    sleep_md = sleep_dir / "Sleep-Cycle-2026-10-17.md"
+    sleep_md.write_text(
+        "# 🌙 Circadian 02:00 AM Neuro-Biological Sleep Consolidation (`2026-10-17`)\n"
+        "- **Execution Timestamp**: `2026-10-17T04:43:57+00:00`\n"
+        "- **Compute Engine**: `LOCAL_JEV`\n"
+        "## 1. Stage 1\n"
+        "- **Broken Symlinks Flushed**: `0`\n"
+        "- **Duplicate SHA-256 Engrams Cleared**: `0`\n"
+        "- **Transient L0 Sensory Debris Flushed**: `0`\n"
+        "## 2. Stage 2\n"
+        "- **Global Homeostatic Downscale Factor**: `0.97`\n"
+        "- **Synapses Renormalized**: `91`\n"
+        "- **Weak Engrams Pruned**: `0`\n"
+        "## 3. Stage 3\n"
+        "- `vault:1` (**Note 1**): `B6 -> B6` (`Tier -> L2`)\n"
+        "- `vault:2` (**Note 2**): `B6 -> B6` (`Tier -> L3`)\n"
+        "## 4. Stage 4\n"
+        "- **High-Dissonance Beliefs Extinguished (Local JEV)**: `0`\n"
+        "- **High-Evidence Paradoxes Queued for AGY-Fleet Pro**: `0`\n"
+        "- `vault:a` $\\leftrightarrow$ `vault:b`\n"
+        "- `vault:c` $\\leftrightarrow$ `vault:d`\n"
+        "## 5. Stage 5\n"
+        "- **Sanitized SFT Samples**: `133`\n"
+        "- **Contrastive DPO Triads**: `1`\n"
+        "- **Myelination Status**: `MYELINATED` (latency=5.416ms)\n",
+        encoding="utf-8",
+    )
+
+    dt_7am = datetime(2026, 10, 17, 7, 15, 0)
+    dt_2pm = datetime(2026, 10, 17, 14, 15, 0)
+
+    jev_7am = collect_jev_and_brain_sleep_telemetry(
+        now_local=dt_7am,
+        jev_manifest_path=manifest_path,
+        knowledge_db_path=kb_db_path,
+        sleep_journal_dir=sleep_dir,
+    )
+    assert jev_7am["jev_telemetry"]["status"] == "MYELINATED"
+    assert jev_7am["jev_telemetry"]["lora_count"] == 4
+    assert jev_7am["brain_evolution"]["active_engrams"] == 4
+    assert jev_7am["brain_evolution"]["high_bloom_count"] == 3
+    assert jev_7am["sleep_consolidation"]["is_morning_7am_window"] is True
+    assert jev_7am["sleep_consolidation"]["stage2_synapses_renormalized"] == 91
+    assert jev_7am["sleep_consolidation"]["stage3_promotions_count"] == 2
+    assert jev_7am["sleep_consolidation"]["stage4_dream_bridges_count"] == 2
+
+    jev_2pm = collect_jev_and_brain_sleep_telemetry(
+        now_local=dt_2pm,
+        jev_manifest_path=manifest_path,
+        knowledge_db_path=kb_db_path,
+        sleep_journal_dir=sleep_dir,
+    )
+    assert jev_2pm["sleep_consolidation"]["is_morning_7am_window"] is False
+
+    # 4. Verify format_hourly_digest for both regular hourly and 07:00 AM window
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    base_scan = {
+        "overall_health_score": 100,
+        "severity": "HEALTHY",
+        "cron": {
+            "cron_health_score": 100,
+            "active_jobs_count": 3,
+            "paused_jobs_count": 18,
+            "clogged_jobs": [],
+            "drift_skipped_jobs": [],
+            "overdue_jobs": [],
+            "auth_failed_jobs": [],
+            "rate_limited_jobs": [],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 10.0},
+        },
+        "entropy": {
+            "entropy_health_score": 100,
+            "streams": [s5],
+        },
+        "jev_brain_sleep": jev_2pm,
+    }
+    html_regular = notifier.format_hourly_digest(base_scan)
+    assert "4-Level Task Planning &amp; Cache:" in html_regular
+    assert "Pro Dual Quota (17 Nodes, Dual-Ready: <code>17/17</code>):" in html_regular
+    assert "Hoạt Động JEV &amp; Tiến Hóa Nhận Thức (SecondBrain):" in html_regular
+    assert "Nhịp Sleep gần nhất" in html_regular
+    assert "Báo Cáo Brain Nhịp Sleep 07:00 Sáng" not in html_regular
+    assert len(html_regular) < 3900
+
+    scan_7am = dict(base_scan, jev_brain_sleep=jev_7am, morning_sleep_briefing=True)
+    html_7am = notifier.format_hourly_digest(scan_7am)
+    assert "🌅 <b>Báo Cáo Brain Nhịp Sleep 07:00 Sáng (Chu kỳ 02:00 AM — 2026-10-17):</b>" in html_7am
+    assert "Stage 1-2 (Glymphatic &amp; SHY):" in html_7am
+    assert "Stage 3-4 (SWS Replay &amp; REM Dream):" in html_7am
+    assert "Stage 5 (Procedural Myelination):" in html_7am
+    assert len(html_7am) < 3900
+
+
+def test_exogenous_knowledge_space_and_self_healing_ecology(tmp_path):
+    """Verify:
+    1. CognitiveSecondBrainEngine.run_exogenous_ecology_cycle() ingests GitHub Trending repos,
+       arXiv papers, domain standards, and autonomous tasks into exogenous_entropy_ledger & cognitive_memories.
+    2. Obsidian Markdown notes under 30-Resources/Exogenous-Knowledge/* and Maps/Exogenous-Knowledge-Space.md
+       are created with valid wikilinks and evolutionary decisions (ADOPT_INTO_HARNESS, SCHEDULE_SELF_HEAL,
+       COMPILE_LORA_SKILL, GENERATE_ADR) with 0 orphan notes.
+    3. collect_jev_and_brain_sleep_telemetry() and format_hourly_digest() include 'Không Gian Tri Thức Ngoại Sinh'
+       telemetry and stay strictly < 3900 chars.
+    """
+    from tools.cognitive_secondbrain_engine import CognitiveSecondBrainEngine
+    from tools.hourly_digest_monitor import collect_jev_and_brain_sleep_telemetry
+
+    db_path = tmp_path / "knowledge_compiler.db"
+    vault_dir = tmp_path / "SecondBrain"
+    vault_dir.mkdir(parents=True, exist_ok=True)
+    tomb_path = tmp_path / "l3_tombstones.jsonl"
+    myel_dir = tmp_path / "jev_myelination"
+
+    engine = CognitiveSecondBrainEngine(
+        db_path=db_path,
+        vault_path=vault_dir,
+        tombstone_path=tomb_path,
+        myelination_dir=myel_dir,
+    )
+
+    eco_report = engine.run_exogenous_ecology_cycle(vault_path=vault_dir)
+    assert eco_report["total_exogenous_items"] >= 6
+    assert eco_report["counts_by_source"]["github_trending"] >= 1
+    assert eco_report["counts_by_source"]["arxiv_paper"] >= 1
+    assert eco_report["counts_by_source"]["domain_standard"] >= 1
+    assert eco_report["counts_by_source"]["autonomous_task"] >= 1
+
+    decisions = eco_report["decision_counts"]
+    assert decisions["ADOPT_INTO_HARNESS"] >= 1
+    assert decisions["SCHEDULE_SELF_HEAL"] >= 1
+    assert decisions["COMPILE_LORA_SKILL"] >= 1
+    assert decisions["GENERATE_ADR"] >= 1
+    assert 1.50 <= eco_report["avg_shannon_entropy_bits"] <= 4.80
+    assert 0.85 <= eco_report["knowledge_absorption_ratio"] <= 1.0
+    assert eco_report["self_heal_summary"]["orphan_notes_count"] == 0
+
+    moc_file = Path(eco_report["moc_path"])
+    eval_file = Path(eco_report["evaluation_report_path"])
+    assert moc_file.is_file()
+    assert eval_file.is_file()
+    moc_text = moc_file.read_text(encoding="utf-8")
+    assert "Không Gian Tri Thức Ngoại Sinh (Exogenous Knowledge Space)" in moc_text
+    assert "ADOPT_INTO_HARNESS" in moc_text
+    assert "SCHEDULE_SELF_HEAL" in moc_text
+    assert "COMPILE_LORA_SKILL" in moc_text
+    assert "GENERATE_ADR" in moc_text
+    assert "[[Home]]" in moc_text
+
+    # Verify harness context retrieval can recall exogenous knowledge
+    ctx_block = engine.assemble_harness_context("RadixAttention prefix cache EBU R128", harness_mode="fast")
+    assert "exo:" in ctx_block or "RadixAttention" in ctx_block or "EBU" in ctx_block
+
+    # Verify collect_jev_and_brain_sleep_telemetry & format_hourly_digest surface exogenous knowledge
+    jev_data = collect_jev_and_brain_sleep_telemetry(
+        now_local=datetime(2026, 10, 17, 7, 10, 0),
+        knowledge_db_path=db_path,
+    )
+    exo_t = jev_data["exogenous_ecology"]
+    assert exo_t["exo_total"] == eco_report["total_exogenous_items"]
+    assert exo_t["exo_github"] == eco_report["counts_by_source"]["github_trending"]
+    assert exo_t["exo_arxiv"] == eco_report["counts_by_source"]["arxiv_paper"]
+    assert exo_t["exo_standards"] == eco_report["counts_by_source"]["domain_standard"]
+    assert exo_t["exo_tasks"] == eco_report["counts_by_source"]["autonomous_task"]
+
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    scan_payload = {
+        "overall_health_score": 98,
+        "severity": "HEALTHY",
+        "cron": {
+            "cron_health_score": 100,
+            "active_jobs_count": 4,
+            "paused_jobs_count": 18,
+            "clogged_jobs": [],
+            "drift_skipped_jobs": [],
+            "overdue_jobs": [],
+            "auth_failed_jobs": [],
+            "rate_limited_jobs": [],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 8.0},
+        },
+        "entropy": {"entropy_health_score": 95, "streams": []},
+        "jev_brain_sleep": jev_data,
+        "morning_sleep_briefing": True,
+    }
+    html_out = notifier.format_hourly_digest(scan_payload)
+    assert "Không Gian Tri Thức Ngoại Sinh:" in html_out
+    assert f"{exo_t['exo_total']} mẫu" in html_out
+    assert f"Adopt:{exo_t['exo_adopt_count']}" in html_out
+    assert f"Heal:{exo_t['exo_self_heal_count']}" in html_out
+    assert f"LoRA:{exo_t['exo_lora_count']}" in html_out
+    assert f"ADR:{exo_t['exo_adr_count']}" in html_out
+    assert len(html_out) < 3900
+
+
+def test_decommissioned_peripheral_streams_eliminates_cron_drift(tmp_path):
+    """Verify:
+    1. Default production EntropyDegradationDetector decommissions the 3 peripheral streams
+       (Stock, Legal, Media) and returns strictly the 2 active sovereign streams
+       ('Median-0 Math Sync' and 'AGY Fleet & Clef Mesh').
+    2. format_hourly_digest() renders 'External Entropy Streams (2/2):' and
+       'Đã xóa 3 luồng ngoại vi (Stock/Legal/Media) triệt tiêu cron-drift', with zero
+       Stock/Legal/Media entries.
+    3. ~/.hermes/cron/jobs.json has 0 peripheral Stock/Legal/Media jobs and
+       resources/l3_tombstones.jsonl records 'peripheral_entropy_streams_stock_legal_media'.
+    """
+    now_utc = datetime.now(timezone.utc)
+    now_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
+    median_log = tmp_path / "median.log"
+    median_log.write_text(
+        f"[{now_str}] Checks: 6 / 6\n[{now_str}] Hourly Sync completed successfully\n",
+        encoding="utf-8",
+    )
+
+    detector = EntropyDegradationDetector(median_log_path=median_log)
+    assert detector.decommission_peripheral_streams is True
+    assert detector.held_streams == set()
+
+    summary_resp = json.dumps({"online_nodes": 19, "total_nodes": 19}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 100.0, "sla_passed": True}).encode("utf-8")
+    nodes_resp = json.dumps({"nodes": []}).encode("utf-8")
+    jobs_resp = json.dumps({"jobs": []}).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        else:
+            mock_obj.read.return_value = jobs_resp
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        scan_res = detector.scan(now_utc=now_utc)
+
+    streams = scan_res["streams"]
+    assert len(streams) == 2
+    stream_names = [s["name"] for s in streams]
+    assert stream_names == ["Median-0 Math Sync", "AGY Fleet & Clef Mesh"]
+    assert "Stock News Feed" not in stream_names
+    assert "Legal & Regulatory Crawler" not in stream_names
+    assert "Media Asset Bank 24/7" not in stream_names
+    assert scan_res["active_streams_count"] == 2
+    assert scan_res["held_streams_count"] == 0
+
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    digest_html = notifier.format_hourly_digest({
+        "overall_health_score": 100,
+        "severity": "HEALTHY",
+        "cron": {
+            "cron_health_score": 100,
+            "active_jobs_count": 4,
+            "paused_jobs_count": 0,
+            "clogged_jobs": [],
+            "drift_skipped_jobs": [],
+            "overdue_jobs": [],
+            "auth_failed_jobs": [],
+            "rate_limited_jobs": [],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 5.0},
+        },
+        "entropy": scan_res,
+    })
+    assert "External Entropy Streams (2/2):" in digest_html
+    assert "Đã xóa 3 luồng ngoại vi (Stock/Legal/Media) triệt tiêu cron-drift" in digest_html
+    assert "Stock News Feed" not in digest_html
+    assert "Legal &amp; Regulatory Crawler" not in digest_html
+    assert "Media Asset Bank 24/7" not in digest_html
+
+    # Verify production cron jobs.json and l3_tombstones.jsonl
+    jobs_file = Path.home() / ".hermes" / "cron" / "jobs.json"
+    if jobs_file.exists():
+        jobs_raw = json.loads(jobs_file.read_text(encoding="utf-8"))
+        jobs_list = jobs_raw.get("jobs", jobs_raw) if isinstance(jobs_raw, dict) else jobs_raw
+        job_ids = {j.get("id") for j in jobs_list}
+        assert "job_stock_news_hourly" not in job_ids
+        assert "job_vietnam_legal_hourly" not in job_ids
+        assert "job_hourly_media_production" not in job_ids
+        assert len(jobs_list) == 4
+
+    tomb_file = Path("/home/zen/hermes-agent/resources/l3_tombstones.jsonl")
+    assert tomb_file.exists()
+    assert "peripheral_entropy_streams_stock_legal_media" in tomb_file.read_text(encoding="utf-8")
+
+
+def test_argon_only_and_victory_critic_in_hourly_digest(tmp_path):
+    """Verify:
+    1. Legacy gemini-3.8-flash-{high,medium,low} model names in raw job logs are normalized
+       to canonical gemini-4-argon-{high,medium,low} in check_stream_5_fleet_mesh and format_hourly_digest.
+    2. Victory Critic & Anti-Fake-Pass telemetry from victory_critique_ledger is surfaced in
+       collect_jev_and_brain_sleep_telemetry and format_hourly_digest (< 3900 chars).
+    """
+    from tools.hourly_digest_monitor import collect_jev_and_brain_sleep_telemetry
+    from tools.sovereign_victory_critic import SovereignVictoryCritic
+
+    db_file = tmp_path / "knowledge_compiler.db"
+    critic = SovereignVictoryCritic(db_path=db_file)
+    critic.seed_canonical_project_critiques()
+
+    now_ts = time.time()
+    detector = EntropyDegradationDetector(
+        fleet_summary_url="http://mock-summary",
+        fleet_council_url="http://mock-council",
+        fleet_nodes_url="http://mock-nodes",
+        fleet_jobs_url="http://mock-jobs",
+    )
+    summary_resp = json.dumps({"online_nodes": 19, "total_nodes": 19}).encode("utf-8")
+    council_resp = json.dumps({"composite_consensus_score": 100.0, "sla_passed": True}).encode("utf-8")
+    nodes_resp = json.dumps({
+        "nodes": [
+            {
+                "name": "sunward",
+                "tier": "pro",
+                "preferred_model": "gemini-3.8-flash-high",
+                "requests_served": 15,
+                "quota_weekly_capacity": 2500000,
+                "quota_weekly_consumed": 500000,
+                "quota_weekly_percent": 80.0,
+                "status": "healthy",
+            }
+        ]
+    }).encode("utf-8")
+    jobs_resp = json.dumps({
+        "jobs": [
+            {
+                "job_id": "j-argon-1",
+                "node_name": "sunward",
+                "model": "gemini-3.8-flash-high",
+                "status": "completed",
+                "total_tokens": 25000,
+                "created_at": now_ts - 60.0,
+                "prompt": "Verify 3-level Argon normalization",
+            },
+            {
+                "job_id": "j-argon-2",
+                "node_name": "sunward",
+                "model": "gemini-3.8-flash-medium",
+                "status": "completed",
+                "total_tokens": 12000,
+                "created_at": now_ts - 50.0,
+                "prompt": "Verify medium Argon normalization",
+            },
+        ]
+    }).encode("utf-8")
+
+    def mock_urlopen(req, *args, **kwargs):
+        mock_obj = MagicMock()
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "mock-summary" in url:
+            mock_obj.read.return_value = summary_resp
+        elif "mock-council" in url:
+            mock_obj.read.return_value = council_resp
+        elif "mock-nodes" in url:
+            mock_obj.read.return_value = nodes_resp
+        else:
+            mock_obj.read.return_value = jobs_resp
+        mock_obj.__enter__.return_value = mock_obj
+        return mock_obj
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        s5 = detector.check_stream_5_fleet_mesh(now_ts=now_ts)
+
+    assert s5["top_3_tasks"][0]["model"] == "gemini-4-argon-high"
+    assert s5["top_3_tasks"][1]["model"] == "gemini-4-argon-medium"
+    assert "gemini-3.8-flash-high" not in s5["pro_fleet_insight"]["model_distribution"]
+    assert "gemini-4-argon-high" in s5["pro_fleet_insight"]["model_distribution"]
+
+    jev_data = collect_jev_and_brain_sleep_telemetry(knowledge_db_path=db_file)
+    assert jev_data["victory_critic"]["total_critiques"] == 5
+    assert jev_data["victory_critic"]["passed_count"] == 5
+    assert jev_data["victory_critic"]["avg_fake_pass_risk"] == 0.0
+
+    notifier = HermesTelegramNotifier(env_file=Path("/nonexistent/.env"), target_chat_id=TEST_CHAT_ID)
+    digest_html = notifier.format_hourly_digest({
+        "overall_health_score": 100,
+        "severity": "HEALTHY",
+        "cron": {
+            "cron_health_score": 100,
+            "active_jobs_count": 4,
+            "paused_jobs_count": 0,
+            "clogged_jobs": [],
+            "drift_skipped_jobs": [],
+            "overdue_jobs": [],
+            "auth_failed_jobs": [],
+            "rate_limited_jobs": [],
+            "ticker_heartbeat": {"is_stale": False, "age_seconds": 5.0},
+        },
+        "entropy": {"entropy_health_score": 100, "streams": [s5]},
+        "jev_brain_sleep": jev_data,
+    })
+    assert "Victory Critic &amp; Anti-Fake-Pass:</b> Risk=0.00 | Pass:5/Block:0 (100% Argon 4 H/M/L)" in digest_html
+    assert "gemini-3.8-flash" not in digest_html
+    assert "gemini-4-argon-high" in digest_html
+    assert len(digest_html) < 3900
+
+
+def test_reap_phantom_processes_and_stale_locks(tmp_path):
+    """Verify SelfHealingManager.reap_phantom_processes_and_stale_locks reaps phantom agy processes, hung modal logs, and stale locks."""
+    from unittest.mock import patch, MagicMock
+
+    manager = SelfHealingManager(
+        jobs_path=tmp_path / "jobs.json",
+        repo_dir=tmp_path / "repo",
+        scripts_dir=tmp_path / "scripts",
+    )
+
+    mock_ps_output = (
+        "    PID ELAPSED COMMAND\n"
+        " 999001    8500 /home/zen/.gemini/antigravity-cli/bin/agy --input-format stream-json --model gemini-4-argon-low --conversation 11111111-2222-3333-4444-555555555555\n"
+        " 999002    1200 /usr/bin/python3 /home/zen/.local/bin/modal app logs hermes-flux-fill-nsfw\n"
+    )
+    mock_proc = MagicMock(returncode=0, stdout=mock_ps_output)
+
+    killed_pids = []
+
+    def fake_kill(pid, sig):
+        killed_pids.append((pid, sig))
+
+    with patch("subprocess.run", return_value=mock_proc), patch("os.kill", side_effect=fake_kill):
+        res = manager.reap_phantom_processes_and_stale_locks(
+            max_agy_age_seconds=7200,
+            max_modal_logs_age_seconds=600,
+        )
+
+    assert len(res["reaped_agy_phantoms"]) == 1
+    assert res["reaped_agy_phantoms"][0]["pid"] == 999001
+    assert res["reaped_modal_logs_pids"] == [999002]
+    assert (999001, 15) in killed_pids
+    assert (999002, 15) in killed_pids
+
+
+def _worker_epoch_lock_attempt(lock_path: str, result_queue) -> None:
+    """Subprocess attempting to acquire the same EpochLockGuard lock."""
+    from tools.cognitive_secondbrain_engine import EpochLockGuard
+    guard = EpochLockGuard(lock_path=lock_path, lease_seconds=10)
+    acquired = guard.acquire()
+    result_queue.put(acquired)
+    if acquired:
+        time.sleep(0.2)
+        guard.release()
+
+
+def test_epoch_lock_mutual_exclusion(tmp_path):
+    """Verify concurrent processes cannot hold the sleep-cycle EpochLockGuard lock simultaneously (CWE-362)."""
+    import multiprocessing
+    from tools.cognitive_secondbrain_engine import EpochLockGuard
+
+    lock_path = str(tmp_path / "test_exec.lock")
+    guard_parent = EpochLockGuard(lock_path=lock_path, lease_seconds=10)
+    assert guard_parent.acquire() is True
+
+    queue = multiprocessing.Queue()
+    proc = multiprocessing.Process(target=_worker_epoch_lock_attempt, args=(lock_path, queue))
+    proc.start()
+    proc.join(timeout=3.0)
+
+    child_acquired = queue.get(timeout=1.0)
+    assert child_acquired is False
+    guard_parent.release()
+    assert not os.path.exists(lock_path)
+
+
+def test_epoch_lock_stale_pid_recovery(tmp_path):
+    """Verify automatic reclamation when EpochLockGuard lockfile is held by a dead PID."""
+    from tools.cognitive_secondbrain_engine import EpochLockGuard
+
+    lock_path = str(tmp_path / "stale.lock")
+    fake_data = '{"pid": 99999999, "acquired_at": 1000.0, "lease_seconds": 10}'
+    Path(lock_path).write_text(fake_data, encoding="utf-8")
+
+    guard = EpochLockGuard(lock_path=lock_path, lease_seconds=10)
+    assert guard.acquire() is True
+    guard.release()
+    assert not os.path.exists(lock_path)
+
+
+def test_sanitize_digest_field_strips_ansi_and_pipes():
+    """Verify ANSI control codes and Markdown table delimiters are safely defanged (CWE-20/CWE-116)."""
+    from tools.hourly_digest_monitor import sanitize_digest_field
+
+    malicious_input = "\x1b[31;1mError Detected\x1b[0m | DROP TABLE users; -- <script>alert(1)</script>"
+    sanitized = sanitize_digest_field(malicious_input)
+
+    assert "\x1b" not in sanitized
+    assert "\\|" in sanitized
+    assert "<script>" not in sanitized
+    assert "&lt;script&gt;" in sanitized
+
+
+def test_redact_sensitive_payloads():
+    """Verify API keys and bearer tokens are masked before storage in SecondBrain notes (CWE-259)."""
+    from tools.cognitive_secondbrain_engine import redact_sensitive_payloads
+
+    log_sample = "Connected to service with api_key=AIzaSyD98234FakeKeyXYZ and token='ghp_98457293847529348572'"
+    redacted = redact_sensitive_payloads(log_sample)
+
+    assert "AIzaSyD98234FakeKeyXYZ" not in redacted
+    assert "ghp_98457293847529348572" not in redacted
+    assert "api_key=AIza...XYZ(REDACTED)" in redacted
+    assert "token=ghp_...572(REDACTED)" in redacted
+
+
+def test_sanitize_digest_payload_and_validate_model_target():
+    """Verify sanitize_digest_payload masks Google/Anthropic keys and validate_model_target enforces Argon-4 allowlist."""
+    from tools.hourly_digest_monitor import (
+        PERMITTED_FLEET_MODELS,
+        SecurityPolicyViolation,
+        sanitize_digest_payload,
+        validate_model_target,
+    )
+
+    raw_input = (
+        "ERROR during call to AIzaSyDx83J98ZlmkP901238475928192837492 on worker-1. "
+        "Auth Header: Bearer sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890_ABCD. "
+        "Config token: 'token=super_secret_token_123456'."
+    )
+    sanitized = sanitize_digest_payload(raw_input)
+    assert "AIzaSy" not in sanitized
+    assert "sk-ant-" not in sanitized
+    assert "super_secret_token_123456" not in sanitized
+    assert "[REDACTED_API_KEY]" in sanitized
+    assert "[REDACTED_SECRET]" in sanitized
+
+    for m in PERMITTED_FLEET_MODELS:
+        assert validate_model_target(m) == m
+
+    legacy_slug = "gemini-3" + ".8-flash-high"
+    with pytest.raises(SecurityPolicyViolation) as exc_info:
+        validate_model_target(legacy_slug)
+    assert "strictly forbidden by Fleet Routing Invariant 1.14" in str(exc_info.value)
+
+
+def test_hlc_clock_guard_monotonic_and_drift_rejection():
+    """Verify HLCClockGuard monotonic tick progression and fail-closed ClockDriftExceededError on backward skew."""
+    from tools.hlc_clock_drift_guard import (
+        ClockDriftExceededError,
+        HLCClockGuard,
+        MAX_ALLOWED_DRIFT_MS,
+    )
+
+    base_time = 1700000000000
+    guard = HLCClockGuard(initial_physical_ms=base_time)
+
+    t1, c1 = guard.tick(base_time)
+    t2, c2 = guard.tick(base_time)
+    assert t1 == base_time and c1 == 1
+    assert t2 == base_time and c2 == 2
+
+    t_next, c_next = guard.tick(base_time + 100)
+    assert t_next == base_time + 100 and c_next == 0
+
+    with pytest.raises(ClockDriftExceededError) as exc_info:
+        guard.tick(base_time + 100 - (MAX_ALLOWED_DRIFT_MS + 100))
+    assert exc_info.value.drift_ms == MAX_ALLOWED_DRIFT_MS + 100
+    assert exc_info.value.threshold_ms == MAX_ALLOWED_DRIFT_MS
+
+
+def test_graydoom_codex_qa_harness_skills_and_secondbrain_sync():
+    """Verify Gray Doom Codex QA Harness skills (Workspace + AGY Global) and SecondBrain ingestion."""
+    import hashlib
+    import sqlite3
+    import subprocess
+    from pathlib import Path
+    from tools.graydoom_codex_handoff_auditor import WORKTREE_TARGETS, audit_worktree
+
+    ws_base = Path("/home/zen/hermes-agent/.agents/skills")
+    gl_base = Path("/home/zen/.gemini/config/skills")
+    skill_names = [
+        "graydoom-codex-harness",
+        "graydoom-character-and-art-logic",
+        "graydoom-handoff-navigator",
+        "graydoom_art",
+    ]
+    for name in skill_names:
+        ws_md = ws_base / name / "SKILL.md"
+        gl_md = gl_base / name / "SKILL.md"
+        assert ws_md.is_file(), f"Missing workspace skill {ws_md}"
+        assert gl_md.is_file(), f"Missing AGY global skill {gl_md}"
+        assert hashlib.sha256(ws_md.read_bytes()).hexdigest() == hashlib.sha256(gl_md.read_bytes()).hexdigest()
+        content = ws_md.read_text(encoding="utf-8")
+        assert content.startswith("---\nname: ") and "\ndescription:" in content
+
+    audits = [audit_worktree(t) for t in WORKTREE_TARGETS]
+    main_audit = audits[0]
+    if main_audit.exists:
+        assert main_audit.dossier_completion_count == 142
+        assert main_audit.atlas_work_order_tasks == 2081
+        assert main_audit.has_character_view_gate is True
+        assert main_audit.has_low_sat_72px_gate is True
+
+        pass_front = subprocess.run(
+            ["python3", "scripts/check-character-art-submission.py", "nahla", "--view", "front"],
+            cwd=main_audit.path,
+            capture_output=True,
+            text=True,
+        )
+        block_rear = subprocess.run(
+            ["python3", "scripts/check-character-art-submission.py", "nahla", "--view", "back-hair-silhouette"],
+            cwd=main_audit.path,
+            capture_output=True,
+            text=True,
+        )
+        assert pass_front.returncode == 0 and "ELIGIBLE" in pass_front.stdout
+        assert block_rear.returncode != 0 and "BLOCKED" in block_rear.stderr
+
+    db_path = Path("/home/zen/.hermes/knowledge_compiler.db")
+    if db_path.is_file():
+        conn = sqlite3.connect(str(db_path))
+        rows = conn.execute(
+            "SELECT external_ref, evolution_decision, secondbrain_note_path FROM exogenous_entropy_ledger WHERE external_ref LIKE 'graydoom:codex-%'"
+        ).fetchall()
+        conn.close()
+        assert len(rows) >= 2
+        for _, decision, rel_note in rows:
+            assert decision == "ADOPT_INTO_HARNESS"
+            assert (Path("/home/zen/Obsidian/SecondBrain") / rel_note).is_file()
+
+
+class TestAdversarialSecurityEnclave:
+    """Empirical test suite for SovereignEntropyScrubber, TelemetryRingBuffer, ByzantineBoundedHLC, and SafeGitEnclave."""
+
+    def test_scrubber_redacts_anthropic_and_google_keys_with_hash(self):
+        from tools.hourly_digest_monitor import SovereignEntropyScrubber
+
+        sample_input = (
+            "Task failed on node-1 with token sk-ant-api03-abcdef1234567890abcdef1234567890 "
+            "and backup AIzaSyD98765432101234567890123456789012"
+        )
+        scrubbed = SovereignEntropyScrubber.scrub(sample_input)
+
+        assert "sk-ant-api03" not in scrubbed
+        assert "AIzaSyD987654" not in scrubbed
+        assert "[REDACTED_ANTHROPIC_KEY:" in scrubbed
+        assert "[REDACTED_GOOGLE_API_KEY:" in scrubbed
+
+    def test_telemetry_ring_buffer_strictly_bounds_memory_and_evicts(self):
+        from tools.hourly_digest_monitor import TelemetryRingBuffer
+
+        buffer = TelemetryRingBuffer(capacity=5)
+        for i in range(12):
+            buffer.append({"event_id": i, "metric": f"val_{i}"})
+
+        assert len(buffer) == 5
+        assert buffer.total_appended == 12
+        assert buffer.eviction_count == 7
+
+        remaining_ids = [item["event_id"] for item in buffer.drain_all()]
+        assert remaining_ids == [7, 8, 9, 10, 11]
+        assert len(buffer) == 0
+
+    def test_byzantine_hlc_rejects_future_clock_drift_attack(self):
+        from tools.hlc_clock_drift_guard import ByzantineBoundedHLC, HLCReading
+
+        class MockClock:
+            def __init__(self, init_time: int) -> None:
+                self.curr = init_time
+
+            def __call__(self) -> int:
+                return self.curr
+
+        clock = MockClock(1_000_000)
+        hlc = ByzantineBoundedHLC(node_id="pro-1", clock_func=clock)
+
+        malicious_reading = HLCReading(
+            physical_ms=1_010_000,
+            logical_counter=0,
+            node_id="adversarial-node",
+        )
+        accepted, resulting_hlc, reason = hlc.update(malicious_reading)
+
+        assert accepted is False
+        assert "Byzantine drift detected" in reason
+        assert resulting_hlc.physical_ms == 1_000_000
+        assert resulting_hlc.logical_counter == 0
+
+    def test_byzantine_hlc_accepts_valid_drift_and_increments_monotonically(self):
+        from tools.hlc_clock_drift_guard import ByzantineBoundedHLC, HLCReading
+
+        class MockClock:
+            def __init__(self, init_time: int) -> None:
+                self.curr = init_time
+
+            def __call__(self) -> int:
+                return self.curr
+
+        clock = MockClock(1_000_000)
+        hlc = ByzantineBoundedHLC(node_id="pro-1", clock_func=clock)
+
+        valid_reading = HLCReading(
+            physical_ms=1_001_500,
+            logical_counter=4,
+            node_id="node-4",
+        )
+        accepted, resulting_hlc, reason = hlc.update(valid_reading)
+        assert accepted is True
+        assert reason == "OK"
+        assert resulting_hlc.physical_ms == 1_001_500
+        assert resulting_hlc.logical_counter == 5
+
+    def test_safe_git_enclave_rejects_command_injection_and_path_traversal(self):
+        from tools.graydoom_codex_handoff_auditor import SafeGitEnclave
+
+        with pytest.raises(ValueError, match="Malicious or invalid git reference detected"):
+            SafeGitEnclave.validate_ref("main; rm -rf /")
+
+        with pytest.raises(ValueError, match="Malicious or invalid git reference detected"):
+            SafeGitEnclave.validate_ref("origin/main`touch pwn`")
+
+        with pytest.raises(ValueError, match="Path traversal characters in git ref forbidden"):
+            SafeGitEnclave.validate_ref("../../../etc/shadow")
+
+        valid = SafeGitEnclave.validate_ref("origin/codex/settlement-art-mapping-20261015")
+        assert valid == "origin/codex/settlement-art-mapping-20261015"
+
+    def test_hlc_clock_guard_rejects_byzantine_forward_clock_skew(self) -> None:
+        from tools.hlc_clock_drift_guard import ClockDriftExceededError, HLCClockGuard
+
+        guard = HLCClockGuard(max_drift_ms=1500)
+        now_ms = int(time.time() * 1000)
+
+        valid_clock = guard.update(remote_physical_ms=now_ms + 1000, remote_logical=0)
+        assert valid_clock.physical_time_ms >= now_ms + 1000
+        assert valid_clock.logical_counter == 1
+
+        with pytest.raises(ClockDriftExceededError) as exc_info:
+            guard.update(remote_physical_ms=now_ms + 5000, remote_logical=0)
+        assert "exceeds maximum tolerated threshold" in str(exc_info.value)
+
+    def test_hlc_clock_guard_strict_monotonic_ordering_under_concurrent_ticks(self) -> None:
+        from tools.hlc_clock_drift_guard import HLCClockGuard
+
+        guard = HLCClockGuard(max_drift_ms=1500)
+        fixed_now = int(time.time() * 1000) + 200
+
+        clock_a = guard.update(remote_physical_ms=fixed_now, remote_logical=0)
+        clock_b = guard.update(remote_physical_ms=fixed_now, remote_logical=1)
+        clock_c = guard.update(remote_physical_ms=fixed_now, remote_logical=1)
+
+        assert clock_a.logical_counter < clock_b.logical_counter
+        assert clock_b.logical_counter < clock_c.logical_counter
+        assert guard.verify_order(clock_a, clock_b) is True
+        assert guard.verify_order(clock_b, clock_c) is True
+        assert guard.verify_order(clock_c, clock_a) is False
+
+    def test_stateless_token_replay_rejected_within_same_epoch(self) -> None:
+        from tools.hourly_digest_monitor import StatelessTokenGuard
+
+        secret = b"kdf_test_master_secret_32_bytes_len!!"
+        token_guard = StatelessTokenGuard(master_secret=secret, epoch_duration_s=10)
+        payload = {"node_id": "node-4", "action": "quota_deduct", "units": 5}
+        current_time = 1729230000.0
+
+        token = token_guard.generate_token(payload, timestamp_s=current_time)
+        assert token_guard.validate_and_consume_token(payload, token, current_time) is True
+        assert token_guard.validate_and_consume_token(payload, token, current_time) is False
+
+    def test_stateless_token_rejects_tampered_payload_or_expired_epoch(self) -> None:
+        from tools.hourly_digest_monitor import StatelessTokenGuard
+
+        secret = b"kdf_test_master_secret_32_bytes_len!!"
+        token_guard = StatelessTokenGuard(master_secret=secret, epoch_duration_s=10)
+        payload = {"node_id": "node-4", "units": 5}
+        t0 = 1729230000.0
+
+        token = token_guard.generate_token(payload, timestamp_s=t0)
+        tampered_payload = {"node_id": "node-4", "units": 999}
+        assert token_guard.validate_and_consume_token(tampered_payload, token, t0) is False
+
+        future_time = t0 + 35.0
+        assert token_guard.validate_and_consume_token(payload, token, future_time) is False
+
+    def test_silent_bit_flip_payload_corruption_detected_via_sha256(self) -> None:
+        from tools.hourly_digest_monitor import StatelessTokenGuard
+
+        secret = b"kdf_test_master_secret_32_bytes_len!!"
+        token_guard = StatelessTokenGuard(master_secret=secret, epoch_duration_s=60)
+        payload = {"node_id": "node-5", "fraction": 0.125}
+        t0 = 1729230000.0
+
+        valid_token = token_guard.generate_token(payload, t0)
+        prefix, sig = valid_token.split(":")
+        corrupted_char = "a" if sig[-1] != "a" else "b"
+        corrupted_token = f"{prefix}:{sig[:-1]}{corrupted_char}"
+
+        assert token_guard.validate_and_consume_token(payload, corrupted_token, t0) is False
+
+    def test_insecure_or_short_master_secret_rejected(self) -> None:
+        from tools.hourly_digest_monitor import SecurityConfigurationError, StatelessTokenEngine
+
+        with pytest.raises(SecurityConfigurationError, match="at least 32 characters"):
+            StatelessTokenEngine(master_secret="short_secret")
+
+        with pytest.raises(SecurityConfigurationError, match="Insecure default"):
+            StatelessTokenEngine(master_secret="secret                          ")
+
+    def test_stateless_token_engine_replay_and_tamper_rejected(self) -> None:
+        from tools.hourly_digest_monitor import StatelessTokenEngine, TokenReplayDetectedError
+
+        engine = StatelessTokenEngine(master_secret="a" * 32, epoch_window_seconds=60)
+        t_sim = 1700000000.0
+        token, _ = engine.derive_epoch_token("GET", "/v1/r2/download", "nonce_alpha_123", timestamp=t_sim)
+
+        assert engine.verify_token("GET", "/v1/r2/download", "nonce_alpha_123", token, timestamp=t_sim) is True
+
+        with pytest.raises(TokenReplayDetectedError, match="Replay detected"):
+            engine.verify_token("GET", "/v1/r2/download", "nonce_alpha_123", token, timestamp=t_sim + 1.0)
+
+        token2, _ = engine.derive_epoch_token("POST", "/v1/r2/upload", "nonce_999", timestamp=t_sim)
+        assert engine.verify_token("GET", "/v1/r2/upload", "nonce_999", token2, timestamp=t_sim) is False
+        assert engine.verify_token("POST", "/v1/r2/other", "nonce_999", token2, timestamp=t_sim) is False
+
+    def test_sovereign_hlc_guard_monotonic_and_backward_drift_bounds(self) -> None:
+        from tools.hlc_clock_drift_guard import ClockDriftExceededError, SovereignHLCGuard
+
+        guard = SovereignHLCGuard(max_drift_ms=250.0)
+        base_phys = 1700000000500.0
+
+        p1, l1 = guard.get_timestamp(physical_now_ms=base_phys)
+        p2, l2 = guard.get_timestamp(physical_now_ms=base_phys)
+        p3, l3 = guard.get_timestamp(physical_now_ms=base_phys - 150.0)
+
+        assert (p1, l1) == (base_phys, 0)
+        assert (p2, l2) == (base_phys, 1)
+        assert (p3, l3) == (base_phys, 2)
+
+        with pytest.raises(ClockDriftExceededError, match="backwards drift"):
+            guard.get_timestamp(physical_now_ms=base_phys - 500.0)
+
+    def test_hlc_shrinking_counterexample_engine_isolates_minimal_violation(self) -> None:
+        from tools.hlc_clock_drift_guard import HLCShrinkingCounterexampleEngine, SovereignHLCGuard
+
+        shrinker = HLCShrinkingCounterexampleEngine()
+        trace = [
+            (1000, 0, 0),
+            (1001, 1000, 1),
+            (1002, 1001, 0),
+            (995, 1001, 2),
+            (995, 1001, 1),
+            (1003, 1002, 0),
+        ]
+
+        def buggy_clock_fn(wall: int, rem_p: int, rem_l: int):
+            phys = max(wall, rem_p)
+            logic = rem_l + 1 if phys == rem_p else 0
+            return (phys, logic)
+
+        assert shrinker.run_monotonicity_property(buggy_clock_fn, trace) is False
+        minimal = shrinker.shrink_counterexample(buggy_clock_fn, trace)
+        assert 2 <= len(minimal) < len(trace)
+        assert shrinker.run_monotonicity_property(buggy_clock_fn, minimal) is False
+
+        safe_guard = SovereignHLCGuard(max_drift_ms=250.0)
+        assert shrinker.run_monotonicity_property(
+            lambda w, _rp, _rl: safe_guard.get_timestamp(physical_now_ms=float(w)),
+            [(1000, 0, 0), (1000, 0, 0), (995, 0, 0), (1002, 0, 0)],
+        ) is True
+
+

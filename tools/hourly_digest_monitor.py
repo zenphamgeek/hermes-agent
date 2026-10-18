@@ -160,6 +160,283 @@ def parse_timestamp(val: Any) -> Optional[datetime]:
 
 MAX_TELEMETRY_VALUE = 1 << 40  # Saturating ceiling (1,099,511,627,776 tokens / requests; CWE-20)
 
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+
+def sanitize_digest_field(value: Any, max_length: int = 512) -> str:
+    """Sanitizes raw strings for secure Markdown table and log inclusion (CWE-20 / CWE-116)."""
+    if not isinstance(value, str):
+        value = str(value)
+    cleaned = ANSI_ESCAPE_PATTERN.sub("", value)
+    cleaned = cleaned.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+    cleaned = html.escape(cleaned, quote=True)
+    cleaned = " ".join(cleaned.split())
+    if len(cleaned) > max_length:
+        return cleaned[: max_length - 3] + "..."
+    return cleaned
+
+
+PERMITTED_FLEET_MODELS = frozenset({
+    "gemini-4-argon-high",
+    "gemini-4-argon-medium",
+    "gemini-4-argon-low",
+    "claude-opus-5-5-high",
+    "claude-opus-5-5-medium",
+    "claude-opus-5-5-low",
+    "claude-opus-4-6-thinking",
+    "claude-sonnet-4-6",
+    "gpt-oss-120b-medium",
+})
+
+FORBIDDEN_MODEL_PATTERNS = re.compile(r"gemini-3[\.\-]8[\-_]flash.*", re.IGNORECASE)
+
+SECRET_REDACTION_PATTERNS: Dict[str, re.Pattern[str]] = {
+    "google_api_key": re.compile(r"AIza[0-9A-Za-z\-_]{20,}"),
+    "anthropic_key": re.compile(r"sk-ant-[0-9A-Za-z\-_]{20,}"),
+    "generic_secret": re.compile(
+        r"(?i)(bearer|token|password|secret|apikey)\s*[:=\s]\s*['\"]?([a-zA-Z0-9_\-\.]{12,})['\"]?"
+    ),
+}
+
+
+class SecurityPolicyViolation(Exception):
+    """Raised when an operational or architectural security invariant is breached."""
+
+
+def sanitize_digest_payload(raw_content: str) -> str:
+    """Replaces sensitive credentials, tokens, and API keys with strict masking tags (CWE-312)."""
+    if not isinstance(raw_content, str):
+        return str(raw_content)
+    sanitized = SECRET_REDACTION_PATTERNS["google_api_key"].sub("[REDACTED_API_KEY]", raw_content)
+    sanitized = SECRET_REDACTION_PATTERNS["anthropic_key"].sub("[REDACTED_API_KEY]", sanitized)
+    sanitized = SECRET_REDACTION_PATTERNS["generic_secret"].sub(r"\1: [REDACTED_SECRET]", sanitized)
+    return sanitized
+
+
+def validate_model_target(model_name: str) -> str:
+    """Validates model against Group B Pro 3-Tier Gemini 4 Argon allowlist (Invariant 1.14)."""
+    if FORBIDDEN_MODEL_PATTERNS.match(str(model_name)):
+        raise SecurityPolicyViolation(
+            f"Model '{model_name}' is deprecated and strictly forbidden by Fleet Routing Invariant 1.14."
+        )
+    if model_name not in PERMITTED_FLEET_MODELS:
+        raise SecurityPolicyViolation(
+            f"Model '{model_name}' is not in the authorized FLEET_NODE_ALLOWLIST."
+        )
+    return model_name
+
+
+class SovereignEntropyScrubber:
+    """Deterministic fail-closed redaction engine with SHA-256 prefix correlation."""
+
+    SECRET_PATTERNS: List[Tuple[str, re.Pattern]] = [
+        ("ANTHROPIC_KEY", re.compile(r"sk-ant-[a-zA-Z0-9_\-]{32,}")),
+        ("OPENAI_KEY", re.compile(r"sk-[a-zA-Z0-9]{32,}")),
+        ("GOOGLE_API_KEY", re.compile(r"AIza[0-9A-Za-z\-_]{35}")),
+        ("BEARER_AUTH", re.compile(r"(?i)bearer\s+[a-zA-Z0-9_\-\.=:_+/]{20,}")),
+        ("MODAL_TOKEN", re.compile(r"ak-[a-zA-Z0-9]{20,}:as-[a-zA-Z0-9]{20,}")),
+        (
+            "GENERIC_SECRET_PAIR",
+            re.compile(r"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-\.]{16,})['\"]?"),
+        ),
+    ]
+
+    @classmethod
+    def scrub(cls, text: str) -> str:
+        if not text:
+            return ""
+        scrubbed = text
+        for name, pattern in cls.SECRET_PATTERNS:
+            def _replace_match(match: re.Match, tag: str = name) -> str:
+                matched_val = match.group(0)
+                h = hashlib.sha256(matched_val.encode("utf-8")).hexdigest()[:8]
+                return f"[REDACTED_{tag}:{h}]"
+
+            scrubbed = pattern.sub(_replace_match, scrubbed)
+        return scrubbed
+
+
+class TelemetryRingBuffer:
+    """Sliding-window bounded memory ring buffer with O(1) allocation guarantees."""
+
+    def __init__(self, capacity: int = 5000) -> None:
+        from collections import deque
+
+        if capacity <= 0:
+            raise ValueError(f"RingBuffer capacity must be > 0, got {capacity}")
+        self.capacity: int = capacity
+        self._buffer: deque = deque(maxlen=capacity)
+        self.eviction_count: int = 0
+        self.total_appended: int = 0
+
+    def append(self, entry: Dict[str, Any]) -> None:
+        if len(self._buffer) == self.capacity:
+            self.eviction_count += 1
+        self.total_appended += 1
+        self._buffer.append(entry)
+
+    def drain_all(self) -> List[Dict[str, Any]]:
+        items = list(self._buffer)
+        self._buffer.clear()
+        return items
+
+    def peek_window(self, count: int) -> List[Dict[str, Any]]:
+        if count <= 0:
+            return []
+        slice_start = max(0, len(self._buffer) - count)
+        return [self._buffer[i] for i in range(slice_start, len(self._buffer))]
+
+    def __len__(self) -> int:
+        return len(self._buffer)
+
+
+class StatelessTokenGuard:
+    """Micro-epoch HMAC-SHA256 stateless token verification with single-use replay rejection (CWE-294)."""
+
+    def __init__(self, master_secret: bytes, epoch_duration_s: int = 60) -> None:
+        if len(master_secret) < 32:
+            raise ValueError("Master secret must be at least 32 bytes for HMAC-SHA256")
+        if epoch_duration_s <= 0:
+            raise ValueError("epoch_duration_s must be positive")
+        self._secret = bytes(master_secret)
+        self._epoch_duration_s = int(epoch_duration_s)
+        self._consumed_tokens: set[str] = set()
+        self._last_eviction_epoch = int(time.time()) // self._epoch_duration_s
+
+    def _get_epoch(self, timestamp_s: float) -> int:
+        return int(timestamp_s) // self._epoch_duration_s
+
+    def generate_token(self, payload: Dict[str, Any], timestamp_s: float) -> str:
+        import hmac
+
+        epoch = self._get_epoch(timestamp_s)
+        canonical_data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        epoch_bytes = epoch.to_bytes(8, byteorder="big", signed=False)
+        signature = hmac.new(self._secret, canonical_data + epoch_bytes, hashlib.sha256).hexdigest()
+        return f"{epoch}:{signature}"
+
+    def validate_and_consume_token(self, payload: Dict[str, Any], token: str, current_time_s: float) -> bool:
+        import hmac
+
+        try:
+            token_epoch_str, token_sig = token.split(":", 1)
+            token_epoch = int(token_epoch_str)
+        except (ValueError, AttributeError):
+            return False
+
+        current_epoch = self._get_epoch(current_time_s)
+        if abs(current_epoch - token_epoch) > 1:
+            return False
+
+        if token in self._consumed_tokens:
+            return False
+
+        canonical_data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        epoch_bytes = token_epoch.to_bytes(8, byteorder="big", signed=False)
+        expected_sig = hmac.new(self._secret, canonical_data + epoch_bytes, hashlib.sha256).hexdigest()
+
+        if not hmac.compare_digest(expected_sig, token_sig):
+            return False
+
+        if current_epoch > self._last_eviction_epoch:
+            self._consumed_tokens.clear()
+            self._last_eviction_epoch = current_epoch
+
+        self._consumed_tokens.add(token)
+        return True
+
+
+class SecurityConfigurationError(ValueError):
+    """Raised when security invariants, entropy gates, or secret configurations are violated."""
+
+
+class TokenReplayDetectedError(ValueError):
+    """Raised when an identical cryptographic signature is replayed within the valid epoch."""
+
+
+class StatelessTokenEngine:
+    """Stateless HMAC KDF token validator with 60s sliding epoch window and bounded LRU replay cache."""
+
+    def __init__(
+        self,
+        master_secret: str,
+        epoch_window_seconds: int = 60,
+        replay_cache_capacity: int = 4096,
+    ) -> None:
+        import collections
+
+        if not master_secret:
+            raise SecurityConfigurationError(
+                "Master secret must contain at least 32 characters of high-entropy data."
+            )
+        forbidden_defaults = {"default", "secret", "development", "changeme", "admin"}
+        if master_secret.lower().strip() in forbidden_defaults:
+            raise SecurityConfigurationError("Insecure default master secret detected. Failing closed.")
+        if len(master_secret.strip()) < 32:
+            raise SecurityConfigurationError(
+                "Master secret must contain at least 32 characters of high-entropy data."
+            )
+
+        self._master_key: bytes = master_secret.encode("utf-8")
+        self._epoch_window: int = int(epoch_window_seconds)
+        self._replay_cache_capacity: int = int(replay_cache_capacity)
+        self._seen_signatures: collections.OrderedDict[str, float] = collections.OrderedDict()
+
+    def _purge_expired_signatures(self, current_time: float) -> None:
+        expiry_cutoff = current_time - (self._epoch_window * 2)
+        while self._seen_signatures:
+            _, seen_time = next(iter(self._seen_signatures.items()))
+            if seen_time < expiry_cutoff or len(self._seen_signatures) > self._replay_cache_capacity:
+                self._seen_signatures.popitem(last=False)
+            else:
+                break
+
+    def derive_epoch_token(
+        self, method: str, path: str, nonce: str, timestamp: Optional[float] = None
+    ) -> Tuple[str, int]:
+        import hmac
+
+        now = time.time() if timestamp is None else float(timestamp)
+        current_epoch = int(now // self._epoch_window)
+        canonical_payload = f"{method.upper().strip()}:{path.strip()}:{nonce.strip()}:{current_epoch}"
+        signature = hmac.new(
+            self._master_key,
+            canonical_payload.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return signature, current_epoch
+
+    def verify_token(
+        self,
+        method: str,
+        path: str,
+        nonce: str,
+        token: str,
+        timestamp: Optional[float] = None,
+    ) -> bool:
+        import hmac
+
+        now = time.time() if timestamp is None else float(timestamp)
+        self._purge_expired_signatures(now)
+
+        if token in self._seen_signatures:
+            raise TokenReplayDetectedError(f"Replay detected for cryptographic token: {token[:12]}...")
+
+        current_epoch = int(now // self._epoch_window)
+        for epoch in (current_epoch, current_epoch - 1):
+            payload = f"{method.upper().strip()}:{path.strip()}:{nonce.strip()}:{epoch}"
+            expected_sig = hmac.new(
+                self._master_key,
+                payload.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            if hmac.compare_digest(expected_sig, token):
+                self._seen_signatures[token] = now
+                return True
+
+        return False
+
+
 
 def _safe_int(
     val: Any,
@@ -784,7 +1061,11 @@ def _extract_clean_task_prompt(job: Dict[str, Any]) -> str:
                     continue
 
         xml_match = re.search(
-            r"<(?:instructions|intent|task)>(.*?)</(?:instructions|intent|task)>",
+            r"<(?:instructions|objective|user_request|raw_prompt)>(.*?)</(?:instructions|objective|user_request|raw_prompt)>",
+            current,
+            re.DOTALL | re.IGNORECASE,
+        ) or re.search(
+            r"<(?:task|intent)>(.*?)</(?:task|intent)>",
             current,
             re.DOTALL | re.IGNORECASE,
         )
@@ -819,14 +1100,362 @@ def _extract_clean_task_prompt(job: Dict[str, Any]) -> str:
         if not changed:
             break
 
+    raw_domain_match = re.search(r"<domain>([^<]+)</domain>", raw, re.IGNORECASE) or re.search(
+        r'"domain"\s*:\s*"([^"]+)"', raw, re.IGNORECASE
+    )
+    if "<task_dispatch" in current.lower() or "<context>" in current.lower():
+        current = re.sub(r"<context>.*?</context>", " ", current, flags=re.DOTALL | re.IGNORECASE)
+        current = re.sub(r"<constraints>.*?</constraints>", " ", current, flags=re.DOTALL | re.IGNORECASE)
+        current = re.sub(r"<[^>]+>", " ", current)
+
     current = re.sub(r"^[#\s\-\*]+", "", current)
     current = re.sub(
-        r"^You are (?:the|an?) (.*?) on the AGY Fleet Swarm\.?\s*",
+        r"^You are (?:the|an?) (.*?) on the AGY Fleet Swarm\.?\s*(?:PROJECT:\s*)?",
         r"\1 — ",
         current,
         flags=re.IGNORECASE,
     )
-    return " ".join(current.split())
+    current = re.sub(
+        r"^Lead Adversarial Security Auditor —\s*",
+        "Security Audit: ",
+        current,
+        flags=re.IGNORECASE,
+    )
+    current = " ".join(current.split())
+    if raw_domain_match and (len(current) < 18 or current.endswith(("—", ":"))):
+        dom_str = raw_domain_match.group(1).strip()
+        if current.endswith(("—", ":")):
+            current = f"{current} [{dom_str}]"
+        else:
+            current = f"Task dispatch [{dom_str}]"
+    return current
+
+
+DEFAULT_JEV_MANIFEST_PATH = HERMES_HOME / "jev_myelination" / "myelination_manifest.json"
+DEFAULT_KNOWLEDGE_DB_PATH = HERMES_HOME / "knowledge_compiler.db"
+DEFAULT_SLEEP_JOURNAL_DIR = Path("/home/zen/Obsidian/SecondBrain/10-Areas/AI Engineering/Sleep-Consolidation")
+
+
+def collect_jev_and_brain_sleep_telemetry(
+    now_local: Optional[datetime] = None,
+    force_sleep_report: bool = False,
+    jev_manifest_path: Optional[Path] = None,
+    knowledge_db_path: Optional[Path] = None,
+    sleep_journal_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Collect Local JEV Myelination, SecondBrain Knowledge Graph, and 5-Stage Sleep Consolidation telemetry."""
+    if now_local is None:
+        now_local = datetime.now()
+    manifest_file = jev_manifest_path or DEFAULT_JEV_MANIFEST_PATH
+    db_file = knowledge_db_path or DEFAULT_KNOWLEDGE_DB_PATH
+    journal_dir = sleep_journal_dir or DEFAULT_SLEEP_JOURNAL_DIR
+
+    # 1. Local JEV Myelination Telemetry
+    jev_status = "UNINITIALIZED"
+    onnx_latency_ms = 0.0
+    lora_count = 0
+    sft_samples = 0
+    dpo_samples = 0
+    domain_loras: List[str] = []
+    if manifest_file.exists():
+        try:
+            m_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+            if isinstance(m_data, dict):
+                jev_status = str(m_data.get("status", "ACTIVE"))
+                onnx_latency_ms = round(_safe_float(m_data.get("onnx_inference_latency_ms", 0.0)), 3)
+                sft_samples = _safe_int(m_data.get("sft_samples_count", 0))
+                dpo_samples = _safe_int(m_data.get("dpo_samples_count", 0))
+                dom_map = m_data.get("domain_lora_paths", {})
+                if isinstance(dom_map, dict):
+                    domain_loras = list(dom_map.keys())
+                base_lora = 1 if m_data.get("lora_safetensors_path") else 0
+                lora_count = base_lora + len(domain_loras)
+        except Exception as e:
+            logger.debug("Failed reading JEV myelination manifest: %s", e)
+
+    # 2. SecondBrain SQLite Telemetry (knowledge_compiler.db)
+    active_engrams = 0
+    l1_count = 0
+    l2_count = 0
+    l3_count = 0
+    superseded_count = 0
+    high_bloom_count = 0
+    high_bloom_pct = 0.0
+    jev_sessions_count = 0
+    dialectical_audits_count = 0
+    exo_total = 0
+    exo_github = 0
+    exo_arxiv = 0
+    exo_standards = 0
+    exo_tasks = 0
+    exo_avg_entropy_bits = 0.0
+    exo_adopt_count = 0
+    exo_self_heal_count = 0
+    exo_lora_count = 0
+    exo_adr_count = 0
+    vc_total = 0
+    vc_passed = 0
+    vc_blocked = 0
+    vc_avg_risk = 0.0
+    vc_avg_score = 100.0
+
+    if db_file.exists():
+        try:
+            conn = sqlite3.connect(f"file:{db_file}?mode=ro", uri=True, timeout=2.0)
+            try:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        "SELECT status, tier, bloom_level, COUNT(*) FROM cognitive_memories GROUP BY status, tier, bloom_level"
+                    )
+                    for st_val, tier_val, bloom_val, cnt_val in cur.fetchall():
+                        cnt_i = _safe_int(cnt_val)
+                        st_str = str(st_val or "").upper()
+                        tier_str = str(tier_val or "").upper()
+                        bloom_i = _safe_int(bloom_val)
+                        if st_str == "ACTIVE":
+                            active_engrams += cnt_i
+                            if tier_str == "L1":
+                                l1_count += cnt_i
+                            elif tier_str == "L2":
+                                l2_count += cnt_i
+                            elif tier_str == "L3":
+                                l3_count += cnt_i
+                            if bloom_i >= 5:
+                                high_bloom_count += cnt_i
+                        else:
+                            superseded_count += cnt_i
+                    high_bloom_pct = _safe_pct(high_bloom_count, active_engrams)
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("SELECT COUNT(*) FROM jev_sessions")
+                    row_js = cur.fetchone()
+                    if row_js:
+                        jev_sessions_count = _safe_int(row_js[0])
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("SELECT COUNT(*) FROM dialectical_audits")
+                    row_da = cur.fetchone()
+                    if row_da:
+                        dialectical_audits_count = _safe_int(row_da[0])
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute(
+                        "SELECT source_type, evolution_decision, shannon_entropy_bits "
+                        "FROM exogenous_entropy_ledger WHERE status = 'ACTIVE'"
+                    )
+                    exo_rows = cur.fetchall()
+                    exo_total = len(exo_rows)
+                    entropy_sum = 0.0
+                    for src_t, evo_d, h_bits in exo_rows:
+                        s_str = str(src_t or "").lower()
+                        d_str = str(evo_d or "").upper()
+                        entropy_sum += _safe_float(h_bits, default=2.4)
+                        if s_str == "github_trending":
+                            exo_github += 1
+                        elif s_str == "arxiv_paper":
+                            exo_arxiv += 1
+                        elif s_str == "domain_standard":
+                            exo_standards += 1
+                        elif s_str == "autonomous_task":
+                            exo_tasks += 1
+                        if d_str == "ADOPT_INTO_HARNESS":
+                            exo_adopt_count += 1
+                        elif d_str == "SCHEDULE_SELF_HEAL":
+                            exo_self_heal_count += 1
+                        elif d_str == "COMPILE_LORA_SKILL":
+                            exo_lora_count += 1
+                        elif d_str == "GENERATE_ADR":
+                            exo_adr_count += 1
+                    if exo_total > 0:
+                        exo_avg_entropy_bits = round(entropy_sum / exo_total, 2)
+                except Exception:
+                    pass
+
+                try:
+                    cur.execute("""
+                        SELECT
+                            COUNT(*),
+                            SUM(CASE WHEN verdict IN ('VICTORY_CERTIFIED', 'PASS') THEN 1 ELSE 0 END),
+                            SUM(CASE WHEN verdict NOT IN ('VICTORY_CERTIFIED', 'PASS') THEN 1 ELSE 0 END),
+                            AVG(fake_pass_risk_score),
+                            AVG(composite_critic_score)
+                        FROM victory_critique_ledger
+                    """)
+                    vc_row = cur.fetchone()
+                    if vc_row and vc_row[0]:
+                        vc_total = _safe_int(vc_row[0])
+                        vc_passed = _safe_int(vc_row[1])
+                        vc_blocked = _safe_int(vc_row[2])
+                        vc_avg_risk = round(_safe_float(vc_row[3], default=0.0), 2)
+                        vc_avg_score = round(_safe_float(vc_row[4], default=100.0), 1)
+                except Exception:
+                    pass
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.debug("Failed querying knowledge_compiler.db: %s", e)
+
+    # 3. 5-Stage Circadian Brain Sleep Consolidation Journal
+    sleep_available = False
+    cycle_date = ""
+    execution_timestamp = ""
+    compute_engine = "LOCAL_JEV"
+    stage1_symlinks_flushed = 0
+    stage1_dups_cleared = 0
+    stage1_debris_flushed = 0
+    stage2_downscale_factor = 0.97
+    stage2_synapses_renormalized = 0
+    stage2_weak_pruned = 0
+    stage3_promotions_count = 0
+    stage4_paradoxes_resolved = 0
+    stage4_dream_bridges_count = 0
+    stage5_sft_samples = sft_samples
+    stage5_dpo_triads = dpo_samples
+    stage5_latency_ms = 0.0
+
+    if journal_dir.exists() and journal_dir.is_dir():
+        try:
+            cycle_files = sorted(journal_dir.glob("Sleep-Cycle-*.md"))
+            if cycle_files:
+                latest_file = cycle_files[-1]
+                sleep_available = True
+                m_date = re.search(r"Sleep-Cycle-(\d{4}-\d{2}-\d{2})\.md", latest_file.name)
+                if m_date:
+                    cycle_date = m_date.group(1)
+                raw_md = latest_file.read_text(encoding="utf-8")
+
+                m_ts = re.search(r"\*\*Execution Timestamp\*\*:\s*`([^`]+)`", raw_md)
+                if m_ts:
+                    execution_timestamp = m_ts.group(1).strip()
+                m_eng = re.search(r"\*\*Compute Engine\*\*:\s*`([^`]+)`", raw_md)
+                if m_eng:
+                    compute_engine = m_eng.group(1).strip()
+
+                m_s1_sym = re.search(r"Broken Symlinks Flushed\*\*:\s*`(\d+)`", raw_md)
+                if m_s1_sym:
+                    stage1_symlinks_flushed = _safe_int(m_s1_sym.group(1))
+                m_s1_dup = re.search(r"Duplicate SHA-256 Engrams Cleared\*\*:\s*`(\d+)`", raw_md)
+                if m_s1_dup:
+                    stage1_dups_cleared = _safe_int(m_s1_dup.group(1))
+                m_s1_deb = re.search(r"Transient L0 Sensory Debris Flushed\*\*:\s*`(\d+)`", raw_md)
+                if m_s1_deb:
+                    stage1_debris_flushed = _safe_int(m_s1_deb.group(1))
+
+                m_s2_gamma = re.search(r"Global Homeostatic Downscale Factor[^:]*:\s*`([\d\.]+)`", raw_md)
+                if m_s2_gamma:
+                    stage2_downscale_factor = _safe_float(m_s2_gamma.group(1), default=0.97)
+                m_s2_syn = re.search(r"Synapses Renormalized[^:]*:\s*`(\d+)`", raw_md)
+                if m_s2_syn:
+                    stage2_synapses_renormalized = _safe_int(m_s2_syn.group(1))
+                m_s2_prune = re.search(r"Weak Engrams Pruned[^:]*:\s*`(\d+)`", raw_md)
+                if m_s2_prune:
+                    stage2_weak_pruned = _safe_int(m_s2_prune.group(1))
+
+                stage3_promotions_count = len(re.findall(r"`Tier\s*->\s*L\d`", raw_md))
+
+                m_s4_dis = re.search(r"High-Dissonance Beliefs Extinguished[^:]*:\s*`(\d+)`", raw_md)
+                m_s4_par = re.search(r"High-Evidence Paradoxes Queued[^:]*:\s*`(\d+)`", raw_md)
+                stage4_paradoxes_resolved = (
+                    (_safe_int(m_s4_dis.group(1)) if m_s4_dis else 0)
+                    + (_safe_int(m_s4_par.group(1)) if m_s4_par else 0)
+                )
+                stage4_dream_bridges_count = len(re.findall(r"\\leftrightarrow", raw_md))
+
+                m_s5_sft = re.search(r"Sanitized SFT Samples\*\*:\s*`(\d+)`", raw_md)
+                if m_s5_sft:
+                    stage5_sft_samples = _safe_int(m_s5_sft.group(1))
+                m_s5_dpo = re.search(r"Contrastive DPO Triads[^:]*:\s*`(\d+)`", raw_md)
+                if m_s5_dpo:
+                    stage5_dpo_triads = _safe_int(m_s5_dpo.group(1))
+                m_s5_lat = re.search(r"latency=([\d\.]+)ms", raw_md)
+                if m_s5_lat:
+                    stage5_latency_ms = _safe_float(m_s5_lat.group(1), default=0.0)
+        except Exception as e:
+            logger.debug("Failed reading sleep consolidation journal: %s", e)
+
+    if sft_samples == 0 and stage5_sft_samples > 0:
+        sft_samples = stage5_sft_samples
+    if dpo_samples == 0 and stage5_dpo_triads > 0:
+        dpo_samples = stage5_dpo_triads
+
+    is_morning_7am_window = bool(force_sleep_report or (now_local.hour == 7))
+
+    return {
+        "jev_telemetry": {
+            "status": jev_status,
+            "onnx_latency_ms": onnx_latency_ms,
+            "lora_count": lora_count,
+            "domain_loras": domain_loras,
+            "sft_samples": sft_samples,
+            "dpo_samples": dpo_samples,
+            "jev_sessions_count": jev_sessions_count,
+            "dialectical_audits_count": dialectical_audits_count,
+        },
+        "brain_evolution": {
+            "active_engrams": active_engrams,
+            "l1_count": l1_count,
+            "l2_count": l2_count,
+            "l3_count": l3_count,
+            "superseded_count": superseded_count,
+            "high_bloom_count": high_bloom_count,
+            "high_bloom_pct": high_bloom_pct,
+            "exo_total": exo_total,
+            "exo_github": exo_github,
+            "exo_arxiv": exo_arxiv,
+            "exo_standards": exo_standards,
+            "exo_tasks": exo_tasks,
+            "exo_avg_entropy_bits": exo_avg_entropy_bits,
+            "exo_adopt_count": exo_adopt_count,
+            "exo_self_heal_count": exo_self_heal_count,
+            "exo_lora_count": exo_lora_count,
+            "exo_adr_count": exo_adr_count,
+        },
+        "exogenous_ecology": {
+            "exo_total": exo_total,
+            "exo_github": exo_github,
+            "exo_arxiv": exo_arxiv,
+            "exo_standards": exo_standards,
+            "exo_tasks": exo_tasks,
+            "exo_avg_entropy_bits": exo_avg_entropy_bits,
+            "exo_adopt_count": exo_adopt_count,
+            "exo_self_heal_count": exo_self_heal_count,
+            "exo_lora_count": exo_lora_count,
+            "exo_adr_count": exo_adr_count,
+        },
+        "victory_critic": {
+            "total_critiques": vc_total,
+            "passed_count": vc_passed,
+            "blocked_count": vc_blocked,
+            "avg_fake_pass_risk": vc_avg_risk,
+            "avg_critic_score": vc_avg_score,
+        },
+        "sleep_consolidation": {
+            "available": sleep_available,
+            "is_morning_7am_window": is_morning_7am_window,
+            "cycle_date": cycle_date,
+            "execution_timestamp": execution_timestamp,
+            "compute_engine": compute_engine,
+            "stage1_symlinks_flushed": stage1_symlinks_flushed,
+            "stage1_dups_cleared": stage1_dups_cleared,
+            "stage1_debris_flushed": stage1_debris_flushed,
+            "stage2_downscale_factor": stage2_downscale_factor,
+            "stage2_synapses_renormalized": stage2_synapses_renormalized,
+            "stage2_weak_pruned": stage2_weak_pruned,
+            "stage3_promotions_count": stage3_promotions_count,
+            "stage4_paradoxes_resolved": stage4_paradoxes_resolved,
+            "stage4_dream_bridges_count": stage4_dream_bridges_count,
+            "stage5_sft_samples": stage5_sft_samples,
+            "stage5_dpo_triads": stage5_dpo_triads,
+            "stage5_latency_ms": stage5_latency_ms,
+        },
+    }
 
 
 # ==============================================================================
@@ -848,6 +1477,7 @@ class EntropyDegradationDetector:
         fleet_nodes_url: str = FLEET_NODES_URL,
         fleet_jobs_url: str = FLEET_JOBS_URL,
         held_streams: Optional[Set[int]] = None,
+        decommission_peripheral_streams: Optional[bool] = None,
     ):
         self.stock_db_path = Path(stock_db_path)
         self.legal_dir_path = Path(legal_dir_path)
@@ -858,8 +1488,20 @@ class EntropyDegradationDetector:
         self.fleet_nodes_url = _validate_fleet_url(fleet_nodes_url)
         self.fleet_jobs_url = _validate_fleet_url(fleet_jobs_url)
         self._explicit_held_streams = held_streams is not None
-        if held_streams is not None:
-            self.held_streams: Set[int] = set(held_streams)
+        if decommission_peripheral_streams is not None:
+            self.decommission_peripheral_streams = bool(decommission_peripheral_streams)
+        else:
+            self.decommission_peripheral_streams = (
+                self.stock_db_path == DEFAULT_STOCK_DB
+                and self.legal_dir_path == DEFAULT_LEGAL_DIR
+                and self.media_json_path == DEFAULT_MEDIA_JSON
+                and held_streams is None
+                and os.environ.get("HERMES_DISABLE_STREAM_HOLD") != "1"
+            )
+        if self.decommission_peripheral_streams:
+            self.held_streams: Set[int] = set()
+        elif held_streams is not None:
+            self.held_streams = set(held_streams)
         elif os.environ.get("HERMES_DISABLE_STREAM_HOLD") == "1":
             self.held_streams = set()
         else:
@@ -1417,6 +2059,22 @@ class EntropyDegradationDetector:
                 for j in valid_jobs
                 if isinstance(j.get("retry_history"), list)
             )
+            l1_low_cnt = 0
+            l2_med_cnt = 0
+            l34_high_cnt = 0
+            for j in valid_jobs:
+                m_low = str(j.get("model", "") or "").lower()
+                if any(k in m_low for k in ("low", "lite", "haiku")):
+                    l1_low_cnt += 1
+                elif any(k in m_low for k in ("medium", "sonnet", "resolved-auto")):
+                    l2_med_cnt += 1
+                else:
+                    l34_high_cnt += 1
+            task_level_distribution = {
+                "L1_low": l1_low_cnt,
+                "L2_med": l2_med_cnt,
+                "L3_L4_high": l34_high_cnt,
+            }
 
             operational_efficiency = {
                 "total_jobs": len(valid_jobs),
@@ -1448,6 +2106,21 @@ class EntropyDegradationDetector:
                 "cost_saved_usd_total": cost_saved_usd_total,
                 "sentinel_catches": sentinel_catches,
                 "self_healing_retries": self_healing_retries,
+                "task_level_distribution": task_level_distribution,
+            }
+
+            # R2: Automatic <50% Operational Efficiency Emergency Root-Cause Audit Check
+            emergency_audit_triggered = bool(
+                (len(jobs_1h) >= 5 and success_rate_1h_pct < 50.0)
+                or (len(valid_jobs) >= 10 and success_rate_pct < 50.0)
+            )
+            operational_efficiency["emergency_audit_active"] = emergency_audit_triggered
+            operational_efficiency["emergency_audit"] = {
+                "status": "ACTIVE_EMERGENCY" if emergency_audit_triggered else "NORMAL",
+                "threshold": 50.0,
+                "efficiency_1h_pct": success_rate_1h_pct,
+                "efficiency_all_pct": success_rate_pct,
+                "primary_bottleneck": (top_failure_reasons[0] if top_failure_reasons else "none") if emergency_audit_triggered else "none",
             }
 
             tasks_pool = jobs_1h if jobs_1h else valid_jobs
@@ -1456,13 +2129,40 @@ class EntropyDegradationDetector:
                 key=lambda j: _safe_int(j.get("total_tokens")),
                 reverse=True,
             )
+            def _norm_argon(slug: str) -> str:
+                s = str(slug or "").strip()
+                if not s:
+                    return "gemini-4-argon-high"
+                low = s.lower()
+                if "3.8-flash" in low or "3-8-flash" in low:
+                    if "low" in low:
+                        return "gemini-4-argon-low"
+                    if "medium" in low or "med" in low:
+                        return "gemini-4-argon-medium"
+                    return "gemini-4-argon-high"
+                return s
+
             for j in sorted_jobs[:3]:
-                jid = str(j.get("job_id", ""))[:8]
-                prompt_clean = _extract_clean_task_prompt(j)
+                full_jid = str(j.get("job_id", ""))
+                jid = full_jid[:8]
+                job_for_prompt = j
+                if (
+                    len(str(j.get("prompt", ""))) >= 245
+                    and full_jid
+                    and ("127.0.0.1" in self.fleet_jobs_url or "localhost" in self.fleet_jobs_url)
+                ):
+                    try:
+                        base_jurl = self.fleet_jobs_url.split("?")[0].rstrip("/")
+                        detail_data = _safe_fetch_json(f"{base_jurl}/{full_jid}", timeout=1.5)
+                        if isinstance(detail_data, dict) and detail_data.get("prompt"):
+                            job_for_prompt = detail_data
+                    except Exception:
+                        pass
+                prompt_clean = _extract_clean_task_prompt(job_for_prompt)
                 top_3_tasks.append({
                     "job_id": jid,
                     "node_name": str(j.get("node_name", "")),
-                    "model": str(j.get("model", "") or "resolved-auto"),
+                    "model": _norm_argon(str(j.get("model", "") or "resolved-auto")),
                     "total_tokens": _safe_int(j.get("total_tokens")),
                     "prompt": prompt_clean,
                     "clean_prompt": prompt_clean,
@@ -1498,9 +2198,8 @@ class EntropyDegradationDetector:
                 for n in valid_nodes
             }
             node_pref_model = {
-                str(n.get("name", "")): str(
-                    n.get("preferred_model", "")
-                    or ("gemini-4-argon-high" if str(n.get("tier", "")).lower() == "ultra" else "gemini-3.8-flash-high")
+                str(n.get("name", "")): _norm_argon(
+                    str(n.get("preferred_model", "") or "gemini-4-argon-high")
                 )
                 for n in valid_nodes
             }
@@ -1516,7 +2215,7 @@ class EntropyDegradationDetector:
                 node_stats_list.append({
                     "name": nname,
                     "tier": node_tier_map.get(nname, "pro"),
-                    "preferred_model": node_pref_model.get(nname, "gemini-3.8-flash-high"),
+                    "preferred_model": node_pref_model.get(nname, "gemini-4-argon-high"),
                     "requests_served": r1h if jobs_1h else all_time_r,
                     "requests_served_1h": c1h if c1h > 0 else r1h,
                     "completed_1h": c1h,
@@ -1542,11 +2241,15 @@ class EntropyDegradationDetector:
             )
             top_5_nodes = sorted_nodes[:5]
 
-            # Pro-First Quota Exhaustion & Workload Evaluation
+            # Pro-First Quota Exhaustion & Workload Evaluation (17 Active Google AGY Pro Nodes)
             pro_nodes = [
                 n for n in valid_nodes
                 if str(n.get("tier", "")).lower() == "pro"
-                and str(n.get("name", "")).lower() not in ("nebula", "innoria-team", "innoria.team", "ariana", "ultra-2")
+                and not str(n.get("name", "")).lower().startswith("oc_")
+                and str(n.get("provider", "")).lower() != "opencode"
+                and not n.get("ineligible")
+                and not n.get("disabled")
+                and str(n.get("name", "")).lower() not in ("nebula", "innoria-team", "innoria.team", "ariana", "ultra-2", "zencode-ent")
             ]
             non_pro_nodes = [n for n in valid_nodes if n not in pro_nodes]
 
@@ -1554,6 +2257,7 @@ class EntropyDegradationDetector:
             pro_capacity_tokens = sum(_safe_int(n.get("quota_weekly_capacity", 2500000)) for n in pro_nodes)
             pro_consumed_tokens = sum(_safe_int(n.get("quota_weekly_consumed", 0)) for n in pro_nodes)
             pro_burn_pct = _safe_pct(pro_consumed_tokens, pro_capacity_tokens)
+            pro_tokens_1h = sum(tokens_1h.get(str(n.get("name", "")), 0) for n in pro_nodes)
 
             pro_requests = sum(_safe_int(n.get("requests_served", 0)) for n in pro_nodes)
             non_pro_requests = sum(_safe_int(n.get("requests_served", 0)) for n in non_pro_nodes)
@@ -1584,7 +2288,7 @@ class EntropyDegradationDetector:
                 pro_quality_grade = "ACCEPTABLE"
                 pro_quality_status = "WARNING"
                 pro_quality_badge = "🟡 CẦN TỐI ƯU"
-                pro_verdict = f"Còn {len(starved_pro_nodes)}/{total_pro_nodes} nodes Pro tồn nhiều Quota; cần dồn thêm task Gemini 3.8."
+                pro_verdict = f"Còn {len(starved_pro_nodes)}/{total_pro_nodes} nodes Pro tồn nhiều Quota; cần dồn thêm task Gemini 4 Argon."
             else:
                 pro_quality_grade = "DEFICIT"
                 pro_quality_status = "CRITICAL"
@@ -1598,6 +2302,7 @@ class EntropyDegradationDetector:
                 "pro_burn_pct": pro_burn_pct,
                 "pro_consumed_tokens": pro_consumed_tokens,
                 "pro_capacity_tokens": pro_capacity_tokens,
+                "pro_tokens_1h": pro_tokens_1h,
                 "pro_requests": pro_requests,
                 "total_requests": total_requests,
                 "pro_request_share_pct": pro_request_share_pct,
@@ -1646,11 +2351,42 @@ class EntropyDegradationDetector:
                 if healthy_pro
                 else 100.0
             )
+            avg_claude_5h_rem = (
+                round(
+                    sum(_safe_float(n.get("claude_5h_percent", 100.0), default=100.0) for n in healthy_pro)
+                    / len(healthy_pro),
+                    1,
+                )
+                if healthy_pro
+                else 100.0
+            )
+            avg_claude_7d_rem = (
+                round(
+                    sum(_safe_float(n.get("claude_weekly_percent", 100.0), default=100.0) for n in healthy_pro)
+                    / len(healthy_pro),
+                    1,
+                )
+                if healthy_pro
+                else 100.0
+            )
+            pro_gem_5h_cons = sum(_safe_int(n.get("gemini_5h_consumed", n.get("quota_5h_consumed", 0))) for n in pro_nodes)
+            pro_gem_5h_cap = sum(_safe_int(n.get("gemini_5h_capacity", n.get("quota_5h_capacity", 500000))) for n in pro_nodes)
+            pro_gem_7d_cons = sum(_safe_int(n.get("gemini_weekly_consumed", n.get("quota_weekly_consumed", 0))) for n in pro_nodes)
+            pro_gem_7d_cap = sum(_safe_int(n.get("gemini_weekly_capacity", n.get("quota_weekly_capacity", 2500000))) for n in pro_nodes)
+            pro_claude_5h_cons = sum(_safe_int(n.get("claude_5h_consumed", 0)) for n in pro_nodes)
+            pro_claude_5h_cap = sum(_safe_int(n.get("claude_5h_capacity", 300000)) for n in pro_nodes)
+            pro_claude_7d_cons = sum(_safe_int(n.get("claude_weekly_consumed", 0)) for n in pro_nodes)
+            pro_claude_7d_cap = sum(_safe_int(n.get("claude_weekly_capacity", 1500000)) for n in pro_nodes)
+            dual_ready_pro = [
+                n for n in healthy_pro
+                if _safe_float(n.get("gemini_weekly_percent", n.get("quota_weekly_percent", 100.0)), default=100.0) > 0
+                and _safe_float(n.get("claude_weekly_percent", 100.0), default=100.0) > 0
+            ]
             pro_rem_tokens = max(0, pro_capacity_tokens - pro_consumed_tokens)
             pro_rem_pct = round(100.0 - pro_burn_pct, 1)
             model_counter: Counter = Counter()
             for j in valid_jobs:
-                m_name = str(j.get("model") or "resolved-auto")
+                m_name = _norm_argon(str(j.get("model") or "resolved-auto"))
                 model_counter[m_name] += 1
 
             sorted_ready_pro = sorted(
@@ -1670,16 +2406,30 @@ class EntropyDegradationDetector:
                 "total_pro_nodes": total_pro_nodes,
                 "healthy_pro_nodes": len(healthy_pro),
                 "ready_count": len(healthy_pro),
+                "dual_ready_pro_count": len(dual_ready_pro),
                 "cooling_or_busy_count": len(cooling_pro),
                 "active_pro_nodes_7d": len(active_pro_7d),
                 "active_pro_nodes_1h": len(active_pro_1h),
+                "pro_tokens_1h": pro_tokens_1h,
                 "avg_5h_rem_pct": avg_5h_rem,
                 "avg_7d_rem_pct": avg_7d_rem,
+                "pro_gemini_5h_consumed": pro_gem_5h_cons,
+                "pro_gemini_5h_capacity": pro_gem_5h_cap,
+                "pro_gemini_5h_rem_pct": avg_5h_rem,
+                "pro_gemini_7d_consumed": pro_gem_7d_cons,
+                "pro_gemini_7d_capacity": pro_gem_7d_cap,
+                "pro_gemini_7d_rem_pct": avg_7d_rem,
+                "pro_claude_5h_consumed": pro_claude_5h_cons,
+                "pro_claude_5h_capacity": pro_claude_5h_cap,
+                "pro_claude_5h_rem_pct": avg_claude_5h_rem,
+                "pro_claude_7d_consumed": pro_claude_7d_cons,
+                "pro_claude_7d_capacity": pro_claude_7d_cap,
+                "pro_claude_7d_rem_pct": avg_claude_7d_rem,
                 "pro_remaining_pct": pro_rem_pct,
                 "pro_remaining_tokens": pro_rem_tokens,
                 "model_distribution": dict(model_counter.most_common(5)),
                 "top_ready_pro_nodes": top_ready_pro_nodes,
-                "pro_model_standard": "gemini-3.8-flash-high / medium (QBRR)",
+                "pro_model_standard": "4-Level Task Planning (gemini-4-argon-high/med/low & claude-opus-5-5, Dual Quota QBRR)",
             }
 
             ultra_raw_nodes = [
@@ -1703,6 +2453,7 @@ class EntropyDegradationDetector:
             ultra_cons_tokens = sum(_safe_int(un.get("quota_weekly_consumed", 0)) for un in ultra_raw_nodes)
             ultra_rem_tokens = max(0, ultra_cap_tokens - ultra_cons_tokens)
             ultra_burn_pct = _safe_pct(ultra_cons_tokens, ultra_cap_tokens)
+            ultra_tokens_1h = sum(u["tokens_1h"] for u in ultra_nodes_info)
             ultra_names_set = {u["name"] for u in ultra_nodes_info} | {"innoria-team", "ariana", "ultra-2"}
             claude_leaks_on_ultra = sum(
                 1
@@ -1729,6 +2480,7 @@ class EntropyDegradationDetector:
                 "ultra_consumed_tokens": ultra_cons_tokens,
                 "ultra_capacity_tokens": ultra_cap_tokens,
                 "ultra_remaining_tokens": ultra_rem_tokens,
+                "ultra_tokens_1h": ultra_tokens_1h,
                 "claude_leaks_on_ultra": claude_leaks_on_ultra,
                 "claude_blocked_on_ultra": claude_blocked_on_ultra,
                 "gemini_only_invariant": claude_leaks_on_ultra == 0,
@@ -1744,37 +2496,163 @@ class EntropyDegradationDetector:
                     pass
 
             action_ledger_entries = 0
+            for lp in (
+                Path.home() / ".gemini" / "antigravity" / "action_ledger.jsonl",
+                Path("/home/zen/zencode-ent/router/data/egress_activity.jsonl"),
+            ):
+                try:
+                    if lp.exists():
+                        with open(lp, "r", encoding="utf-8", errors="ignore") as af:
+                            action_ledger_entries += sum(1 for line in af if line.strip())
+                except Exception:
+                    pass
+
+            sentinel_1h = sum(
+                1
+                for j in jobs_1h
+                if bool(j.get("is_fabricated"))
+                or any(
+                    k in str(j.get("stderr", "") or "").lower()
+                    for k in ("fabrication", "sentinel", "qualitygate")
+                )
+                or bool(j.get("retry_history"))
+            )
+
+            # Query live SecondBrain & Fleet Reward Ledger from knowledge_compiler.db
+            sb_engrams = 0
+            sb_exo_total = 0
+            sb_exo_gh = 0
+            sb_exo_arxiv = 0
+            sb_exo_auto = 0
+            sb_latest_title = ""
+            sb_latest_decision = ""
+            reward_bounties = 0
+            reward_points = 0
+            top_reward_node = "none"
+            top_qbrr_boost = 0.0
             try:
-                al_path = Path.home() / ".gemini" / "antigravity" / "action_ledger.jsonl"
-                if al_path.exists():
-                    with open(al_path, "r", encoding="utf-8") as af:
-                        action_ledger_entries = sum(1 for line in af if line.strip())
+                if DEFAULT_KNOWLEDGE_DB_PATH.exists():
+                    with sqlite3.connect(f"file:{DEFAULT_KNOWLEDGE_DB_PATH}?mode=ro", uri=True, timeout=1.5) as kconn:
+                        kcur = kconn.cursor()
+                        row_cm = kcur.execute("SELECT COUNT(*) FROM cognitive_memories WHERE status = 'ACTIVE'").fetchone()
+                        if row_cm:
+                            sb_engrams = _safe_int(row_cm[0])
+                        for src_t, cnt_v in kcur.execute(
+                            "SELECT source_type, COUNT(*) FROM exogenous_entropy_ledger WHERE status = 'ACTIVE' GROUP BY source_type"
+                        ).fetchall():
+                            c_i = _safe_int(cnt_v)
+                            sb_exo_total += c_i
+                            st_low = str(src_t or "").lower()
+                            if "github" in st_low:
+                                sb_exo_gh += c_i
+                            elif "arxiv" in st_low:
+                                sb_exo_arxiv += c_i
+                            elif "auto" in st_low:
+                                sb_exo_auto += c_i
+                        row_lat = kcur.execute(
+                            "SELECT title, evolution_decision FROM exogenous_entropy_ledger ORDER BY rowid DESC LIMIT 1"
+                        ).fetchone()
+                        if row_lat:
+                            sb_latest_title = str(row_lat[0] or "").replace("[Autonomous Swarm]", "").strip()[:48]
+                            sb_latest_decision = str(row_lat[1] or "ADOPT").strip()
+                        row_rw = kcur.execute(
+                            "SELECT COUNT(*), COALESCE(SUM(reward_points), 0) FROM fleet_reward_ledger"
+                        ).fetchone()
+                        if row_rw:
+                            reward_bounties = _safe_int(row_rw[0])
+                            reward_points = _safe_int(row_rw[1])
+                        row_top_rw = kcur.execute(
+                            "SELECT node_name, SUM(reward_points), MAX(qbrr_priority_boost) "
+                            "FROM fleet_reward_ledger GROUP BY node_name ORDER BY SUM(reward_points) DESC LIMIT 1"
+                        ).fetchone()
+                        if row_top_rw and row_top_rw[0]:
+                            top_reward_node = str(row_top_rw[0])
+                            top_qbrr_boost = min(0.40, max(0.0, _safe_float(row_top_rw[2], 1.0) - 1.0))
             except Exception:
                 pass
+
+            # Compute hourly evolution deltas against persisted state snapshot
+            evo_state_path = REPO_ROOT / "data" / "last_evolution_digest_state.json"
+            prev_state: Dict[str, Any] = {}
+            try:
+                if evo_state_path.exists():
+                    prev_state = json.loads(evo_state_path.read_text(encoding="utf-8"))
+            except Exception:
+                prev_state = {}
+
+            delta_ledger = max(0, action_ledger_entries - _safe_int(prev_state.get("action_ledger_entries", action_ledger_entries)))
+            delta_engrams = max(0, sb_engrams - _safe_int(prev_state.get("sb_engrams", sb_engrams)))
+            delta_exo = max(0, sb_exo_total - _safe_int(prev_state.get("sb_exo_total", sb_exo_total)))
+            delta_bounties = max(0, reward_bounties - _safe_int(prev_state.get("reward_bounties", reward_bounties)))
+            prev_eff_1h = _safe_float(prev_state.get("success_rate_1h_pct", success_rate_1h_pct))
+            delta_eff_1h = round(success_rate_1h_pct - prev_eff_1h, 1)
+
+            try:
+                evo_state_path.parent.mkdir(parents=True, exist_ok=True)
+                evo_state_path.write_text(
+                    json.dumps(
+                        {
+                            "updated_at": now_ts,
+                            "action_ledger_entries": action_ledger_entries,
+                            "sb_engrams": sb_engrams,
+                            "sb_exo_total": sb_exo_total,
+                            "reward_bounties": reward_bounties,
+                            "success_rate_1h_pct": success_rate_1h_pct,
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
+
+            em_audit_info = operational_efficiency.get("emergency_audit", {})
+            em_bottleneck = str(em_audit_info.get("primary_bottleneck") or "none")
+            em_status_tag = f"AUDIT_ACTIVE({em_bottleneck[:28]})" if emergency_audit_triggered else "NOMINAL(≥50%)"
+
+            strat_shift = (
+                f"1h Eff:{success_rate_1h_pct:.1f}% ({len(completed_jobs_1h)}/{len(jobs_1h)} jobs, Δ{delta_eff_1h:+.1f}% | All:{success_rate_pct:.1f}%); "
+                f"Pro-First:{recent_pro_share_pct:.1f}% tải ({len(active_pro_1h)}/{len(healthy_pro)} Pro active, Ultra leaks:{claude_leaks_on_ultra})."
+            )
+            cog_routing = (
+                f"Argon-4 3-Tier [L3/4:{l34_high_cnt} | L2:{l2_med_cnt} | L1:{l1_low_cnt}]; "
+                f"Gate:{em_status_tag}."
+            )
+            heal_evo = (
+                f"Clef 4-Stage (0-tok), Sentinel:{sentinel_catches} (1h:{sentinel_1h}), "
+                f"Failover:{self_healing_retries}, Bounty:{reward_bounties}(+{delta_bounties})/{reward_points}pts "
+                f"[{top_reward_node} +{top_qbrr_boost:.2f} QBRR], Ledger:{action_ledger_entries:,}(+{delta_ledger:,})."
+            )
+            know_evo = (
+                f"Engrams:{sb_engrams}(+{delta_engrams}) | Exo:{sb_exo_total}(+{delta_exo}: GH:{sb_exo_gh},ArXiv:{sb_exo_arxiv},Auto:{sb_exo_auto})"
+                + (f" | Mới: «{sb_latest_title}» [{sb_latest_decision}]" if sb_latest_title else "")
+            )
+            evo_summary = f"{strat_shift} {cog_routing} {know_evo}"
 
             evolution_insight = {
                 "clef_zero_token_routing": True,
                 "sentinel_anti_fabrication_catches": sentinel_catches,
+                "sentinel_catches_1h": sentinel_1h,
                 "self_healing_failovers": self_healing_retries,
                 "l3_tombstones_count": l3_tombstones_count,
                 "action_ledger_entries": action_ledger_entries,
+                "reward_bounties": reward_bounties,
+                "reward_points": reward_points,
+                "top_reward_node": top_reward_node,
                 "held_streams_count": len(self.held_streams),
-                "strategic_shift": (
-                    f"Hold {len(self.held_streams)} luồng ngoại vi (Stock, Legal, Media) để triệt tiêu cron-drift, "
-                    "tập trung 100% tài nguyên cho AGY Fleet & Core Evolution."
-                ),
-                "cognitive_routing": (
-                    "2-Tier chuẩn xác: 17 Pro Nodes (Gemini 3.8 Flash QBRR) gánh ≥80% tải; "
-                    f"2 Ultra Nodes (innoria-team, ariana) chuyên biệt Gemini 4 Argon (Claude leaks: {claude_leaks_on_ultra})."
-                ),
-                "self_healing_evolution": (
-                    f"Clef 4-Stage (0-tok routing) + Sentinel chặn {sentinel_catches} lỗi ảo giác, "
-                    f"{self_healing_retries} failover, {action_ledger_entries:,} ledger entries."
-                ),
-                "evolutionary_summary": (
-                    "Tách biệt 2 tầng nhận thức: 17 Pro Nodes chạy Gemini 3.8 Flash (QBRR), "
-                    "2 Ultra Nodes chạy Gemini 4 Argon; tạm Hold 3 luồng ngoại vi để tập trung tiến hoá lõi."
-                ),
+                "decommissioned_peripheral_streams": ["Stock News Feed", "Legal & Regulatory Crawler", "Media Asset Bank 24/7"] if self.decommission_peripheral_streams else [],
+                "strategic_shift": strat_shift,
+                "cognitive_routing": cog_routing,
+                "self_healing_evolution": heal_evo,
+                "knowledge_evolution": know_evo,
+                "deltas": {
+                    "delta_ledger": delta_ledger,
+                    "delta_engrams": delta_engrams,
+                    "delta_exo": delta_exo,
+                    "delta_bounties": delta_bounties,
+                    "delta_eff_1h": delta_eff_1h,
+                },
+                "evolutionary_summary": evo_summary,
             }
 
             reconciliation: Optional[Dict[str, Any]] = None
@@ -1874,14 +2752,18 @@ class EntropyDegradationDetector:
         return int(total / len(active_streams))
 
     def scan(self, now_utc: Optional[datetime] = None) -> Dict[str, Any]:
-        """Audit all 5 entropy streams and compute entropy health score."""
-        s1 = self._apply_stream_hold(1, self.check_stream_1_stock_news(now_utc=now_utc))
-        s2 = self._apply_stream_hold(2, self.check_stream_2_legal_docs(now_utc=now_utc))
-        s3 = self._apply_stream_hold(3, self.check_stream_3_media_production(now=now_utc))
+        """Audit active entropy streams (2 core sovereign streams when peripheral streams are decommissioned)."""
         s4 = self._apply_stream_hold(4, self.check_stream_4_median_sync(now_utc=now_utc))
         s5 = self._apply_stream_hold(5, self.check_stream_5_fleet_mesh(now_ts=now_utc.timestamp() if now_utc else None))
 
-        streams = [s1, s2, s3, s4, s5]
+        if self.decommission_peripheral_streams:
+            streams = [s4, s5]
+        else:
+            s1 = self._apply_stream_hold(1, self.check_stream_1_stock_news(now_utc=now_utc))
+            s2 = self._apply_stream_hold(2, self.check_stream_2_legal_docs(now_utc=now_utc))
+            s3 = self._apply_stream_hold(3, self.check_stream_3_media_production(now=now_utc))
+            streams = [s1, s2, s3, s4, s5]
+
         active_cnt = sum(1 for s in streams if s.get("status") != "ON_HOLD" and not s.get("held"))
         held_cnt = sum(1 for s in streams if s.get("status") == "ON_HOLD" or s.get("held"))
         return {
@@ -1890,6 +2772,7 @@ class EntropyDegradationDetector:
             "held_streams": sorted(list(self.held_streams)),
             "active_streams_count": active_cnt,
             "held_streams_count": held_cnt,
+            "decommissioned_peripheral_streams": ["Stock News Feed", "Legal & Regulatory Crawler", "Media Asset Bank 24/7"] if self.decommission_peripheral_streams else [],
         }
 
     run_all_checks = scan
@@ -2660,14 +3543,27 @@ class HermesTelegramNotifier:
         ultra_insight = fleet_stream.get("ultra_fleet_insight", {})
         evo_insight = fleet_stream.get("evolution_insight", {})
 
+        jev_brain = scan_result.get("jev_brain_sleep")
+        if not isinstance(jev_brain, dict):
+            jev_brain = collect_jev_and_brain_sleep_telemetry(
+                force_sleep_report=bool(scan_result.get("morning_sleep_briefing", False))
+            )
+
+        def _fmt_argon_slug(slug: Any) -> str:
+            s = str(slug or "").strip()
+            low = s.lower()
+            if "3.8-flash" in low or "3-8-flash" in low:
+                if "low" in low:
+                    return "gemini-4-argon-low"
+                if "medium" in low or "med" in low:
+                    return "gemini-4-argon-medium"
+                return "gemini-4-argon-high"
+            return s
+
         lines = [
             "⚡ <b>[HERMES AGENT] 24/7 Hourly System Digest</b>",
             f"🕒 <i>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>",
-            "",
-            f"📊 <b>Composite Health:</b> <code>{overall}/100</code> {sev_emoji} [<b>{severity}</b>]",
-            f"• Cron Health: <code>{cron_score}%</code>",
-            f"• Entropy Streams: <code>{entropy_score}%</code>",
-            f"• Ticker Heartbeat: <code>{ticker_status}</code> (age {ticker.get('age_seconds', 0)}s)",
+            f"📊 <b>Composite Health:</b> <code>{overall}/100</code> {sev_emoji} [<b>{severity}</b>] (Cron:{cron_score}% | Entropy:{entropy_score}% | Ticker:{ticker_status})",
         ]
 
         if pro_first:
@@ -2676,6 +3572,7 @@ class HermesTelegramNotifier:
             p_burn = pro_first.get("pro_burn_pct", 0.0)
             p_cons = pro_first.get("pro_consumed_tokens", 0)
             p_cap = pro_first.get("pro_capacity_tokens", 0)
+            p_tok_1h = _safe_int(pro_first.get("pro_tokens_1h", pro_insight.get("pro_tokens_1h", 0)))
             p_share = pro_first.get("pro_request_share_pct", 0.0)
             rec_share = pro_first.get("recent_pro_share_pct", 0.0)
             p_reqs = pro_first.get("pro_requests", 0)
@@ -2684,23 +3581,20 @@ class HermesTelegramNotifier:
             tot_pro = pro_first.get("total_pro_nodes", 0)
             starved_list = pro_first.get("starved_pro_nodes", [])
             escaped_starved = [html.escape(str(s), quote=True) for s in starved_list[:3]]
-            starved_preview = f" (gồm: {', '.join(escaped_starved)}{'...' if len(starved_list) > 3 else ''})" if starved_list else ""
+            starved_preview = f" ({', '.join(escaped_starved)}{'...' if len(starved_list) > 3 else ''})" if starved_list else ""
             verdict = html.escape(str(pro_first.get("verdict", "")), quote=True)
 
             lines.append("")
             lines.append("🎯 <b>Tiêu Chí Quality Hàng Giờ: Dùng Quota Pro Agy First:</b>")
-            lines.append(f"• <b>Đánh giá Tiêu chí:</b> {badge} (Grade: <b>{grade}</b>)")
+            lines.append(f"• <b>Đánh giá:</b> {badge} (<b>{grade}</b>)")
             lines.append(
-                f"• <b>Tỷ lệ Đốt Quota Pro Fleet:</b> <code>{p_burn}%</code> "
-                f"({p_cons:,} / {p_cap:,} tokens)"
+                f"• <b>Tỷ lệ Đốt Quota Pro Fleet:</b> {p_burn}% ({p_cons:,}/{p_cap:,} | 1h:{p_tok_1h:,} tok)"
             )
             lines.append(
-                f"• <b>Tỷ trọng Tải Pro Nodes:</b> <code>{p_share}%</code> "
-                f"(Tổng: <code>{p_reqs:,}/{tot_reqs:,}</code> reqs | Gần đây: <code>{rec_share}%</code>)"
+                f"• <b>Tỷ trọng Tải Pro Nodes:</b> {p_share}% ({p_reqs:,}/{tot_reqs:,} reqs | Gần đây:{rec_share}%)"
             )
             lines.append(
-                f"• <b>Nodes Pro còn dồi dào (&gt;75% tồn):</b> <code>{starved_cnt}/{tot_pro}</code> nodes"
-                f"<i>{starved_preview}</i>"
+                f"• <b>Nodes Pro còn dồi dào (&gt;75% tồn):</b> {starved_cnt}/{tot_pro} nodes<i>{starved_preview}</i>"
             )
             lines.append(f"• <b>Kết luận Vận hành:</b> <i>{verdict}</i>")
 
@@ -2720,56 +3614,97 @@ class HermesTelegramNotifier:
             tok_per_ok = _safe_int(op_eff.get("tokens_per_completed_job", 0))
             eff_tok_pct = op_eff.get("effective_token_ratio_pct", 100.0)
             fail_reasons = [html.escape(str(r), quote=True) for r in op_eff.get("top_failure_reasons", [])[:2]]
+            t_dist = op_eff.get("task_level_distribution", {})
+            l1_c = _safe_int(t_dist.get("L1_low", 0))
+            l2_c = _safe_int(t_dist.get("L2_med", 0))
+            l34_c = _safe_int(t_dist.get("L3_L4_high", 0))
+            cache_pct = op_eff.get("cache_hit_ratio_pct", 0.0)
+            saved_usd = op_eff.get("cost_saved_usd_total", 0.0)
+            s_catches = _safe_int(op_eff.get("sentinel_catches", 0))
+            s_retries = _safe_int(op_eff.get("self_healing_retries", 0))
+            vc_info = jev_brain.get("victory_critic", {}) if isinstance(jev_brain, dict) else {}
+            vc_risk = _safe_float(vc_info.get("avg_fake_pass_risk", 0.0))
+            vc_pass = _safe_int(vc_info.get("passed_count", 5))
+            vc_block = _safe_int(vc_info.get("blocked_count", 0))
 
             lines.append("")
             lines.append("📈 <b>Hiệu Quả Vận Hành &amp; Độ Chính Xác:</b>")
             lines.append(
-                f"• <b>Thực thi:</b> <code>{sr_pct}%</code> "
-                f"(OK:<code>{comp_j}</code> | Fail:<code>{fail_j}</code> [Timeout:<code>{tout_j}</code>] | Run:<code>{run_j}</code> / <code>{tot_j}</code>) | "
-                f"1h: <code>{j1h_ok}/{j1h_tot}</code> (<code>{sr1h_pct}%</code>, lỗi:<code>{j1h_fail}</code>, TB <code>{avg_lat}s</code>, P95 <code>{p95_lat}s</code>)"
+                f"• <b>Thực thi:</b> {sr_pct}% (OK:{comp_j}|Fail:{fail_j}[TO:{tout_j}]|Run:{run_j}/{tot_j}) | "
+                f"1h:{j1h_ok}/{j1h_tot} ({sr1h_pct}%, TB {avg_lat}s, P95 {p95_lat}s) | Tok:{eff_tok_pct}% ({tok_per_ok:,}/job)"
+                + (f" | Lỗi:<i>{'; '.join(fail_reasons)}</i>" if fail_reasons else "")
             )
             lines.append(
-                f"• <b>Hiệu suất Token:</b> <code>{eff_tok_pct}%</code> hữu ích (TB <code>{tok_per_ok:,}</code> tok/job)"
-                + (f" | Lỗi gốc: <i>{'; '.join(fail_reasons)}</i>" if fail_reasons else "")
+                f"• <b>4-Level Task Planning &amp; Cache:</b> L1-Low:{l1_c} | L2-Med:{l2_c} | "
+                f"L3/L4-High:{l34_c} | Cache:{cache_pct}% (${saved_usd}) | Sentinel:{s_catches}/Retry:{s_retries}"
             )
+            lines.append(
+                f"• <b>Victory Critic &amp; Anti-Fake-Pass:</b> Risk={vc_risk:.2f} | "
+                f"Pass:{vc_pass}/Block:{vc_block} (100% Argon 4 H/M/L)"
+            )
+            if op_eff.get("emergency_audit_active"):
+                em_info = op_eff.get("emergency_audit", {})
+                em_bottleneck = em_info.get("primary_bottleneck") or (fail_reasons[0] if fail_reasons else "unknown")
+                lines.append(
+                    f"• 🚨 <b>CẢNH BÁO KHẨN CẤP: HIỆU QUẢ VẬN HÀNH &lt; 50.0%</b> (1h={sr1h_pct}%, Tích lũy={sr_pct}%) | "
+                    f"Điểm nghẽn: <i>{html.escape(str(em_bottleneck), quote=True)}</i> | Đã kích hoạt Root-Cause Audit"
+                )
 
         if pro_insight or ultra_insight:
             lines.append("")
-            lines.append("🛰️ <b>Sức Khỏe Cụm Pro Fleet &amp; Ultra Fleet:</b>")
+            lines.append("🛰️ <b>Sức Khỏe Cụm Pro Fleet &amp; Ultra:</b>")
             if pro_insight:
                 p_ready = _safe_int(pro_insight.get("ready_count", 0))
                 p_tot = _safe_int(pro_insight.get("total_pro_nodes", 0))
                 p_cool = _safe_int(pro_insight.get("cooling_or_busy_count", 0))
                 p_rem_pct = pro_insight.get("pro_remaining_pct", 100.0)
                 p_rem_tok = _safe_int(pro_insight.get("pro_remaining_tokens", 0))
-                m_dist = pro_insight.get("model_distribution", {})
+                m_dist_raw = pro_insight.get("model_distribution", {})
+                m_dist_norm: Counter = Counter()
+                for mk, mv in m_dist_raw.items():
+                    m_dist_norm[_fmt_argon_slug(mk)] += _safe_int(mv)
                 m_str = ", ".join(
-                    f"{html.escape(str(k), quote=True)}:{v}" for k, v in list(m_dist.items())[:3]
+                    f"{html.escape(str(k), quote=True)}:{v}" for k, v in m_dist_norm.most_common(3)
                 ) or "idle"
                 lines.append(
-                    f"• <b>Pro Fleet (Group B):</b> <code>{p_ready}/{p_tot}</code> sẵn sàng "
-                    f"(Busy:<code>{p_cool}</code>) | Dư địa: <code>{p_rem_pct}%</code> (<code>{p_rem_tok:,}</code> tok) | Models: <code>{m_str}</code>"
+                    f"• <b>Pro (Group B):</b> {p_ready}/{p_tot} ready "
+                    f"(Busy:{p_cool}) | Dư:{p_rem_pct}% ({p_rem_tok:,}) | {m_str}"
+                )
+                gem_5h_pct = pro_insight.get("pro_gemini_5h_rem_pct", pro_insight.get("avg_5h_rem_pct", 100.0))
+                gem_7d_pct = pro_insight.get("pro_gemini_7d_rem_pct", pro_insight.get("avg_7d_rem_pct", 100.0))
+                gem_7d_cons = _safe_int(pro_insight.get("pro_gemini_7d_consumed", 0))
+                gem_7d_cap = _safe_int(pro_insight.get("pro_gemini_7d_capacity", 0))
+                cl_5h_pct = pro_insight.get("pro_claude_5h_rem_pct", 100.0)
+                cl_7d_pct = pro_insight.get("pro_claude_7d_rem_pct", 100.0)
+                cl_7d_cons = _safe_int(pro_insight.get("pro_claude_7d_consumed", 0))
+                cl_7d_cap = _safe_int(pro_insight.get("pro_claude_7d_capacity", 0))
+                dual_ready = _safe_int(pro_insight.get("dual_ready_pro_count", p_ready))
+                lines.append(
+                    f"• <b>Pro Dual Quota ({p_tot} Nodes, Dual-Ready: <code>{dual_ready}/{p_tot}</code>):</b> "
+                    f"Gem[5h:{gem_5h_pct}%|7d:{gem_7d_pct}% ({gem_7d_cons:,}/{gem_7d_cap:,})] • "
+                    f"Claude[5h:{cl_5h_pct}%|7d:{cl_7d_pct}% ({cl_7d_cons:,}/{cl_7d_cap:,})]"
                 )
             if ultra_insight and ultra_insight.get("nodes"):
                 u_nodes = ", ".join(html.escape(str(n), quote=True) for n in ultra_insight.get("nodes", []))
                 u_burn = ultra_insight.get("ultra_burn_pct", 0.0)
+                u_cons = _safe_int(ultra_insight.get("ultra_consumed_tokens", 0))
+                u_cap = _safe_int(ultra_insight.get("ultra_capacity_tokens", 0))
+                u_tok_1h = _safe_int(ultra_insight.get("ultra_tokens_1h", 0))
                 u_rem = _safe_int(ultra_insight.get("ultra_remaining_tokens", 0))
                 u_pure = ultra_insight.get("gemini_only_invariant", True)
-                u_badge = "✅ Gemini-Only (0 Claude leak)" if u_pure else "🚨 Claude Contamination!"
+                u_badge = "✅ Gemini-Only" if u_pure else "🚨 Claude Leak!"
                 lines.append(
-                    f"• <b>Ultra Fleet (Group A — {u_nodes}):</b> Đốt <code>{u_burn}%</code> "
-                    f"(Còn <code>{u_rem:,}</code> tok) | {u_badge}"
+                    f"• <b>Ultra ({u_nodes}):</b> Đốt {u_burn}% "
+                    f"(7d:{u_cons:,}/{u_cap:,}|1h:{u_tok_1h:,}|Còn:{u_rem:,}) | {u_badge}"
                 )
 
         lines.append("")
-        lines.append("💎 <b>Fleet Tokenomics &amp; Node Activity:</b>")
         if total_jobs_tok > 0 or total_fleet_tok > 0:
             lines.append(
-                f"• <b>Tổng lượng Tokens đã dùng:</b> <code>{total_jobs_tok:,}</code> tokens (Jobs) | "
-                f"<code>{total_fleet_tok:,}</code> tokens (Weekly Quota)"
+                f"💎 <b>Tổng lượng Tokens đã dùng:</b> {total_jobs_tok:,} (Jobs) | {total_fleet_tok:,} (Weekly)"
             )
         else:
-            lines.append("• <b>Tổng lượng Tokens đã dùng:</b> <code>0</code> tokens (Fleet daemon idling/offline)")
+            lines.append("💎 <b>Tổng lượng Tokens đã dùng:</b> 0 tokens (Fleet idling)")
 
         if top_tasks:
             lines.append("")
@@ -2779,13 +3714,13 @@ class HermesTelegramNotifier:
                 rank_icon = ranks[idx] if idx < len(ranks) else "•"
                 jid = html.escape(str(task.get("job_id", "")), quote=True)
                 node = html.escape(str(task.get("node_name", "")), quote=True)
-                model = html.escape(str(task.get("model", "")), quote=True)
+                model = html.escape(_fmt_argon_slug(task.get("model", "")), quote=True)
                 tok = _safe_int(task.get("total_tokens", 0))
                 raw_clean = task.get("clean_prompt") or _extract_clean_task_prompt(task)
-                prompt_snippet = self._safe_format_prompt(raw_clean, limit=52)
+                prompt_snippet = self._safe_format_prompt(raw_clean, limit=48)
                 lines.append(
-                    f"{rank_icon} <code>{jid}</code> ({node} / {model}): "
-                    f"<b>{tok:,}</b> tokens — <i>\"{prompt_snippet}...\"</i>"
+                    f"{rank_icon} <code>{jid}</code> ({node}/{model}): "
+                    f"<b>{tok:,}</b> tok — <i>\"{prompt_snippet}...\"</i>"
                 )
 
         if top_nodes:
@@ -2799,14 +3734,14 @@ class HermesTelegramNotifier:
                 reqs = _safe_int(node.get("requests_served_1h", node.get("requests_served", 0)))
                 toks = _safe_int(node.get("tokens_consumed_1h", node.get("tokens_consumed", 0) or node.get("tokens", 0)))
                 active = _safe_int(node.get("active_jobs", 0))
-                active_str = f" [⚡ {active} active]" if active > 0 else ""
+                active_str = f" [⚡{active}]" if active > 0 else ""
                 lines.append(
                     f"{rank_icon} <b>{nname}</b> ({ntier}): <code>{reqs:,}</code> reqs (1h) | "
-                    f"{toks:,} tokens{active_str}"
+                    f"{toks:,} tok{active_str}"
                 )
 
         lines.append("")
-        lines.append("🛰️ <b>External Entropy Streams (5/5):</b>")
+        lines.append(f"🛰️ <b>External Entropy Streams ({len(streams)}/{len(streams)}):</b>")
         for idx, s in enumerate(streams, 1):
             raw_st = s.get("status", "UNKNOWN")
             emoji = status_emojis.get(raw_st, "⚪")
@@ -2814,51 +3749,141 @@ class HermesTelegramNotifier:
             raw_name = str(s.get("name", ""))
             name = html.escape(raw_name, quote=True)
             if "Stock" in raw_name:
-                detail = f"{s.get('hours_since_crawl')}h ago, {s.get('articles_24h')} art/24h, {s.get('unique_symbols')} sym"
+                detail = f"{s.get('hours_since_crawl')}h,{s.get('articles_24h')}a"
             elif "Legal" in raw_name:
-                detail = f"{s.get('hours_since_crawl')}h ago, {s.get('total_documents')} docs"
+                detail = f"{s.get('hours_since_crawl')}h,{s.get('total_documents')}d"
             elif "Median" in raw_name:
-                detail = f"{s.get('minutes_since_sync')}m ago, {s.get('checks_count')} chks, exit: {s.get('exit_code')}"
+                detail = f"{s.get('minutes_since_sync')}m,rc:{s.get('exit_code')}"
             elif "Media" in raw_name:
-                detail = f"{s.get('completed_videos')}/24 vids, {s.get('completed_photos')}/24 photos, lag: {s.get('current_hour_lag')}h"
+                detail = f"{s.get('completed_videos')}/24v,{s.get('completed_photos')}/24p"
             elif "Fleet" in raw_name:
-                detail = f"{s.get('active_nodes')}/{s.get('total_nodes')} nodes, Clef {s.get('consensus_score')}%, SLA: {'PASS' if s.get('sla_passed') else 'FAIL'}"
+                detail = f"{s.get('active_nodes')}/{s.get('total_nodes')}n,Clef:{s.get('consensus_score')}%,SLA:{'PASS' if s.get('sla_passed') else 'FAIL'}"
             else:
                 detail = ""
             if raw_st in ("ON_HOLD", "PAUSED"):
-                detail = f"PAUSED; {detail}" if detail else "PAUSED"
+                detail = f"HOLD;{detail}" if detail else "HOLD"
             detail_escaped = html.escape(detail, quote=True)
-            lines.append(f"{idx}️⃣ <b>{name}:</b> {emoji} <b>{st}</b> ({detail_escaped})")
+            lines.append(f"{idx}️⃣ <b>{name}:</b> {emoji} {st} ({detail_escaped})")
+        if len(streams) == 2:
+            lines.append("• <i>Đã xóa 3 luồng ngoại vi (Stock/Legal/Media) triệt tiêu cron-drift</i>")
 
         lines.append("")
-        lines.append("⚙️ <b>Cron Subsystem Diagnostics:</b>")
-        if "paused_jobs_count" in cron or "active_jobs_count" in cron:
+        act_c = _safe_int(cron.get("active_jobs_count", 0))
+        hld_c = _safe_int(cron.get("paused_jobs_count", 0))
+        lines.append(
+            f"⚙️ <b>Cron Diagnostics:</b> Active:{act_c} | Hold:{hld_c} | "
+            f"Clog:{len(cron.get('clogged_jobs', []))}|Drift:{len(cron.get('drift_skipped_jobs', []))}|"
+            f"Overdue:{len(cron.get('overdue_jobs', []))}|Auth:{len(cron.get('auth_failed_jobs', []))}|"
+            f"RL:{len(cron.get('rate_limited_jobs', []))}"
+        )
+        jev_t = jev_brain.get("jev_telemetry", {})
+        brain_e = jev_brain.get("brain_evolution", {})
+        sleep_c = jev_brain.get("sleep_consolidation", {})
+        if jev_t or brain_e:
+            lines.append("")
+            lines.append("🧠 <b>Hoạt Động JEV &amp; Tiến Hóa Nhận Thức (SecondBrain):</b>")
+            j_stat = html.escape(str(jev_t.get("status", "ACTIVE")), quote=True)
+            j_lat = jev_t.get("onnx_latency_ms", 0.0)
+            j_loras = _safe_int(jev_t.get("lora_count", 0))
+            j_sft = _safe_int(jev_t.get("sft_samples", 0))
+            j_dpo = _safe_int(jev_t.get("dpo_samples", 0))
+            j_sess = _safe_int(jev_t.get("jev_sessions_count", 0))
+            j_aud = _safe_int(jev_t.get("dialectical_audits_count", 0))
             lines.append(
-                f"• Active Jobs: <code>{_safe_int(cron.get('active_jobs_count', 0))}</code> | "
-                f"On Hold (Paused): <code>{_safe_int(cron.get('paused_jobs_count', 0))}</code>"
+                f"• <b>Local JEV:</b> {j_stat} (ONNX {j_lat}ms, $0/0-tok) | "
+                f"LoRA:{j_loras} | SFT/DPO:{j_sft}/{j_dpo} | Sess/Aud:{j_sess}/{j_aud}"
             )
-        lines.append(
-            f"• Clogged: <code>{len(cron.get('clogged_jobs', []))}</code> | "
-            f"Drift-Skipped: <code>{len(cron.get('drift_skipped_jobs', []))}</code> | "
-            f"Overdue: <code>{len(cron.get('overdue_jobs', []))}</code>"
-        )
-        lines.append(
-            f"• Auth Issues: <code>{len(cron.get('auth_failed_jobs', []))}</code> | "
-            f"Rate Limits: <code>{len(cron.get('rate_limited_jobs', []))}</code>"
-        )
+            act_eng = _safe_int(brain_e.get("active_engrams", 0))
+            l3_cnt = _safe_int(brain_e.get("l3_count", 0))
+            l2_cnt = _safe_int(brain_e.get("l2_count", 0))
+            l1_cnt = _safe_int(brain_e.get("l1_count", 0))
+            sup_cnt = _safe_int(brain_e.get("superseded_count", 0))
+            hb_cnt = _safe_int(brain_e.get("high_bloom_count", 0))
+            hb_pct = brain_e.get("high_bloom_pct", 0.0)
+            lines.append(
+                f"• <b>SecondBrain:</b> {act_eng} ACTIVE (L3:{l3_cnt}|L2:{l2_cnt}|L1:{l1_cnt}|Sup:{sup_cnt}) | "
+                f"B5-6:{hb_cnt}/{act_eng} ({hb_pct}%)"
+            )
+            exo_e = jev_brain.get("exogenous_ecology", brain_e)
+            exo_total = _safe_int(exo_e.get("exo_total", 0))
+            if exo_total > 0:
+                exo_github = _safe_int(exo_e.get("exo_github", 0))
+                exo_arxiv = _safe_int(exo_e.get("exo_arxiv", 0))
+                exo_standards = _safe_int(exo_e.get("exo_standards", 0))
+                exo_tasks = _safe_int(exo_e.get("exo_tasks", 0))
+                exo_avg_h = _safe_float(exo_e.get("exo_avg_entropy_bits", 0.0))
+                exo_adopt = _safe_int(exo_e.get("exo_adopt_count", 0))
+                exo_heal = _safe_int(exo_e.get("exo_self_heal_count", 0))
+                exo_lora = _safe_int(exo_e.get("exo_lora_count", 0))
+                exo_adr = _safe_int(exo_e.get("exo_adr_count", 0))
+                lines.append(
+                    f"• <b>Không Gian Tri Thức Ngoại Sinh:</b> {exo_total} mẫu "
+                    f"(GH:{exo_github}|arXiv:{exo_arxiv}|Std:{exo_standards}|Auto:{exo_tasks} | H={exo_avg_h:.2f}b) → "
+                    f"Adopt:{exo_adopt} | Heal:{exo_heal} | LoRA:{exo_lora} | ADR:{exo_adr}"
+                )
+            is_7am = bool(sleep_c.get("is_morning_7am_window") or scan_result.get("morning_sleep_briefing"))
+            c_date = html.escape(str(sleep_c.get("cycle_date", "") or "latest"), quote=True)
+            s2_gamma = sleep_c.get("stage2_downscale_factor", 0.97)
+            s2_syn = _safe_int(sleep_c.get("stage2_synapses_renormalized", 0))
+            s2_prn = _safe_int(sleep_c.get("stage2_weak_pruned", 0))
+            s3_prm = _safe_int(sleep_c.get("stage3_promotions_count", 0))
+            s4_drm = _safe_int(sleep_c.get("stage4_dream_bridges_count", 0))
+            s4_par = _safe_int(sleep_c.get("stage4_paradoxes_resolved", 0))
+            s5_sft = _safe_int(sleep_c.get("stage5_sft_samples", j_sft))
+            s5_dpo = _safe_int(sleep_c.get("stage5_dpo_triads", j_dpo))
+            s5_lat = sleep_c.get("stage5_latency_ms", 0.0)
+            if is_7am:
+                s1_sym = _safe_int(sleep_c.get("stage1_symlinks_flushed", 0))
+                s1_dup = _safe_int(sleep_c.get("stage1_dups_cleared", 0))
+                s1_deb = _safe_int(sleep_c.get("stage1_debris_flushed", 0))
+                lines.append("")
+                lines.append(f"🌅 <b>Báo Cáo Brain Nhịp Sleep 07:00 Sáng (Chu kỳ 02:00 AM — {c_date}):</b>")
+                lines.append(
+                    f"• <b>Stage 1-2 (Glymphatic &amp; SHY):</b> Sym:{s1_sym},Dup:{s1_dup},L0:{s1_deb} | "
+                    f"γ={s2_gamma},Renorm:{s2_syn},Pruned:{s2_prn}"
+                )
+                lines.append(
+                    f"• <b>Stage 3-4 (SWS Replay &amp; REM Dream):</b> Promoted:{s3_prm} | "
+                    f"Paradox:{s4_par} | Bridges:{s4_drm}"
+                )
+                lines.append(
+                    f"• <b>Stage 5 (Procedural Myelination):</b> SFT:{s5_sft},"
+                    f"DPO:{s5_dpo},LoRA:{j_loras} ({s5_lat}ms)"
+                )
+            elif sleep_c.get("available"):
+                lines.append(
+                    f"• <b>Nhịp Sleep gần nhất ({c_date}):</b> Renorm {s2_syn} synapses (γ={s2_gamma}), "
+                    f"{s3_prm} SWS promotions, {s4_drm} REM bridges, {s5_sft} SFT/{s5_dpo} DPO"
+                )
+
+            vc = jev_brain.get("victory_critic", {}) if isinstance(jev_brain, dict) else {}
+            if not vc:
+                vc = scan_result.get("victory_critic", {})
+            if isinstance(vc, dict) and _safe_int(vc.get("total_critiques", 0)) > 0:
+                vc_total = _safe_int(vc.get("total_critiques", 0))
+                vc_passed = _safe_int(vc.get("passed_count", 0))
+                vc_blocked = _safe_int(vc.get("blocked_count", 0))
+                vc_avg_risk = _safe_float(vc.get("avg_fake_pass_risk", 0.0))
+                vc_avg_score = _safe_float(vc.get("avg_composite_score", vc.get("avg_critic_score", 100.0)))
+                lines.append(
+                    f"• <b>Sovereign Victory Critic:</b> {vc_total} critiques "
+                    f"({vc_passed} certified | {vc_blocked} blocked) | "
+                    f"Risk: {vc_avg_risk:.3f} | Score: {vc_avg_score:.1f}/100"
+                )
 
         if evo_insight:
             lines.append("")
-            lines.append("🧬 <b>Ý Nghĩa Tiến Hoá (Sovereign Evolutionary Significance):</b>")
+            lines.append("🧬 <b>Ý Nghĩa Tiến Hoá:</b>")
             shift = html.escape(str(evo_insight.get("strategic_shift", "")), quote=True)
             routing = html.escape(str(evo_insight.get("cognitive_routing", "")), quote=True)
             healing = html.escape(str(evo_insight.get("self_healing_evolution", "")), quote=True)
-            if shift:
-                lines.append(f"• <b>Hội tụ Chiến lược:</b> {shift}")
-            if routing:
-                lines.append(f"• <b>Định tuyến Nhận thức:</b> {routing}")
+            know = html.escape(str(evo_insight.get("knowledge_evolution", "")), quote=True)
+            if shift or routing:
+                lines.append(f"• <b>Định tuyến:</b> {shift} {routing}".strip())
             if healing:
-                lines.append(f"• <b>Tiến hoá Tự chữa lành:</b> {healing}")
+                lines.append(f"• <b>Tự chữa lành:</b> {healing}")
+            if know:
+                lines.append(f"• <b>Tri thức:</b> {know}")
 
         self_healing = scan_result.get("self_healing", {})
         sh_actions = self_healing.get("actions", []) if isinstance(self_healing, dict) else []
@@ -2870,13 +3895,133 @@ class HermesTelegramNotifier:
 
         lines.append("")
         if severity == "HEALTHY":
-            lines.append("✅ <b>Status:</b> All sovereign pipelines operating inside nominal bounds.")
+            lines.append("✅ <b>Status:</b> Sovereign pipelines nominal.")
         elif severity == "WARNING":
-            lines.append("⚠️ <b>Status:</b> Moderate degradation observed. Self-healing advised.")
+            lines.append("⚠️ <b>Status:</b> Moderate degradation observed.")
         else:
-            lines.append("🚨 <b>Status:</b> Critical pipeline stall. Proactive intervention in progress.")
+            lines.append("🚨 <b>Status:</b> Critical pipeline stall.")
 
         return "\n".join(lines)
+
+    def format_markdown_report(self, scan_result: Dict[str, Any]) -> str:
+        """Format executive hourly digest dashboard as Markdown, including dedicated Victory Critic telemetry."""
+        overall = scan_result.get("overall_health_score", 0)
+        severity = scan_result.get("severity", "HEALTHY")
+        cron = scan_result.get("cron", {})
+        entropy = scan_result.get("entropy", {})
+
+        cron_score = cron.get("cron_health_score", 0)
+        entropy_score = entropy.get("entropy_health_score", 0)
+        ticker = cron.get("ticker_heartbeat", {})
+        ticker_status = "STALE ❌" if ticker.get("is_stale") else "FRESH ✅"
+
+        status_emojis = {
+            "HEALTHY": "🟢",
+            "WARNING": "🟡",
+            "DEGRADED": "🟡",
+            "CRITICAL": "🔴",
+            "ON_HOLD": "⏸️",
+            "PAUSED": "⏸️",
+        }
+        sev_emoji = status_emojis.get(severity, "⚪")
+
+        jev_brain = scan_result.get("jev_brain_sleep")
+        if not isinstance(jev_brain, dict):
+            jev_brain = collect_jev_and_brain_sleep_telemetry(
+                force_sleep_report=bool(scan_result.get("morning_sleep_briefing", False))
+            )
+
+        # Extract Victory Critic Telemetry
+        vc = scan_result.get("victory_critic")
+        if not isinstance(vc, dict):
+            vc = jev_brain.get("victory_critic", {}) if isinstance(jev_brain, dict) else {}
+        if not isinstance(vc, dict):
+            vc = {}
+
+        vc_total = _safe_int(vc.get("total_critiques", 0))
+        vc_passed = _safe_int(vc.get("passed_count", 0))
+        vc_blocked = _safe_int(vc.get("blocked_count", 0))
+        vc_avg_risk = _safe_float(vc.get("avg_fake_pass_risk", 0.0))
+        vc_avg_score = _safe_float(vc.get("avg_composite_score", vc.get("avg_critic_score", 100.0)))
+
+        ts_str = scan_result.get("timestamp") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        lines = [
+            "# ⚡ [HERMES AGENT] 24/7 Hourly System Digest",
+            f"- **Timestamp:** {ts_str}",
+            f"- **Composite Health:** `{overall}/100` {sev_emoji} [**{severity}**] (Cron:{cron_score}% | Entropy:{entropy_score}% | Ticker:{ticker_status})",
+            "",
+            "## 🛡️ Sovereign Victory Critic & Anti-Fake-Pass Telemetry",
+            f"- Total Critiques: {vc_total}",
+            f"- Certified Victories: {vc_passed}",
+            f"- Blocked Fake Passes: {vc_blocked}",
+            f"- Avg Fake Pass Risk: {vc_avg_risk:.3f}",
+            f"- Avg Composite Score: {vc_avg_score:.1f}/100",
+        ]
+
+        streams = entropy.get("streams", []) or scan_result.get("entropy_streams", {}).get("streams", [])
+        fleet_stream = next((s for s in streams if "Fleet" in str(s.get("name", ""))), {})
+        if not fleet_stream and streams:
+            fleet_stream = streams[0]
+        pro_first = fleet_stream.get("pro_first_criterion", {})
+        if pro_first:
+            badge = pro_first.get("badge", "⚪ CHƯA RÕ")
+            grade = str(pro_first.get("grade", "UNKNOWN"))
+            p_burn = pro_first.get("pro_burn_pct", 0.0)
+            p_cons = pro_first.get("pro_consumed_tokens", 0)
+            p_cap = pro_first.get("pro_capacity_tokens", 0)
+            p_share = pro_first.get("pro_request_share_pct", 0.0)
+            p_reqs = pro_first.get("pro_requests", 0)
+            tot_reqs = pro_first.get("total_requests", 0)
+            verdict = str(pro_first.get("verdict", ""))
+
+            lines.extend([
+                "",
+                "## 🎯 Pro Agy First Fleet Policy",
+                f"- **Evaluation:** {badge} ({grade})",
+                f"- **Pro Quota Burn:** {p_burn}% ({p_cons:,}/{p_cap:,} tok)",
+                f"- **Pro Request Share:** {p_share}% ({p_reqs:,}/{tot_reqs:,} reqs)",
+                f"- **Operational Verdict:** {verdict}",
+            ])
+
+        op_eff = (fleet_stream.get("operational_efficiency") or {}) if isinstance(fleet_stream, dict) else {}
+        if op_eff.get("emergency_audit_active"):
+            em_info = op_eff.get("emergency_audit", {})
+            em_bottleneck = em_info.get("primary_bottleneck") or "unknown"
+            em_1h = op_eff.get("success_rate_1h_pct", 0.0)
+            em_all = op_eff.get("success_rate_pct", 0.0)
+            lines.extend([
+                "",
+                "## 🚨 Emergency Efficiency Alert (<50% Threshold)",
+                "- **Status:** ACTIVE EMERGENCY AUDIT",
+                f"- **Primary Bottleneck:** `{em_bottleneck}`",
+                f"- **Rolling 1h Efficiency:** `{em_1h}%`",
+                f"- **Overall Efficiency:** `{em_all}%`",
+            ])
+
+        jev_t = jev_brain.get("jev_telemetry", {}) if isinstance(jev_brain, dict) else {}
+        brain_e = jev_brain.get("brain_evolution", {}) if isinstance(jev_brain, dict) else {}
+        if jev_t or brain_e:
+            j_stat = str(jev_t.get("status", "ACTIVE"))
+            j_lat = jev_t.get("onnx_latency_ms", 0.0)
+            act_eng = _safe_int(brain_e.get("active_engrams", 0))
+            l3_cnt = _safe_int(brain_e.get("l3_count", 0))
+            l2_cnt = _safe_int(brain_e.get("l2_count", 0))
+            l1_cnt = _safe_int(brain_e.get("l1_count", 0))
+            lines.extend([
+                "",
+                "## 🧠 SecondBrain & JEV Cognitive Evolution",
+                f"- **Local JEV:** {j_stat} (ONNX {j_lat}ms, $0/0-tok)",
+                f"- **Active Engrams:** {act_eng} (L3:{l3_cnt} | L2:{l2_cnt} | L1:{l1_cnt})",
+            ])
+
+        lines.extend([
+            "",
+            f"**Pipeline Status:** {'Sovereign pipelines nominal.' if severity == 'HEALTHY' else 'Pipeline attention required.'}",
+        ])
+
+        return "\n".join(lines)
+
 
 
 # ==============================================================================
@@ -3795,6 +4940,101 @@ class SelfHealingManager:
             logger.error("Failed self-healing drift skips: %s", e)
             return []
 
+    def reap_phantom_processes_and_stale_locks(
+        self,
+        max_agy_age_seconds: int = 7200,
+        max_modal_logs_age_seconds: int = 600,
+        max_endogenous_lock_age_seconds: int = 2700,
+    ) -> Dict[str, Any]:
+        """
+        Reaps orphaned phantom `agy --input-format stream-json --conversation <cid>` processes
+        (where `<cid>` is missing from `~/.gemini/antigravity/brain`, archived, or using deprecated
+        `gemini-3.8-flash` / stuck > 2h), hung `modal app logs` processes (> 10m), and stale
+        `/tmp/hermes_endogenous_consolidation.lock` files (> 45m).
+        """
+        reaped_agy: List[Dict[str, Any]] = []
+        reaped_modal_logs: List[int] = []
+        stale_locks_cleared: List[str] = []
+
+        brain_dir = Path.home() / ".gemini" / "antigravity" / "brain"
+        annotations_dir = Path.home() / ".gemini" / "antigravity" / "annotations"
+
+        # 1. Clear stale endogenous consolidation lock if older than threshold
+        endogenous_lock = Path("/tmp/hermes_endogenous_consolidation.lock")
+        try:
+            if endogenous_lock.exists():
+                lock_age = time.time() - endogenous_lock.stat().st_mtime
+                if lock_age > max_endogenous_lock_age_seconds:
+                    endogenous_lock.unlink()
+                    stale_locks_cleared.append(f"{endogenous_lock} (age={int(lock_age)}s)")
+        except Exception as e:
+            logger.debug("Error checking endogenous lock: %s", e)
+
+        # 2. Scan process table for phantom agy stream-json & hung modal app logs
+        try:
+            proc = subprocess.run(
+                ["ps", "-eo", "pid,etimes,args"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if proc.returncode == 0:
+                conv_re = re.compile(r"--conversation\s+([0-9a-fA-F-]{36})")
+                for line in proc.stdout.splitlines()[1:]:
+                    parts = line.strip().split(None, 2)
+                    if len(parts) < 3:
+                        continue
+                    try:
+                        pid = int(parts[0])
+                        etimes = int(parts[1])
+                    except ValueError:
+                        continue
+                    cmd_args = parts[2]
+                    if pid == os.getpid():
+                        continue
+
+                    # Check phantom agy --input-format stream-json --conversation <cid>
+                    if "antigravity-cli/bin/agy" in cmd_args and "--input-format stream-json" in cmd_args:
+                        m_cid = conv_re.search(cmd_args)
+                        cid = m_cid.group(1) if m_cid else ""
+                        reason = None
+                        if cid and brain_dir.exists() and not (brain_dir / cid).exists():
+                            reason = f"missing_brain_dir ({cid})"
+                        elif cid and annotations_dir.exists() and (annotations_dir / f"{cid}.pbtxt").exists():
+                            try:
+                                pb = (annotations_dir / f"{cid}.pbtxt").read_text(encoding="utf-8", errors="ignore")
+                                if re.search(r"archived\s*:\s*true", pb, re.IGNORECASE):
+                                    reason = f"archived_conversation ({cid})"
+                            except Exception:
+                                pass
+                        if not reason and "gemini-3.8-flash" in cmd_args and etimes > 600:
+                            reason = f"deprecated_flash_model_phantom (etimes={etimes}s)"
+                        if not reason and etimes > max_agy_age_seconds:
+                            reason = f"exceeded_max_agy_age (etimes={etimes}s > {max_agy_age_seconds}s)"
+
+                        if reason:
+                            try:
+                                os.kill(pid, 15)
+                                reaped_agy.append({"pid": pid, "cid": cid, "etimes": etimes, "reason": reason})
+                            except OSError:
+                                pass
+
+                    # Check hung modal app logs
+                    elif "modal app logs" in cmd_args and etimes > max_modal_logs_age_seconds:
+                        try:
+                            os.kill(pid, 15)
+                            reaped_modal_logs.append(pid)
+                        except OSError:
+                            pass
+        except Exception as e:
+            logger.debug("Error scanning processes for phantom reaper: %s", e)
+
+        return {
+            "reaped_agy_phantoms": reaped_agy,
+            "reaped_modal_logs_pids": reaped_modal_logs,
+            "stale_locks_cleared": stale_locks_cleared,
+        }
+
     def trigger_entropy_recovery(self, stream: str) -> Dict[str, Any]:
         """Trigger on-demand execution cycle for stalled entropy sources."""
         results = {"stream": stream, "success": False, "returncode": -1, "output": ""}
@@ -3936,6 +5176,7 @@ def run_full_scan(
     cron_detector: Optional[CronAnomalyDetector] = None,
     entropy_detector: Optional[EntropyDegradationDetector] = None,
     now_utc: Optional[datetime] = None,
+    force_sleep_report: bool = False,
 ) -> Dict[str, Any]:
     """Execute complete system scan across Cron, Entropy streams, and Mesh."""
     cron_det = cron_detector or CronAnomalyDetector()
@@ -3965,6 +5206,10 @@ def run_full_scan(
         ticker_score=ticker_score,
     )
 
+    jev_brain_sleep = collect_jev_and_brain_sleep_telemetry(
+        force_sleep_report=force_sleep_report,
+    )
+
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "overall_health_score": overall_score,
@@ -3973,18 +5218,29 @@ def run_full_scan(
         "entropy": entropy_findings,
         "mesh_score": mesh_score,
         "ticker_score": ticker_score,
+        "jev_brain_sleep": jev_brain_sleep,
+        "victory_critic": jev_brain_sleep.get("victory_critic", {}),
+        "morning_sleep_briefing": bool(force_sleep_report or jev_brain_sleep.get("sleep_consolidation", {}).get("is_morning_7am_window")),
     }
+
+
+def format_markdown_report(scan_result: Dict[str, Any]) -> str:
+    """Format full markdown report for 24/7 Hourly Digest including dedicated Victory Critic telemetry."""
+    notifier = HermesTelegramNotifier()
+    return notifier.format_markdown_report(scan_result)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Hermes Agent 24/7 Hourly Monitor & Anomaly Detector")
     parser.add_argument("--scan", action="store_true", help="Run full scan and output JSON summary")
+    parser.add_argument("--markdown", action="store_true", help="Print executive hourly digest report in Markdown")
     parser.add_argument("--notify", action="store_true", help="Send Telegram Hourly Digest Report")
     parser.add_argument("--alert-only", action="store_true", help="Send Telegram alert only if CRITICAL anomalies exist")
     parser.add_argument("--self-heal", action="store_true", help="Run automated self-healing for drift-skips")
     parser.add_argument("--recover-stream", type=str, help="Trigger on-demand recovery for a stalled entropy stream")
     parser.add_argument("--install-cron", action="store_true", help="Register 24/7 hourly digest monitor in Hermes Cron")
     parser.add_argument("--uninstall-cron", action="store_true", help="Remove 24/7 hourly digest monitor from Hermes Cron")
+    parser.add_argument("--morning-sleep-report", action="store_true", help="Force expanded 07:00 AM Brain Sleep Consolidation report")
     args = parser.parse_args()
 
     notifier = HermesTelegramNotifier()
@@ -4001,25 +5257,34 @@ def main():
         return
 
     # Default action if no flags provided: scan
-    if not (args.scan or args.notify or args.alert_only or args.self_heal or args.recover_stream):
+    if not (args.scan or args.markdown or args.notify or args.alert_only or args.self_heal or args.recover_stream):
         args.scan = True
 
     if args.self_heal:
-        print("[*] Initiating Self-Healing for Drift-Skipped Cron Jobs...")
+        print("[*] Initiating Self-Healing for Drift-Skipped Cron Jobs & Phantom Process Reaper...")
         healed = healer.self_heal_drift_skips()
         print(f"[+] Self-healed {len(healed)} jobs:")
         for h in healed:
             print(f"    - {h.get('name')} ({h.get('id')}) -> model={h.get('model')}, provider={h.get('provider')}")
+        reap_res = healer.reap_phantom_processes_and_stale_locks()
+        print(
+            f"[+] Phantom Reaper: agy_phantoms={len(reap_res.get('reaped_agy_phantoms', []))}, "
+            f"modal_logs={len(reap_res.get('reaped_modal_logs_pids', []))}, "
+            f"stale_locks={len(reap_res.get('stale_locks_cleared', []))}"
+        )
 
     if args.recover_stream:
         print(f"[*] Triggering recovery for entropy stream: {args.recover_stream}...")
         rec = healer.trigger_entropy_recovery(args.recover_stream)
         print(f"[+] Result: success={rec.get('success')}, code={rec.get('returncode')}")
 
-    scan_result = run_full_scan()
+    scan_result = run_full_scan(force_sleep_report=args.morning_sleep_report)
 
     if args.scan:
         print(json.dumps(scan_result, indent=2))
+
+    if args.markdown:
+        print(notifier.format_markdown_report(scan_result))
 
     if args.alert_only:
         if scan_result.get("severity") == "CRITICAL":
@@ -4039,3 +5304,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
