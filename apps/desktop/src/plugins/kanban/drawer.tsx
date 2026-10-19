@@ -685,6 +685,7 @@ export function TaskDrawer({
           )}
           {task && (() => {
             const ch = getChannelBadge(task)
+
             return ch ? (
               <span className={cn(ch.className, 'text-[0.6875rem] py-0.5')} title={ch.title}>
                 <span>{ch.logo}</span>
@@ -778,6 +779,7 @@ export function TaskDrawer({
                 <MetaRow label={k.metaTenant}>
                   {(() => {
                     const ch = getChannelBadge(task)
+
                     if (ch) {
                       return (
                         <span className={cn(ch.className, 'text-xs')} title={ch.title}>
@@ -786,6 +788,7 @@ export function TaskDrawer({
                         </span>
                       )
                     }
+
                     return <span>{task.tenant}</span>
                   })()}
                 </MetaRow>

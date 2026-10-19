@@ -238,15 +238,19 @@ function CardFooter({ arc, task }: { arc: ArcState | null; task: KanbanTask }) {
 
 export function formatTenantLabel(tenant: string): { label: string; logo: string } {
   const t = tenant.toLowerCase()
+
   if (t === 'phamtrai_dialy' || t === 'dialy') {
     return { label: 'Địa Lý Ba Tôi', logo: '🌏' }
   }
+
   if (t === 'toi_doc_sach') {
     return { label: 'Tôi Đọc Sách', logo: '📖' }
   }
+
   if (t === 'zenpham') {
     return { label: 'ZenPham', logo: '🔴' }
   }
+
   return { label: tenant, logo: '🏷️' }
 }
 
@@ -995,6 +999,7 @@ function FilterMenu({
             </DropdownMenuItem>
             {board.tenants.map(name => {
               const meta = formatTenantLabel(name)
+
               return (
                 <DropdownMenuItem key={name} onSelect={() => onTenant(name)}>
                   <span className="mr-1">{meta.logo}</span>

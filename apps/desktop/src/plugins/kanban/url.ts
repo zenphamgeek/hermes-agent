@@ -9,9 +9,10 @@ const DANGEROUS_SCHEMES_REGEX = /^\s*(javascript|data|vbscript|blob|file):/i
  * or using a dangerous URI scheme (e.g. javascript:, data:, vbscript:, java%73cript:).
  */
 export function sanitizeCardUrl(raw: string | null | undefined): string | null {
-  if (!raw || typeof raw !== 'string') return null
+  if (!raw || typeof raw !== 'string') {return null}
   const trimmed = raw.trim()
-  if (!trimmed) return null
+
+  if (!trimmed) {return null}
 
   // Fast-path guard against raw whitespace and control characters
   if (/[\u0000-\u001F\u007F-\u009F]/.test(trimmed)) {
@@ -25,10 +26,12 @@ export function sanitizeCardUrl(raw: string | null | undefined): string | null {
 
   // Multi-pass URL decoding check to prevent single and double encoding bypasses (e.g. java%73cript:, %6a%61%76%61...)
   let decoded = trimmed
+
   for (let pass = 0; pass < 2; pass++) {
     try {
       const nextDecoded = decodeURIComponent(decoded)
-      if (nextDecoded === decoded) break
+
+      if (nextDecoded === decoded) {break}
       decoded = nextDecoded
     } catch {
       // Malformed percent-encoding
@@ -41,6 +44,7 @@ export function sanitizeCardUrl(raw: string | null | undefined): string | null {
   }
 
   let parsed: URL
+
   try {
     // Parse strictly as an absolute URL to avoid turning relative paths into localhost links
     parsed = new URL(trimmed)
