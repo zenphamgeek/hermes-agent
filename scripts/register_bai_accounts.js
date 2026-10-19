@@ -17,21 +17,43 @@ const { execSync } = require('child_process');
 const INVITE_URL = 'https://chat.b.ai/chat?invite_code=STSQYC';
 const API_KEY_URL = 'https://chat.b.ai/key';
 const API_DOC_PATH = path.resolve(__dirname, '../assets/api_key/bai.md');
-const VAULT_SCRIPT = path.resolve(__dirname, '../skills/account-vault/scripts/vault.py');
+const VAULT_SCRIPT = path.resolve(__dirname, '../skills/security/account-vault/scripts/vault.py');
 
-const ACCOUNTS = [
-  { id: 'google_zenhunter', email: 'zenhunter@gmail.com', pass: 'Anything123', type: 'Gmail Personal' },
-  { id: 'google_thang_inno', email: 'thang@inno.ai.vn', pass: 'digimate@2025', type: 'Workspace Inno AI' },
-  { id: 'google_coderedgen', email: 'coderedgen@gmail.com', pass: 'Anything@123', type: 'Gmail Dev' },
-  { id: 'google_nhatrophamvu', email: 'nhatrophamvu@gmail.com', pass: 'Zeninall@123', type: 'Quản lý nhà trọ' },
-
-  { id: 'google_traimai_family', email: 'traimai.family@gmail.com', pass: 'Zeninall@123', type: 'Family Gmail' },
-  { id: 'google_zenpham', email: 'zenpham@greenskygarden.com', pass: 'Zeninall@123', type: 'Workspace GreenSky' },
-  { id: 'google_zeninallgeek', email: 'zeninallgeek@gmail.com', pass: 'Zeninall@123', type: 'Personal Geek' },
-  { id: 'google_gaopham83', email: 'gaopham83@gmail.com', pass: 'Anything@@123', type: 'Personal Gmail' },
-  { id: 'google_phamvuthang', email: 'Phamvuthang@gmail.com', pass: 'Digimate@2025', type: 'Personal Gmail' },
-  { id: 'google_ai_digimate', email: 'ai.digimate@gmail.com', pass: 'Anything@123', type: 'AI Digimate' },
+const ACCOUNT_IDS = [
+  { id: 'google_zenhunter', email: 'zenhunter@gmail.com', type: 'Gmail Personal' },
+  { id: 'google_thang_inno', email: 'thang@inno.ai.vn', type: 'Workspace Inno AI' },
+  { id: 'google_coderedgen', email: 'coderedgen@gmail.com', type: 'Gmail Dev' },
+  { id: 'google_nhatrophamvu', email: 'nhatrophamvu@gmail.com', type: 'Quản lý nhà trọ' },
+  { id: 'google_traimai_family', email: 'traimai.family@gmail.com', type: 'Family Gmail' },
+  { id: 'google_zenpham', email: 'zenpham@greenskygarden.com', type: 'Workspace GreenSky' },
+  { id: 'google_zeninallgeek', email: 'zeninallgeek@gmail.com', type: 'Personal Geek' },
+  { id: 'google_gaopham83', email: 'gaopham83@gmail.com', type: 'Personal Gmail' },
+  { id: 'google_phamvuthang', email: 'Phamvuthang@gmail.com', type: 'Personal Gmail' },
+  { id: 'google_ai_digimate', email: 'ai.digimate@gmail.com', type: 'AI Digimate' },
 ];
+
+function loadAccountsFromVault() {
+  return ACCOUNT_IDS.map(acc => {
+    try {
+      const raw = execSync(`python3 "${VAULT_SCRIPT}" get "${acc.id}" --with-totp --json`, {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      const parsed = JSON.parse(raw);
+      return {
+        ...acc,
+        email: parsed.username || acc.email,
+        pass: parsed.password || '',
+        totp: parsed.totp ? parsed.totp.code : null,
+      };
+    } catch (err) {
+      console.warn(`[Vault] Could not load credentials for ${acc.id}: ${err.message}`);
+      return { ...acc, pass: '', totp: null };
+    }
+  });
+}
+
+const ACCOUNTS = loadAccountsFromVault();
 
 const PHONE_MAP = {
   '92': { phone: '913252992', country: 'Vietnam' },

@@ -25,12 +25,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bridge_9router_to_odoo")
 
+def _resolve_odoo_db_pass() -> str:
+    env_pw = os.environ.get("ODOO_DB_PASS")
+    if env_pw:
+        return env_pw
+    try:
+        import importlib.util
+        from pathlib import Path
+        vpath = Path(__file__).resolve().parents[1] / "skills" / "security" / "account-vault" / "scripts" / "vault.py"
+        spec = importlib.util.spec_from_file_location("vault", vpath)
+        if spec and spec.loader:
+            vmod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(vmod)
+            entry = vmod.AccountVault().get("odoo20_db")
+            if entry and entry.get("password"):
+                return entry["password"]
+    except Exception:
+        pass
+    return ""
+
+
 SQLITE_PATH = os.path.expanduser("~/.9router/db/data.sqlite")
 DB_HOST = os.environ.get("ODOO_DB_HOST", "127.0.0.1")
 DB_PORT = int(os.environ.get("ODOO_DB_PORT", "5434"))
 DB_NAME = os.environ.get("ODOO_DB_NAME", "odoo20_dev")
 DB_USER = os.environ.get("ODOO_DB_USER", "odoo")
-DB_PASS = os.environ.get("ODOO_DB_PASS", "1NN0R1@2026")
+DB_PASS = _resolve_odoo_db_pass()
 
 PROVIDER_DEFINITIONS = {
     "codex": {
