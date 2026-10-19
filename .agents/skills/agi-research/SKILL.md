@@ -3,14 +3,14 @@ name: agi-research
 description: >-
   Short alias for sovereign-agi-manifest. Run deep AI research, 6-axis AI capability evaluation
   (Delta_F, EWC_Retention, Submodular_Gain, ECE, NSR, GFR), and Opus 5.5 Council task orchestration
-  across the 14 eligible AGY Fleet Pro nodes under ADR-000 directly in chat without bash.
-version: 1.0.0
+  across the 17 eligible AGY Fleet Pro nodes under ADR-000 directly in chat without bash.
+version: 1.1.0
 author: Principal AI Researcher (User) & Antigravity
 platforms: [linux, macos]
 metadata:
   hermes:
     manifest_id: ADR-000-SOVEREIGN-AGI-RESEARCH-MANIFEST
-    manifest_sha256: 8bf5906aa3789c95756ba142547f9864c184754865a06a60b4dd55564bad32c2
+    manifest_sha256: 87a709a855ea92adc62f5e1c335132855d7d798fb9fce829e4fe4c202a475d14
     tags: [agi, research, opus-5-5, capability-evaluation, secondbrain]
     related_skills: [sovereign-agi-manifest, agy-fleet]
 ---

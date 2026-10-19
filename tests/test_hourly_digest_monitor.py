@@ -7655,4 +7655,565 @@ class TestAdversarialSecurityEnclave:
             [(1000, 0, 0), (1000, 0, 0), (995, 0, 0), (1002, 0, 0)],
         ) is True
 
+    def test_receipt_injection_sanitization(self) -> None:
+        from tools.hourly_digest_monitor import SecurityConfigurationError, StatelessTokenEngine
+
+        engine = StatelessTokenEngine(master_secret="b" * 64)
+        with pytest.raises(SecurityConfigurationError, match="Malicious metacharacter detected"):
+            engine.sanitize_receipt_data('{"valid_key": "ok", "../etc/passwd": "bad"}')
+
+        with pytest.raises(SecurityConfigurationError, match="Malicious metacharacter detected"):
+            engine.sanitize_receipt_data('{"key;rm -rf /": "bad"}')
+
+        clean = engine.sanitize_receipt_data('{"evicted_count": 42, "status": "VERIFIED"}')
+        assert clean == {"evicted_count": 42, "status": "VERIFIED"}
+
+    def test_hlc_concurrency_race_free_tick_progression(self) -> None:
+        import threading
+        from tools.hlc_clock_drift_guard import HLCClockGuard
+
+        guard = HLCClockGuard(max_drift_ms=1500)
+        iterations = 200
+        collected_tuples = []
+        lock = threading.Lock()
+
+        def worker() -> None:
+            local_list = [guard.tick() for _ in range(iterations)]
+            with lock:
+                collected_tuples.extend(local_list)
+
+        threads = [threading.Thread(target=worker) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(collected_tuples) == 4 * iterations
+        assert len(set(collected_tuples)) == len(collected_tuples)
+
+    def test_secure_predicate_evaluator_blocks_ast_traversal_and_depth_bombs(self) -> None:
+        from tools.hourly_digest_monitor import (
+            ASTDepthExceededError,
+            SecurePredicateEvaluator,
+            SecurityEvaluationError,
+        )
+
+        evaluator = SecurePredicateEvaluator(
+            frozenset({"status", "confidence", "revision", "category", "verified"})
+        )
+
+        with pytest.raises(SecurityEvaluationError, match="Prohibited AST node type 'Attribute'"):
+            evaluator.evaluate("status.__class__", {"status": "active"})
+
+        with pytest.raises(SecurityEvaluationError, match="Prohibited AST node type 'Call'"):
+            evaluator.evaluate("__import__('os').system('echo pwned')", {"status": "active"})
+
+        with pytest.raises(ASTDepthExceededError, match="AST depth limit exceeded"):
+            evaluator.evaluate("(((((((confidence + 1) + 1) + 1) + 1) + 1) + 1) > 10)", {"confidence": 5.0})
+
+        with pytest.raises(SecurityEvaluationError, match="Illegal identifier lookup: 'unauthorized_secret'"):
+            evaluator.evaluate("unauthorized_secret == 'x'", {"unauthorized_secret": "x"})
+
+        ctx = {"status": "verified", "confidence": 0.92, "revision": 2, "verified": True}
+        assert evaluator.evaluate("status == 'verified' and confidence >= 0.85 and revision == 2", ctx) is True
+        ctx["confidence"] = 0.80
+        assert evaluator.evaluate("status == 'verified' and confidence >= 0.85 and revision == 2", ctx) is False
+
+    def test_atomic_locked_ledger_preserves_content_atomically(self, tmp_path: Path) -> None:
+        from tools.hourly_digest_monitor import atomic_locked_ledger
+
+        target_ledger = tmp_path / "subsystem_digest.json"
+        with atomic_locked_ledger(target_ledger, timeout_seconds=2.0) as ledger:
+            ledger["run_id"] = "test-run-101"
+            ledger["events_processed"] = 42
+
+        assert target_ledger.exists()
+        saved = json.loads(target_ledger.read_text(encoding="utf-8"))
+        assert saved == {"run_id": "test-run-101", "events_processed": 42}
+
+    def test_vertical_resilience_fake_pass_taxonomy_detection_and_prevention(self, tmp_path: Path) -> None:
+        from tools.sovereign_victory_critic import SovereignVictoryCritic
+
+        critic = SovereignVictoryCritic(db_path=tmp_path / "critic_vr.db")
+
+        # 1. Poisoned Vertical Resilience deploy claim with FP-VR-01 (/assets 403) + FP-VR-02 (TooltipRoot) + FP-VR-03 (pass-on-unreachable)
+        poison_res = critic.evaluate_fake_pass_risk(
+            claim_text="Vertical Resilience QA deployed and passed.",
+            test_code="const passed = localPassed && (mode !== 'live' || !liveBundleCheck?.reachable || Boolean(liveBundleCheck?.allSignaturesPresent));",
+            execution_log=(
+                "1 passed in 1.2s\n"
+                "GET /assets/51181b3b-950b-447b-935c-05c0bafdf288 403 Forbidden\n"
+                "app-tooltip.vue: <TooltipRoot>"
+            ),
+        )
+        codes = {item["code"] for item in poison_res["detected_anti_patterns"]}
+        assert "fp_vr_01_metadata_only_asset_seed_403" in codes
+        assert "fp_vr_02_dom_popper_click_interception_lag" in codes
+        assert "fp_vr_03_pass_on_unreachable_gate_bypass" in codes
+        assert poison_res["verdict"] == "REJECT_FAKE_PASS"
+        assert poison_res["fake_pass_risk_score"] >= 0.85
+
+        # 2. Clean remediated Vertical Resilience deploy claim passes with 0 risk
+        clean_res = critic.evaluate_fake_pass_risk(
+            claim_text="Vertical Resilience QA release qa-sdlc-insights-20261018c verified with brandingAssetsHttp200=true.",
+            test_code="def test_vr_gate():\n    assert brandingAssetsHttp200 is True\n",
+            execution_log="3 passed in 2.72s (exit code 0) brandingAssetsHttp200: true, disableHoverableContent: true",
+        )
+        assert clean_res["verdict"] == "PASS"
+        assert clean_res["fake_pass_risk_score"] == 0.0
+
+    def test_sovereign_memory_approval_controller_enforces_sod_and_ast_whitelist(self) -> None:
+        from tools.sovereign_victory_critic import (
+            ASTSecurityViolation,
+            PredicateState,
+            SovereignMemoryApprovalController,
+        )
+
+        ctrl = SovereignMemoryApprovalController({"status", "confidence", "revision"})
+        digest = ctrl.submit_predicate("status == 'verified' and confidence >= 0.90", maker_id="node-5")
+
+        # 1. Self-approval (Maker == Checker) must raise PermissionError (SoD violation)
+        with pytest.raises(PermissionError, match="Segregation of Duties Violation"):
+            ctrl.review_and_commit(digest, checker_id="node-5")
+        assert ctrl.ledger[digest].state == PredicateState.REJECTED
+
+        # 2. Distinct Checker approves valid AST predicate
+        digest_ok = ctrl.submit_predicate("status == 'verified' and revision >= 1", maker_id="node-5")
+        assert ctrl.review_and_commit(digest_ok, checker_id="nahlaleah102") is True
+        assert ctrl.ledger[digest_ok].state == PredicateState.APPROVED
+
+        # 3. Malicious AST attribute/call is rejected with ASTSecurityViolation
+        digest_bad = ctrl.submit_predicate("status.__class__ == 'str'", maker_id="node-5")
+        with pytest.raises(ASTSecurityViolation, match="Forbidden AST Node"):
+            ctrl.review_and_commit(digest_bad, checker_id="nahlaleah102")
+        assert ctrl.ledger[digest_bad].state == PredicateState.REJECTED
+
+    def test_ast_sandbox_blocks_attribute_escape_and_mro(self) -> None:
+        from tools.sovereign_victory_critic import (
+            SafeASTPredicateEvaluator,
+            SecuritySandboxViolation,
+        )
+
+        ctx = {"tier": "pro", "score": 0.95, "node": "zenonmind"}
+        assert SafeASTPredicateEvaluator.evaluate("tier == 'pro' and score >= 0.85", ctx) is True
+
+        malicious_payloads = [
+            "().__class__.__mro__[1].__subclasses__()",
+            "__import__('os').system('id')",
+            "[x for x in (1, 2, 3)]",
+            "tier.__class__",
+            "_secret == 1",
+        ]
+        for payload in malicious_payloads:
+            with pytest.raises(SecuritySandboxViolation):
+                SafeASTPredicateEvaluator.evaluate(payload, ctx)
+
+    def test_ast_sandbox_terminates_on_gas_exhaustion(self) -> None:
+        from tools.sovereign_victory_critic import (
+            PredicateGasExceeded,
+            SafeASTPredicateEvaluator,
+        )
+
+        ctx = {"x": 1}
+        deep_expr = " and ".join(["x == 1"] * 40)
+        with pytest.raises(PredicateGasExceeded):
+            SafeASTPredicateEvaluator.evaluate(deep_expr, ctx)
+
+    def test_sunward_strict_ast_evaluator_and_batch_merkle_epoch_digest(self) -> None:
+        from tools.sovereign_victory_critic import (
+            BatchMerkleEpochDigest,
+            SovereignASTSecurityError,
+            StrictASTPredicateEvaluator,
+        )
+
+        ctx = {"delta_f": 0.85, "active_workers": 17, "tag": "prod"}
+        assert StrictASTPredicateEvaluator.evaluate("delta_f >= 0.8 and active_workers == 17", ctx) is True
+        assert StrictASTPredicateEvaluator.evaluate("delta_f < 0.5 or tag == 'staging'", ctx) is False
+
+        with pytest.raises(SovereignASTSecurityError, match="Disallowed AST node type: Attribute"):
+            StrictASTPredicateEvaluator.evaluate("obj.__class__.__name__ == 'object'", {"obj": object()})
+
+        with pytest.raises(SovereignASTSecurityError, match="Unbound context identifier: unknown_var"):
+            StrictASTPredicateEvaluator.evaluate("unknown_var > 10", {"known_var": 42})
+
+        events = [
+            {"job_id": "j1", "node": "sunward", "status": "completed"},
+            {"job_id": "j2", "node": "zenonmind", "status": "completed"},
+            {"job_id": "j3", "node": "nahlaleah102", "status": "completed"},
+        ]
+        sealed = BatchMerkleEpochDigest.SealEpoch(events, hlc_start=1000, hlc_end=1050)
+        assert sealed["event_count"] == 3
+        assert len(sealed["merkle_root"]) == 64
+        assert len(sealed["epoch_hash"]) == 64
+
+        with pytest.raises(ValueError, match="Invalid HLC interval"):
+            BatchMerkleEpochDigest.SealEpoch(events, hlc_start=2000, hlc_end=1500)
+
+    def test_binhthuong_byzantine_slashing_hlc_and_bounded_quarantine(self) -> None:
+        from tools.hlc_clock_drift_guard import (
+            BoundedQuarantineBuffer,
+            ByzantineNodeQuarantinedError,
+            ByzantineSlashingHLCGuard,
+            ClockDriftExceededError,
+            HLCReading,
+        )
+
+        simulated_time = 1700000000000
+        guard = ByzantineSlashingHLCGuard(
+            node_id="node-pro-1",
+            soft_drift_threshold_ms=1500,
+            hard_drift_threshold_ms=2000,
+            slashing_strike_limit=3,
+            quarantine_capacity=3,
+            clock_source=lambda: simulated_time,
+        )
+
+        bad_node = "byzantine-peer"
+        for strike in range(3):
+            ts = HLCReading(physical_ms=simulated_time + 2500 + strike, logical_counter=0, node_id=bad_node)
+            with pytest.raises(ClockDriftExceededError):
+                guard.witness_event(ts, {"strike": strike})
+            if strike < 2:
+                assert guard.is_slashed(bad_node) is False
+
+        assert guard.is_slashed(bad_node) is True
+
+        # Subsequent legitimate timestamp from slashed node is rejected with ByzantineNodeQuarantinedError
+        legit_ts = HLCReading(physical_ms=simulated_time + 50, logical_counter=0, node_id=bad_node)
+        with pytest.raises(ByzantineNodeQuarantinedError, match="is slashed for Byzantine drift"):
+            guard.witness_event(legit_ts, {"action": "retry"})
+
+        # Quarantine buffer strictly bounded at capacity=3 (evicted strike 0)
+        assert len(guard.quarantine) == 3
+        reasons = [r.rejection_reason for r in guard.quarantine.get_records()]
+        assert "Sender node 'byzantine-peer' is slashed" in reasons[-1]
+
+    def test_ai_digimate_ma_elc_and_workspace_path_containment(self, tmp_path: Path) -> None:
+        from tools.hlc_clock_drift_guard import (
+            ClockDriftExceededError,
+            MonotonicAnchoredHLCGuard,
+        )
+        from tools.sovereign_victory_critic import (
+            SecurityTraversalError,
+            resolve_safe_workspace_path,
+        )
+
+        # 1. CWE-22 Workspace Path Containment
+        safe_file = tmp_path / "tests" / "sample.py"
+        safe_file.parent.mkdir(parents=True, exist_ok=True)
+        safe_file.write_text("x = 1\n", encoding="utf-8")
+        resolved = resolve_safe_workspace_path("tests/sample.py", tmp_path)
+        assert resolved == safe_file.resolve()
+
+        with pytest.raises(SecurityTraversalError, match="Directory traversal rejected"):
+            resolve_safe_workspace_path("../../etc/passwd", tmp_path)
+
+        # 2. Monotonically-Anchored Ephemeral Logical Clock (MA-ELC)
+        wall_state = {"ms": 1_700_000_000_000}
+        mono_state = {"ns": 1_000_000_000_000}
+        ma_guard = MonotonicAnchoredHLCGuard(
+            max_drift_ms=1000.0,
+            wall_clock_ms_fn=lambda: wall_state["ms"],
+            mono_ns_fn=lambda: mono_state["ns"],
+        )
+        t1 = ma_guard.read_current_timestamp()
+        t2 = ma_guard.read_current_timestamp()
+        assert t1 < t2
+        assert t2.logical_counter == t1.logical_counter + 1
+
+        # Simulate retrograde wall-clock slew (-5000ms while monotonic clock advances +10ms)
+        wall_state["ms"] -= 5000
+        mono_state["ns"] += 10_000_000
+        with pytest.raises(ClockDriftExceededError):
+            ma_guard.read_current_timestamp()
+
+    def test_insilos_safe_ledger_io_and_logical_counter_overflow(self, tmp_path: Path) -> None:
+        from tools.hlc_clock_drift_guard import (
+            LogicalCounterOverflowError,
+            MonotonicAnchoredHLCGuard,
+        )
+        from tools.sovereign_victory_critic import SafeLedgerIO
+
+        # 1. RFC 8785 Canonical JSON + Flock/Fsync Atomic Write
+        ledger_file = tmp_path / "canonical.json"
+        unordered = {"z_node": 1, "a_node": 2, "m_node": 3}
+        SafeLedgerIO.atomic_write_ledger(ledger_file, unordered)
+        assert ledger_file.read_bytes() == b'{"a_node":2,"m_node":3,"z_node":1}'
+        assert SafeLedgerIO.read_ledger(ledger_file) == {"a_node": 2, "m_node": 3, "z_node": 1}
+
+        # 2. 16-bit Logical Counter Overflow Protection
+        ma_guard = MonotonicAnchoredHLCGuard(
+            max_drift_ms=1000.0,
+            wall_clock_ms_fn=lambda: 5000,
+            mono_ns_fn=lambda: 1_000_000,
+        )
+        with pytest.raises(LogicalCounterOverflowError, match="overflowed"):
+            ma_guard.validate_incoming_tick(remote_physical_ms=5000, remote_logical=65535)
+
+    def test_tombstone_resurrection_attack_blocked_by_hmac_chain(self, tmp_path: Path) -> None:
+        from tools.sovereign_victory_critic import (
+            TombstoneIntegrityGuard,
+            TombstoneResurrectionError,
+        )
+
+        ledger = tmp_path / "l3_tombstones.jsonl"
+        key = b"sovereign-hmac-key-2026-32bytes!"
+
+        e0 = TombstoneIntegrityGuard.append_tombstone(
+            ledger, {"entity_id": "rule_v1", "reason": "deprecated"}, key
+        )
+        e1 = TombstoneIntegrityGuard.append_tombstone(
+            ledger, {"entity_id": "perm_admin_legacy", "reason": "revoked"}, key
+        )
+        e2 = TombstoneIntegrityGuard.append_tombstone(
+            ledger, {"entity_id": "stale_hook", "reason": "falsified"}, key
+        )
+
+        ok, msg, head_hash = TombstoneIntegrityGuard.verify_ledger(
+            ledger, key, expected_min_count=3, expected_head_hash=e2["chain_hash"]
+        )
+        assert ok is True
+        assert head_hash == e2["chain_hash"]
+
+        # 1. Simulate Tombstone Resurrection Attack: attacker deletes middle line (e1)
+        lines = ledger.read_text(encoding="utf-8").splitlines()
+        ledger.write_text("\n".join([lines[0], lines[2]]) + "\n", encoding="utf-8")
+        with pytest.raises(TombstoneResurrectionError, match="sequence gap/reorder"):
+            TombstoneIntegrityGuard.verify_ledger(ledger, key)
+
+        # 2. Simulate tail truncation attack: attacker deletes last line (e2)
+        ledger.write_text("\n".join([lines[0], lines[1]]) + "\n", encoding="utf-8")
+        with pytest.raises(TombstoneResurrectionError, match="truncation detected"):
+            TombstoneIntegrityGuard.verify_ledger(ledger, key, expected_min_count=3)
+        with pytest.raises(TombstoneResurrectionError, match="tail hash mismatch"):
+            TombstoneIntegrityGuard.verify_ledger(ledger, key, expected_head_hash=e2["chain_hash"])
+
+    def test_sglang_radix_prefix_cache_and_speculative_cascade_router(self) -> None:
+        from tools.hourly_digest_monitor import (
+            RadixPrefixCacheTree,
+            SpeculativeCascadeRouter,
+        )
+
+        # 1. SGLang RadixAttention Shared-Prefix Cache Tree
+        tree = RadixPrefixCacheTree()
+        tree.insert(["sys", "rule_1", "ctx_a"], "kv_handle_a")
+        tree.insert(["sys", "rule_1", "ctx_b"], "kv_handle_b")
+        matched_len, kv_handle = tree.match_prefix(["sys", "rule_1", "ctx_a", "user_q"])
+        assert matched_len == 3
+        assert kv_handle == "kv_handle_a"
+        assert tree.hit_rate == 0.75
+
+        tree.evict_lru(max_nodes=4)
+        assert len(tree.nodes) <= 4
+
+        # 2. Speculative Cascading Router (arXiv:2401.12574) on Pro Tier
+        router = SpeculativeCascadeRouter(tau=0.75, tier="pro")
+        model, out, conf = router.route(
+            "Explain RadixAttention prefix sharing",
+            lambda m, p: ("synthesized", 0.55 if "low" in m else 0.88),
+        )
+        assert model == "gemini-4-argon-medium"
+        assert out == "synthesized"
+        assert conf == 0.88
+
+        with pytest.raises(ValueError, match="strictly enforces tier='pro'"):
+            SpeculativeCascadeRouter(tau=0.80, tier="ultra")
+
+    def test_escalation_sensitivity_and_trustworthy_cascade_controller(self) -> None:
+        from tools.hourly_digest_monitor import (
+            ConformalBradleyTerryCascadeCalibrator,
+            EscalationSensitivityEvaluator,
+            SpeculativeCascadeRouter,
+            TrustworthyCascadeController,
+        )
+
+        # 1. EscalationSensitivityEvaluator: Jacobian sensitivity & ROC Pareto sweep
+        evaluator = EscalationSensitivityEvaluator(tau_base=0.72)
+        tau_normal = evaluator.compute_dynamic_tau(
+            complexity=1.0, quota_ratio=0.80, ece=0.05, node_reliability=0.90
+        )
+        assert tau_normal["d_tau_d_complexity"] == 0.06
+        assert tau_normal["d_tau_d_quota"] == 0.0
+        assert tau_normal["d_tau_d_ece"] == 0.25
+        assert tau_normal["d_tau_d_reliability"] == -0.20
+
+        tau_low_quota = evaluator.compute_dynamic_tau(
+            complexity=1.0, quota_ratio=0.15, ece=0.05, node_reliability=0.90
+        )
+        assert tau_low_quota["d_tau_d_quota"] == -0.15
+        assert tau_low_quota["tau"] < tau_normal["tau"]
+
+        traces = [
+            {"conf": 0.60, "draft_correct": False, "complexity": 2.1},
+            {"conf": 0.68, "draft_correct": False, "complexity": 2.4},
+            {"conf": 0.74, "draft_correct": True, "complexity": 1.0},
+            {"conf": 0.86, "draft_correct": True, "complexity": 0.8},
+            {"conf": 0.91, "draft_correct": True, "complexity": 1.2},
+        ]
+        roc = evaluator.evaluate_roc_pareto(traces)
+        assert roc["optimal_tau"] == 0.72
+        assert roc["min_risk_loss"] == 0.0
+        assert len(roc["pareto_frontier"]) >= 1
+
+        # 2. ConformalBradleyTerryCascadeCalibrator (arXiv:2406.18665 + arXiv:2402.05904)
+        calibrator = ConformalBradleyTerryCascadeCalibrator(alpha=0.10)
+        assert calibrator.predict_win_rate(3.0) > calibrator.predict_win_rate(0.5)
+        q_hat = calibrator.calibrate([0.05, 0.08, 0.12, 0.18, 0.22, 0.25, 0.30, 0.35, 0.40, 0.48])
+        assert 0.35 <= q_hat <= 0.48
+
+        # 3. TrustworthyCascadeController: Beta posterior + ECE + Fake-Pass Risk Gate
+        ctrl = TrustworthyCascadeController(evaluator=evaluator, calibrator=calibrator)
+        for _ in range(6):
+            ctrl.record_outcome("sunward", "gemini-4-argon-low", 0.85, True)
+        ctrl.record_outcome("sunward", "gemini-4-argon-low", 0.90, False)
+        assert ctrl.get_reliability("sunward", "gemini-4-argon-low") > 0.70
+        assert ctrl.compute_ece("sunward", "gemini-4-argon-low") >= 0.0
+
+        # Fake-pass risk >= 0.20 forces trustworthy confidence down so cascade escalates
+        c_safe = ctrl.trust_adjusted_confidence("sunward", "gemini-4-argon-low", 0.92, fake_risk=0.0)
+        c_fake = ctrl.trust_adjusted_confidence("sunward", "gemini-4-argon-low", 0.92, fake_risk=0.35)
+        assert c_safe > 0.60
+        assert c_fake < 0.15
+
+        # 4. SpeculativeCascadeRouter.route_trustworthy escalation on fake-risk draft
+        router = SpeculativeCascadeRouter(tau=0.72, tier="pro", controller=ctrl)
+        res = router.route_trustworthy(
+            "Synthesize Conformal Bradley-Terry Cascade",
+            infer_fn=lambda m, p: (
+                {"text": "stub" if "low" in m else "verified_synthesis"},
+                0.91 if "low" in m else 0.94,
+            ),
+            complexity=1.5,
+            quota_ratio=0.85,
+            node="sunward",
+            fake_risk_fn=lambda out: 0.40 if out.get("text") == "stub" else 0.0,
+        )
+        assert res["selected_model"] == "gemini-4-argon-medium"
+        assert res["escalation_count"] == 1
+        assert res["hops"][0]["accepted"] is False
+        assert res["hops"][1]["accepted"] is True
+
+        # 5. Aider Graph-Centrality Blast Radius & 3-Stage GC-MEHT Gate (arXiv:2303.11366 + arXiv:2305.14325)
+        assert ctrl.compute_blast_radius([]) == 0.05
+        assert ctrl.compute_blast_radius(["unknown_tool"]) == 0.50
+        admit_res = ctrl.evaluate_speculative_draft(
+            task_level="L1_TRIVIAL",
+            speculative_output="valid docstring",
+            tools_required=["read_file", "list_dir"],
+            confidence_score=0.92,
+        )
+        assert admit_res["decision"] == "ACCEPT_SPECULATIVE_DRAFT"
+        assert admit_res["target_model"] == "gemini-4-argon-low"
+        assert len(admit_res["tx_hash"]) == 64
+
+        debate_res = ctrl.evaluate_speculative_draft(
+            task_level="L2_STANDARD",
+            speculative_output="edit module",
+            tools_required=["write_file"],
+            confidence_score=0.65,
+        )
+        assert debate_res["decision"] == "REQUIRE_MULTIAGENT_DEBATE"
+        assert debate_res["target_model"] == "gemini-4-argon-medium"
+
+        escalate_res = ctrl.evaluate_speculative_draft(
+            task_level="L3_COMPLEX",
+            speculative_output="deploy cluster",
+            tools_required=["deploy_cloud", "run_command"],
+            confidence_score=0.25,
+            reflection_history=[{"success": False}, {"success": False}, {"success": False}],
+        )
+        assert escalate_res["decision"] == "ESCALATE_TO_SOVEREIGN"
+        assert escalate_res["target_model"] == "gemini-4-argon-high"
+        assert len(escalate_res["tx_hash"]) == 64
+
+        # 6. Semantic Entropy H(Y|x) & Wald SPRT Early-Escalation Gate
+        sprt_commit = ctrl.evaluate_semantic_entropy_sprt(
+            cluster_probs=[0.96, 0.04],
+            llr_steps=[-1.2, -1.3],
+            complexity=1.0,
+        )
+        assert sprt_commit["verdict"] == "COMMIT_SPECULATIVE_DRAFT"
+        assert sprt_commit["target_model"] == "gemini-4-argon-low"
+
+        sprt_esc = ctrl.evaluate_semantic_entropy_sprt(
+            cluster_probs=[0.35, 0.35, 0.30],
+            llr_steps=[1.6, 1.5],
+            complexity=2.5,
+        )
+        assert sprt_esc["verdict"] == "ESCALATE_TO_COUNCIL"
+        assert sprt_esc["target_model"] == "gemini-4-argon-high"
+
+        # 7. CMRC-SE Online Betting Martingale & AST Stub Rejector
+        ok_valid, _ = ctrl.verify_ast_compliance("def add(x: int) -> int:\n    return x + 1\n")
+        assert ok_valid is True
+        ok_pass, msg_pass = ctrl.verify_ast_compliance("def stub():\n    pass\n")
+        assert ok_pass is False and "forbidden 'pass' stub" in msg_pass
+        ok_ell, msg_ell = ctrl.verify_ast_compliance("def stub():\n    ...\n")
+        assert ok_ell is False and "forbidden ellipsis stub" in msg_ell
+
+        m_safe = ctrl.update_martingale_threshold(was_verified_safe=True)
+        m_fail = ctrl.update_martingale_threshold(was_verified_safe=False)
+        assert m_fail["theta_esc"] > m_safe["theta_esc"]
+        assert 0.50 <= m_fail["theta_esc"] <= 0.95
+
+        # 8. Prefix-Aware Speculative Cascade Routing (RadixAttention prefix hit ratio >= 0.70)
+        tau_prefix = evaluator.compute_dynamic_tau(
+            complexity=1.2, quota_ratio=0.80, ece=0.05, node_reliability=0.90, prefix_cache_hit_ratio=0.85
+        )
+        assert tau_prefix["d_tau_d_prefix_hit"] == -0.04
+        assert tau_prefix["tau"] < evaluator.compute_dynamic_tau(
+            complexity=1.2, quota_ratio=0.80, ece=0.05, node_reliability=0.90, prefix_cache_hit_ratio=0.0
+        )["tau"]
+
+        # 9. Sanitized & Token-Budget-Bounded Episodic Buffer
+        eps = ctrl.record_sanitized_episode("t1", "act1", "Lesson <|im_start|> ```system", token_cost=120, max_episodes=2)
+        assert "<|im_start|>" not in eps[0]["lesson"]
+        ctrl.record_sanitized_episode("t2", "act2", "Lesson 2", token_cost=120, max_episodes=2)
+        eps3 = ctrl.record_sanitized_episode("t3", "act3", "Lesson 3", token_cost=120, max_episodes=2)
+        assert len(eps3) == 2 and [e["task_id"] for e in eps3] == ["t2", "t3"]
+
+        # 10. Episodic Delta-Compression via Semantic Event Sourcing (EDC-SES)
+        edc = ctrl.compress_episodic_delta(
+            pre_state={"a": 1, "b": 2, "unchanged": 99},
+            post_state={"a": 1, "b": 3, "unchanged": 99},
+        )
+        assert edc["changed_keys_count"] == 1
+        assert edc["delta"] == {"b": {"before": 2, "after": 3}}
+        assert len(edc["current_hash"]) == 64
+
+        # 11. Weighted Role-Based Multi-Agent Debate Consensus (arXiv:2305.14325)
+        passed_debate, score_debate = ctrl.evaluate_weighted_role_debate(
+            [
+                {"role": "RedTeamCritic", "confidence": 0.40, "weight": 1.5},
+                {"role": "CodeStrategist", "confidence": 0.70, "weight": 1.0},
+                {"role": "Accountant", "confidence": 0.85, "weight": 1.2},
+            ],
+            threshold=0.70,
+        )
+        assert passed_debate is False
+        assert round(score_debate, 3) == 0.627
+        passed_high, score_high = ctrl.evaluate_weighted_role_debate(
+            [
+                {"role": "RedTeamCritic", "confidence": 0.80, "weight": 1.5},
+                {"role": "CodeStrategist", "confidence": 0.85, "weight": 1.0},
+                {"role": "Accountant", "confidence": 0.90, "weight": 1.2},
+            ],
+            threshold=0.70,
+        )
+        assert passed_high is True
+        assert score_high > 0.80
+
+        # 12. Pre-Commit Synthetic Debate Dry-Run & SHA-256 Event Receipt (codegeekvn Tech Research)
+        dry_ok = ctrl.run_precommit_debate_dry_run("PR-001", proponent_score=0.92, adversary_risk_score=0.78)
+        assert dry_ok["consensus_granted"] is True
+        assert dry_ok["consensus_score"] == 0.8272
+        assert len(dry_ok["receipt_hash"]) == 64
+        dry_deny = ctrl.run_precommit_debate_dry_run("PR-002", proponent_score=0.45, adversary_risk_score=0.95)
+        assert dry_deny["consensus_granted"] is False
+        assert dry_deny["verdict"] == "DENIED"
+
+
+
+
+
 

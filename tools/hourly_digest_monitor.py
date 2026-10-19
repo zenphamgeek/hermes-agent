@@ -436,6 +436,215 @@ class StatelessTokenEngine:
 
         return False
 
+    def sanitize_receipt_data(self, raw_json_payload: str) -> Dict[str, Any]:
+        """Parses and validates untrusted receipt payloads, rejecting shell metacharacters and path traversal."""
+        try:
+            parsed = json.loads(raw_json_payload)
+        except Exception as exc:
+            raise SecurityConfigurationError(f"Malformed receipt JSON: {exc}") from exc
+
+        if not isinstance(parsed, dict):
+            raise SecurityConfigurationError("Receipt payload must evaluate to a JSON dictionary.")
+
+        sanitized: Dict[str, Any] = {}
+        forbidden_tokens = (";", "&", "|", "`", "$", "\n", "\r", "..")
+        for key, value in parsed.items():
+            if not isinstance(key, str) or any(c in key for c in forbidden_tokens):
+                raise SecurityConfigurationError(f"Malicious metacharacter detected in receipt key: {key}")
+            sanitized[key] = value
+
+        return sanitized
+
+
+class SecurityEvaluationError(ValueError):
+    """Raised when an illegal or untrusted AST construct is detected."""
+
+
+class ASTDepthExceededError(SecurityEvaluationError):
+    """Raised when AST expression exceeds maximum allowed depth."""
+
+
+class SecurePredicateEvaluator:
+    """Evaluates boolean predicates against a context dictionary with strict AST whitelisting."""
+
+    MAX_TREE_DEPTH: int = 6
+    MAX_NODE_COUNT: int = 32
+
+    def __init__(self, allowed_identifiers: Any) -> None:
+        import ast
+        import operator
+
+        self.allowed_identifiers = frozenset(allowed_identifiers)
+        self._allowed_bin_ops = {
+            ast.Add: operator.add,
+            ast.Sub: operator.sub,
+            ast.Mult: operator.mul,
+            ast.Mod: operator.mod,
+        }
+        self._allowed_cmp_ops = {
+            ast.Eq: operator.eq,
+            ast.NotEq: operator.ne,
+            ast.Lt: operator.lt,
+            ast.LtE: operator.le,
+            ast.Gt: operator.gt,
+            ast.GtE: operator.ge,
+        }
+
+    def evaluate(self, expression_str: str, context: Dict[str, Any]) -> bool:
+        import ast
+
+        if not expression_str or not expression_str.strip():
+            raise SecurityEvaluationError("Empty predicate expression rejected.")
+        if len(expression_str) > 512:
+            raise SecurityEvaluationError("Expression exceeds maximum length of 512 characters.")
+        try:
+            parsed_tree = ast.parse(expression_str, mode="eval")
+        except SyntaxError as err:
+            raise SecurityEvaluationError(f"Malformed predicate syntax: {err}") from err
+
+        node_count = sum(1 for _ in ast.walk(parsed_tree))
+        if node_count > self.MAX_NODE_COUNT:
+            raise SecurityEvaluationError(
+                f"AST node complexity exceeded: {node_count} nodes (max {self.MAX_NODE_COUNT})"
+            )
+
+        self._verify_depth(parsed_tree.body, current_depth=1)
+        return bool(self._eval_node(parsed_tree.body, context))
+
+    def _verify_depth(self, node: Any, current_depth: int) -> None:
+        import ast
+
+        if current_depth > self.MAX_TREE_DEPTH:
+            raise ASTDepthExceededError(
+                f"AST depth limit exceeded: {current_depth} (max {self.MAX_TREE_DEPTH})"
+            )
+        for child in ast.iter_child_nodes(node):
+            self._verify_depth(child, current_depth + 1)
+
+    def _eval_node(self, node: Any, context: Dict[str, Any]) -> Any:
+        import ast
+
+        if isinstance(node, ast.Constant):
+            if type(node.value) in (int, float, str, bool, type(None)):
+                return node.value
+            raise SecurityEvaluationError(f"Unsupported constant type: {type(node.value)}")
+
+        if isinstance(node, ast.Name):
+            if node.id not in self.allowed_identifiers:
+                raise SecurityEvaluationError(f"Illegal identifier lookup: '{node.id}'")
+            if node.id not in context:
+                raise SecurityEvaluationError(f"Missing identifier in evaluation context: '{node.id}'")
+            return context[node.id]
+
+        if isinstance(node, ast.BoolOp):
+            if isinstance(node.op, ast.And):
+                return all(bool(self._eval_node(v, context)) for v in node.values)
+            if isinstance(node.op, ast.Or):
+                return any(bool(self._eval_node(v, context)) for v in node.values)
+            raise SecurityEvaluationError(f"Unsupported boolean operator: {type(node.op)}")
+
+        if isinstance(node, ast.UnaryOp):
+            if isinstance(node.op, ast.Not):
+                return not self._eval_node(node.operand, context)
+            if isinstance(node.op, ast.USub):
+                val = self._eval_node(node.operand, context)
+                if not isinstance(val, (int, float)) or isinstance(val, bool):
+                    raise SecurityEvaluationError("Unary negation requires numeric operand.")
+                return -val
+            raise SecurityEvaluationError(f"Unsupported unary operator: {type(node.op)}")
+
+        if isinstance(node, ast.Compare):
+            left_val = self._eval_node(node.left, context)
+            for op, comparator_node in zip(node.ops, node.comparators):
+                op_type = type(op)
+                if op_type not in self._allowed_cmp_ops:
+                    raise SecurityEvaluationError(f"Forbidden comparison operator: {op_type}")
+                comparator_val = self._eval_node(comparator_node, context)
+                try:
+                    if not self._allowed_cmp_ops[op_type](left_val, comparator_val):
+                        return False
+                except TypeError as type_err:
+                    raise SecurityEvaluationError(f"Type error in comparison: {type_err}") from type_err
+                left_val = comparator_val
+            return True
+
+        if isinstance(node, ast.BinOp):
+            op_type = type(node.op)
+            if op_type not in self._allowed_bin_ops:
+                raise SecurityEvaluationError(f"Forbidden binary arithmetic operator: {op_type}")
+            left_val = self._eval_node(node.left, context)
+            right_val = self._eval_node(node.right, context)
+            if not isinstance(left_val, (int, float)) or not isinstance(right_val, (int, float)):
+                raise SecurityEvaluationError("Arithmetic operators strictly enforce numeric operands.")
+            return self._allowed_bin_ops[op_type](left_val, right_val)
+
+        raise SecurityEvaluationError(
+            f"Prohibited AST node type '{type(node).__name__}' violates security invariant."
+        )
+
+
+class DigestMonitorLockError(RuntimeError):
+    """Raised when lock acquisition on the digest ledger times out."""
+
+
+class DigestLedgerCorruptionError(ValueError):
+    """Raised when ledger integrity verification fails."""
+
+
+import contextlib
+
+
+@contextlib.contextmanager
+def atomic_locked_ledger(ledger_path: Path, timeout_seconds: float = 5.0):
+    """POSIX flock-protected atomic read-modify-write context manager."""
+    import fcntl
+    import tempfile
+
+    ledger_path = Path(ledger_path)
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = ledger_path.with_suffix(".lock")
+    start_time = time.monotonic()
+
+    with open(lock_file, "a+", encoding="utf-8") as lock_fd:
+        acquired = False
+        while time.monotonic() - start_time < timeout_seconds:
+            try:
+                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except (BlockingIOError, OSError):
+                time.sleep(0.02)
+
+        if not acquired:
+            raise DigestMonitorLockError(
+                f"Failed to acquire advisory lock on '{lock_file}' within {timeout_seconds}s timeout."
+            )
+
+        try:
+            data: Dict[str, Any] = {}
+            if ledger_path.exists() and ledger_path.stat().st_size > 0:
+                with open(ledger_path, "r", encoding="utf-8") as r_fd:
+                    try:
+                        data = json.load(r_fd)
+                    except json.JSONDecodeError as decode_err:
+                        raise DigestLedgerCorruptionError(
+                            f"Ledger file '{ledger_path}' corrupted: {decode_err}"
+                        ) from decode_err
+
+            yield data
+
+            with tempfile.NamedTemporaryFile(
+                "w", dir=ledger_path.parent, delete=False, encoding="utf-8"
+            ) as tmp_fd:
+                tmp_path = Path(tmp_fd.name)
+                json.dump(data, tmp_fd, indent=2, sort_keys=True)
+                tmp_fd.flush()
+                os.fsync(tmp_fd.fileno())
+
+            os.replace(tmp_path, ledger_path)
+        finally:
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+
 
 
 def _safe_int(
@@ -5302,6 +5511,646 @@ def main():
         print(f"[+] Telegram digest delivery status: {'SUCCESS' if sent else 'FAILED'}")
 
 
+class RadixNode:
+    """Node in the SGLang-inspired RadixAttention shared-prefix cache tree."""
+
+    def __init__(self) -> None:
+        self.children: Dict[Any, RadixNode] = {}
+        self.kv: Optional[Any] = None
+        self.ts: float = 0.0
+
+
+class RadixPrefixCacheTree:
+    """SGLang-inspired RadixAttention tree for shared prefix KV-cache reuse across Fleet dispatches.
+
+    Synthesized via Fleet Pro node sunward (Job 448e83bc-e06b-4761-8b02-1545c84c8433).
+    """
+
+    def __init__(self) -> None:
+        self.root = RadixNode()
+        self.nodes: List[RadixNode] = [self.root]
+        self.total_queries: int = 0
+        self.matched_tokens: int = 0
+        self.total_tokens: int = 0
+
+    def insert(self, tokens: List[Any], kv_handle: Any) -> None:
+        curr = self.root
+        now = time.time()
+        for tok in tokens:
+            if tok not in curr.children:
+                node = RadixNode()
+                curr.children[tok] = node
+                self.nodes.append(node)
+            curr = curr.children[tok]
+            curr.ts = now
+        curr.kv = kv_handle
+
+    def match_prefix(self, tokens: List[Any]) -> Tuple[int, Optional[Any]]:
+        curr = self.root
+        matched = 0
+        last_kv = None
+        now = time.time()
+        self.total_queries += 1
+        self.total_tokens += len(tokens)
+        for tok in tokens:
+            if tok not in curr.children:
+                break
+            curr = curr.children[tok]
+            curr.ts = now
+            matched += 1
+            if curr.kv is not None:
+                last_kv = curr.kv
+        self.matched_tokens += matched
+        return matched, last_kv
+
+    @property
+    def hit_rate(self) -> float:
+        if self.total_tokens == 0:
+            return 0.0
+        return round(self.matched_tokens / self.total_tokens, 4)
+
+    def evict_lru(self, max_nodes: int) -> None:
+        while len(self.nodes) > max_nodes:
+            leaves = [n for n in self.nodes if not n.children and n is not self.root]
+            if not leaves:
+                break
+            victim = min(leaves, key=lambda n: n.ts)
+            for n in self.nodes:
+                n.children = {k: v for k, v in n.children.items() if v is not victim}
+            self.nodes.remove(victim)
+
+
+class EscalationSensitivityEvaluator:
+    """Evaluates analytical Jacobian sensitivity and empirical ROC/Pareto thresholds for escalation."""
+
+    def __init__(
+        self,
+        tau_base: float = 0.72,
+        alpha_complexity: float = 0.06,
+        alpha_quota: float = 0.15,
+        alpha_ece: float = 0.25,
+        alpha_reliability: float = 0.20,
+        quota_crit: float = 0.35,
+    ) -> None:
+        self.tau_base = float(tau_base)
+        self.alpha_complexity = float(alpha_complexity)
+        self.alpha_quota = float(alpha_quota)
+        self.alpha_ece = float(alpha_ece)
+        self.alpha_reliability = float(alpha_reliability)
+        self.quota_crit = float(quota_crit)
+
+    def compute_dynamic_tau(
+        self,
+        complexity: float = 1.0,
+        quota_ratio: float = 0.80,
+        ece: float = 0.0,
+        node_reliability: float = 1.0,
+        tau_base: Optional[float] = None,
+        prefix_cache_hit_ratio: float = 0.0,
+    ) -> Dict[str, float]:
+        base = float(self.tau_base if tau_base is None else tau_base)
+        c_clamped = max(0.0, min(float(complexity), 4.0))
+        q_clamped = max(0.0, min(float(quota_ratio), 1.0))
+        ece_clamped = max(0.0, min(float(ece), 1.0))
+        rel_clamped = max(0.0, min(float(node_reliability), 1.0))
+        hit_clamped = max(0.0, min(float(prefix_cache_hit_ratio), 1.0))
+
+        quota_deficit = max(0.0, self.quota_crit - q_clamped)
+        rel_deficit = max(0.0, 0.90 - rel_clamped)
+        prefix_bonus = 0.04 * hit_clamped if (hit_clamped >= 0.70 and c_clamped < 2.2) else 0.0
+        raw_tau = (
+            base
+            + self.alpha_complexity * c_clamped
+            - self.alpha_quota * quota_deficit
+            + self.alpha_ece * ece_clamped
+            + self.alpha_reliability * rel_deficit
+            - prefix_bonus
+        )
+        tau = max(0.50, min(0.95, raw_tau))
+        d_tau_d_c = self.alpha_complexity if 0.0 <= float(complexity) <= 4.0 else 0.0
+        d_tau_d_q = -self.alpha_quota if q_clamped < self.quota_crit else 0.0
+        d_tau_d_ece = self.alpha_ece
+        d_tau_d_rel = -self.alpha_reliability
+        d_tau_d_prefix = -0.04 if (hit_clamped >= 0.70 and c_clamped < 2.2) else 0.0
+        grad_norm = math.sqrt(
+            d_tau_d_c ** 2 + d_tau_d_q ** 2 + d_tau_d_ece ** 2 + d_tau_d_rel ** 2 + d_tau_d_prefix ** 2
+        )
+        return {
+            "tau": round(tau, 4),
+            "d_tau_d_complexity": round(d_tau_d_c, 4),
+            "d_tau_d_quota": round(d_tau_d_q, 4),
+            "d_tau_d_ece": round(d_tau_d_ece, 4),
+            "d_tau_d_reliability": round(d_tau_d_rel, 4),
+            "d_tau_d_prefix_hit": round(d_tau_d_prefix, 4),
+            "jacobian_norm": round(grad_norm, 4),
+        }
+
+    def evaluate_roc_pareto(
+        self,
+        traces: List[Dict[str, Any]],
+        tau_grid: Optional[List[float]] = None,
+        lambda_uer: float = 3.0,
+        lambda_fer: float = 1.0,
+    ) -> Dict[str, Any]:
+        grid = list(tau_grid) if tau_grid is not None else [0.55, 0.65, 0.72, 0.78, 0.85, 0.90]
+        if not traces:
+            return {"optimal_tau": self.tau_base, "min_risk_loss": 0.0, "pareto_frontier": [], "curve": []}
+        total = len(traces)
+        bad_drafts = [t for t in traces if not bool(t.get("draft_correct", False))]
+        good_drafts = [t for t in traces if bool(t.get("draft_correct", False))]
+        n_bad = max(1, len(bad_drafts))
+        n_good = max(1, len(good_drafts))
+
+        curve: List[Dict[str, float]] = []
+        best_tau = grid[0]
+        min_loss = float("inf")
+        for tau in grid:
+            t_val = float(tau)
+            under_esc = sum(1 for t in bad_drafts if float(t.get("conf", 0.0)) >= t_val)
+            true_esc = sum(1 for t in bad_drafts if float(t.get("conf", 0.0)) < t_val)
+            false_esc = sum(1 for t in good_drafts if float(t.get("conf", 0.0)) < t_val)
+            uer = under_esc / n_bad if bad_drafts else 0.0
+            tpr_esc = true_esc / n_bad if bad_drafts else 1.0
+            fer = false_esc / n_good if good_drafts else 0.0
+            risk_loss = float(lambda_uer) * uer + float(lambda_fer) * fer
+            pt = {
+                "tau": round(t_val, 4),
+                "under_escalation_rate": round(uer, 4),
+                "false_escalation_rate": round(fer, 4),
+                "sensitivity_recall": round(tpr_esc, 4),
+                "sensitivity_index": round(tpr_esc / (1.0 + fer), 4),
+                "escalation_rate": round((true_esc + false_esc) / total, 4),
+                "risk_loss": round(risk_loss, 4),
+            }
+            curve.append(pt)
+            if risk_loss < min_loss:
+                min_loss = risk_loss
+                best_tau = t_val
+
+        sorted_pts = sorted(curve, key=lambda x: (x["false_escalation_rate"], -x["sensitivity_recall"]))
+        pareto: List[Dict[str, float]] = []
+        max_tpr = -1.0
+        for pt in sorted_pts:
+            if pt["sensitivity_recall"] > max_tpr:
+                pareto.append(pt)
+                max_tpr = pt["sensitivity_recall"]
+        return {
+            "optimal_tau": round(best_tau, 4),
+            "min_risk_loss": round(min_loss, 4),
+            "pareto_frontier": pareto,
+            "curve": curve,
+        }
+
+
+class ConformalBradleyTerryCascadeCalibrator:
+    """Combines RouteLLM Bradley-Terry win-rate model (arXiv:2406.18665) with
+    Conformal Prediction Risk Control finite-sample quantile calibration (arXiv:2402.05904).
+    """
+
+    def __init__(self, theta_0: float = -1.10, theta_1: float = 0.85, alpha: float = 0.10) -> None:
+        self.theta_0 = float(theta_0)
+        self.theta_1 = float(theta_1)
+        self.alpha = float(alpha)
+        self.q_hat: float = 0.25
+
+    def predict_win_rate(self, complexity: float) -> float:
+        z = max(-20.0, min(20.0, self.theta_0 + self.theta_1 * float(complexity)))
+        return round(1.0 / (1.0 + math.exp(-z)), 4)
+
+    def calibrate(self, nonconformity_scores: List[float], alpha: Optional[float] = None) -> float:
+        if alpha is not None:
+            self.alpha = max(0.01, min(0.50, float(alpha)))
+        scores = sorted(float(s) for s in nonconformity_scores)
+        n = len(scores)
+        if n == 0:
+            self.q_hat = 0.25
+            return self.q_hat
+        rank_ratio = min(1.0, math.ceil((n + 1) * (1.0 - self.alpha)) / n)
+        idx = min(n - 1, max(0, math.ceil(rank_ratio * n) - 1))
+        self.q_hat = round(scores[idx], 4)
+        return self.q_hat
+
+
+class TrustworthyCascadeController:
+    """Trustworthy Controller for Speculative Cascade Routing (Beta-Bernoulli + ECE + Conformal Risk Control + GC-MEHT)."""
+
+    DEFAULT_TOOL_CENTRALITY: Dict[str, float] = {
+        "read_file": 0.15,
+        "view_file": 0.15,
+        "list_dir": 0.10,
+        "search_docs": 0.20,
+        "write_file": 0.75,
+        "replace_file_content": 0.75,
+        "fleet_dispatch": 0.85,
+        "run_command": 0.95,
+        "deploy_cloud": 0.98,
+    }
+
+    def __init__(
+        self,
+        alpha_prior: float = 9.0,
+        beta_prior: float = 1.0,
+        admit_threshold: float = 0.35,
+        escalate_threshold: float = 0.70,
+        evaluator: Optional[EscalationSensitivityEvaluator] = None,
+        calibrator: Optional[ConformalBradleyTerryCascadeCalibrator] = None,
+    ) -> None:
+        self.default_alpha = float(alpha_prior)
+        self.default_beta = float(beta_prior)
+        self.admit_threshold = float(admit_threshold)
+        self.escalate_threshold = float(escalate_threshold)
+        self.tool_centrality_registry: Dict[str, float] = dict(self.DEFAULT_TOOL_CENTRALITY)
+        self.posteriors: Dict[str, List[float]] = {}
+        self.calibration_history: Dict[str, List[Tuple[float, float]]] = {}
+        self.nonconformity_log: List[float] = []
+        self.evaluator = evaluator or EscalationSensitivityEvaluator()
+        self.calibrator = calibrator or ConformalBradleyTerryCascadeCalibrator()
+
+    def compute_blast_radius(self, tools_required: Optional[List[str]] = None) -> float:
+        if not tools_required:
+            return 0.05
+        scores = [float(self.tool_centrality_registry.get(str(t).strip(), 0.50)) for t in tools_required]
+        return round(0.70 * max(scores) + 0.30 * (sum(scores) / len(scores)), 4)
+
+    def evaluate_speculative_draft(
+        self,
+        task_level: str,
+        speculative_output: str,
+        tools_required: Optional[List[str]],
+        confidence_score: float,
+        reflection_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        blast_radius = self.compute_blast_radius(tools_required)
+        uncertainty = max(0.0, min(1.0, 1.0 - float(confidence_score)))
+        penalty = 0.0
+        if reflection_history:
+            recent_fails = sum(1 for step in list(reflection_history)[-3:] if not bool(step.get("success", True)))
+            penalty = 0.15 * recent_fails
+
+        sensitivity = round(0.45 * blast_radius + 0.35 * uncertainty + 0.20 * penalty, 4)
+        tl_norm = (task_level or "L2_STANDARD").strip().upper()
+        if sensitivity < self.admit_threshold and tl_norm in ("L1_TRIVIAL", "L2_STANDARD"):
+            decision = "ACCEPT_SPECULATIVE_DRAFT"
+            target_model = "gemini-4-argon-low"
+        elif sensitivity < self.escalate_threshold:
+            decision = "REQUIRE_MULTIAGENT_DEBATE"
+            target_model = "gemini-4-argon-medium"
+        else:
+            decision = "ESCALATE_TO_SOVEREIGN"
+            target_model = "gemini-4-argon-high"
+
+        tx_payload = json.dumps(
+            {
+                "task_level": tl_norm,
+                "sensitivity": sensitivity,
+                "blast_radius": blast_radius,
+                "decision": decision,
+                "target_model": target_model,
+            },
+            sort_keys=True,
+        )
+        tx_hash = hashlib.sha256(tx_payload.encode("utf-8")).hexdigest()
+        return {
+            "decision": decision,
+            "sensitivity_score": sensitivity,
+            "blast_radius": blast_radius,
+            "target_model": target_model,
+            "tier": "pro",
+            "tx_hash": tx_hash,
+        }
+
+    def evaluate_semantic_entropy_sprt(
+        self,
+        cluster_probs: List[float],
+        llr_steps: List[float],
+        complexity: float = 1.0,
+        alpha: float = 0.05,
+        beta: float = 0.10,
+    ) -> Dict[str, Any]:
+        probs = [float(p) for p in cluster_probs if float(p) > 0.0]
+        total_p = sum(probs) or 1.0
+        norm_p = [p / total_p for p in probs]
+        semantic_entropy = round(-sum(p * math.log(p) for p in norm_p), 4)
+        tau_entropy = round(max(0.15, min(0.75, 0.45 - 0.12 * max(0.0, float(complexity) - 1.0))), 4)
+
+        upper_b = round(math.log((1.0 - float(beta)) / max(1e-6, float(alpha))), 4)
+        lower_a = round(math.log(max(1e-6, float(beta)) / (1.0 - float(alpha))), 4)
+        cum_llr = round(sum(float(x) for x in llr_steps), 4)
+
+        if cum_llr >= upper_b or semantic_entropy > tau_entropy:
+            verdict = "ESCALATE_TO_COUNCIL"
+            target_model = "gemini-4-argon-high"
+        elif cum_llr <= lower_a and semantic_entropy <= tau_entropy:
+            verdict = "COMMIT_SPECULATIVE_DRAFT"
+            target_model = "gemini-4-argon-low"
+        else:
+            verdict = "CONTINUE_OR_DEBATE"
+            target_model = "gemini-4-argon-medium"
+
+        return {
+            "verdict": verdict,
+            "target_model": target_model,
+            "tier": "pro",
+            "semantic_entropy": semantic_entropy,
+            "entropy_threshold": tau_entropy,
+            "sprt_llr": cum_llr,
+            "sprt_lower_a": lower_a,
+            "sprt_upper_b": upper_b,
+        }
+
+    def verify_ast_compliance(self, code_snippet: str) -> Tuple[bool, str]:
+        import ast
+
+        if not code_snippet or not code_snippet.strip():
+            return False, "Empty code snippet provided."
+        try:
+            tree = ast.parse(code_snippet)
+        except SyntaxError as err:
+            return False, f"AST SyntaxError: {err}"
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
+                    return False, f"Function '{node.name}' contains forbidden 'pass' stub."
+                if (
+                    len(node.body) == 1
+                    and isinstance(node.body[0], ast.Expr)
+                    and isinstance(node.body[0].value, ast.Constant)
+                    and node.body[0].value.value is Ellipsis
+                ):
+                    return False, f"Function '{node.name}' contains forbidden ellipsis stub."
+        return True, "AST syntax check passed."
+
+    def update_martingale_threshold(
+        self,
+        was_verified_safe: bool,
+        alpha_target: float = 0.01,
+        base_threshold: float = 0.75,
+        learning_rate: float = 0.15,
+    ) -> Dict[str, float]:
+        wealth = float(getattr(self, "martingale_wealth", 1.0))
+        x_t = 1.0 if was_verified_safe else 0.0
+        expected = 1.0 - float(alpha_target)
+        payoff = 1.0 + 0.40 * (expected - x_t)
+        wealth = max(0.01, wealth * payoff)
+        self.martingale_wealth = round(wealth, 6)
+        theta_esc = max(0.50, min(0.95, float(base_threshold) + float(learning_rate) * math.log(max(1e-6, wealth))))
+        return {
+            "martingale_wealth": self.martingale_wealth,
+            "theta_esc": round(theta_esc, 4),
+        }
+
+    def record_sanitized_episode(
+        self,
+        task_id: str,
+        action: str,
+        lesson: str,
+        token_cost: int = 100,
+        max_episodes: int = 5,
+        max_token_budget: int = 1500,
+    ) -> List[Dict[str, Any]]:
+        episodes: List[Dict[str, Any]] = getattr(self, "_sanitized_episodes", [])
+        clean_lesson = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", str(lesson))
+        clean_lesson = clean_lesson.replace("```system", "'''system").replace("<|im_start|>", "").strip()
+        episodes.append(
+            {
+                "task_id": str(task_id),
+                "action": str(action),
+                "lesson": clean_lesson,
+                "token_cost": max(1, int(token_cost)),
+            }
+        )
+        while len(episodes) > max_episodes:
+            episodes.pop(0)
+        while sum(ep["token_cost"] for ep in episodes) > max_token_budget and episodes:
+            episodes.pop(0)
+        self._sanitized_episodes = episodes
+        return list(episodes)
+
+    def compress_episodic_delta(
+        self,
+        pre_state: Dict[str, Any],
+        post_state: Dict[str, Any],
+        parent_hash: str = "GENESIS_ROOT_00000000000000000000000000000000",
+    ) -> Dict[str, Any]:
+        all_keys = sorted(set(pre_state.keys()) | set(post_state.keys()))
+        delta: Dict[str, Any] = {
+            k: {"before": pre_state.get(k), "after": post_state.get(k)}
+            for k in all_keys
+            if pre_state.get(k) != post_state.get(k)
+        }
+        serialized = json.dumps(delta, sort_keys=True, separators=(",", ":"))
+        chain_hash = hashlib.sha256(f"{parent_hash}::{serialized}".encode("utf-8")).hexdigest()
+        return {
+            "delta": delta,
+            "changed_keys_count": len(delta),
+            "parent_hash": parent_hash,
+            "current_hash": chain_hash,
+        }
+
+    def evaluate_weighted_role_debate(
+        self,
+        perspectives: List[Dict[str, Any]],
+        threshold: float = 0.70,
+    ) -> Tuple[bool, float]:
+        if not perspectives:
+            return False, 0.0
+        total_weight = sum(float(p.get("weight", 1.0)) for p in perspectives)
+        if total_weight <= 0.0:
+            return False, 0.0
+        weighted_score = (
+            sum(float(p.get("confidence", 0.0)) * float(p.get("weight", 1.0)) for p in perspectives)
+            / total_weight
+        )
+        return weighted_score >= float(threshold), round(weighted_score, 4)
+
+    def run_precommit_debate_dry_run(
+        self,
+        proposal_id: str,
+        proponent_score: float,
+        adversary_risk_score: float,
+        threshold: float = 0.70,
+        parent_hash: str = "GENESIS_STATE",
+    ) -> Dict[str, Any]:
+        prop = max(0.0, min(1.0, float(proponent_score)))
+        adv = max(0.0, min(1.0, float(adversary_risk_score)))
+        consensus_score = round((prop * 0.6) + ((1.0 - (adv * 0.4)) * 0.4), 4)
+        consensus_granted = consensus_score >= float(threshold)
+        event_payload = {
+            "proposal_id": str(proposal_id),
+            "proponent_score": prop,
+            "adversary_risk_score": adv,
+            "consensus_score": consensus_score,
+            "verdict": "GRANTED" if consensus_granted else "DENIED",
+        }
+        canonical = json.dumps(event_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        receipt_hash = hashlib.sha256(parent_hash.encode("utf-8") + canonical).hexdigest()
+        return {
+            **event_payload,
+            "consensus_granted": consensus_granted,
+            "receipt_hash": receipt_hash,
+        }
+
+    @staticmethod
+    def _make_key(node: str, model: str) -> str:
+        return f"{(node or 'default').strip().lower()}:{(model or 'gemini-4-argon-low').strip().lower()}"
+
+    def get_reliability(self, node: str, model: str) -> float:
+        key = self._make_key(node, model)
+        alpha, beta = self.posteriors.get(key, [self.default_alpha, self.default_beta])
+        return round(alpha / max(1e-9, alpha + beta), 4)
+
+    def compute_ece(self, node: str, model: str, bins: int = 5) -> float:
+        key = self._make_key(node, model)
+        hist = self.calibration_history.get(key, [])
+        if not hist:
+            return 0.0
+        n = len(hist)
+        ece = 0.0
+        for b in range(bins):
+            lo, hi = b / bins, (b + 1) / bins
+            bucket = [(c, y) for (c, y) in hist if (lo <= c < hi) or (b == bins - 1 and lo <= c <= hi)]
+            if bucket:
+                ece += (len(bucket) / n) * abs(
+                    (sum(y for _, y in bucket) / len(bucket)) - (sum(c for c, _ in bucket) / len(bucket))
+                )
+        return round(ece, 4)
+
+    def trust_adjusted_confidence(
+        self,
+        node: str,
+        model: str,
+        raw_conf: float,
+        fake_risk: float = 0.0,
+        complexity: float = 1.0,
+    ) -> float:
+        c_raw = max(0.0, min(1.0, float(raw_conf)))
+        r_fake = max(0.0, min(1.0, float(fake_risk)))
+        if r_fake >= 0.20:
+            return round(c_raw * 0.15 * (1.0 - r_fake), 4)
+        rel = self.get_reliability(node, model)
+        rel_factor = min(1.0, rel / 0.90)
+        ece = self.compute_ece(node, model)
+        bt_adv = self.calibrator.predict_win_rate(complexity) if "low" in (model or "").lower() else 0.0
+        c_trust = c_raw * rel_factor * max(0.20, 1.0 - 0.50 * ece) * (1.0 - r_fake) * (1.0 - 0.12 * bt_adv)
+        return round(max(0.0, min(1.0, c_trust)), 4)
+
+    def record_outcome(self, node: str, model: str, raw_conf: float, passed: bool) -> Dict[str, float]:
+        key = self._make_key(node, model)
+        if key not in self.posteriors:
+            self.posteriors[key] = [self.default_alpha, self.default_beta]
+        if passed:
+            self.posteriors[key][0] += 1.0
+        else:
+            self.posteriors[key][1] += 1.5 if float(raw_conf) >= 0.80 else 1.0
+        hist = self.calibration_history.setdefault(key, [])
+        hist.append((max(0.0, min(1.0, float(raw_conf))), 1.0 if passed else 0.0))
+        self.nonconformity_log.append(max(0.0, 1.0 - float(raw_conf)) if passed else min(1.0, float(raw_conf)))
+        if len(self.nonconformity_log) >= 5:
+            self.calibrator.calibrate(self.nonconformity_log[-100:])
+        return {
+            "reliability": self.get_reliability(node, model),
+            "ece": self.compute_ece(node, model),
+            "conformal_q_hat": self.calibrator.q_hat,
+        }
+
+
+class SpeculativeCascadeRouter:
+    """Speculative Cascading & Dynamic Quota Arbitration (arXiv:2401.12574) on Pro Tier.
+
+    Cascades across 3-Tier Gemini 4 Argon (`gemini-4-argon-low` -> `gemini-4-argon-medium` -> `gemini-4-argon-high`)
+    using a confidence deferral threshold `tau` and `TrustworthyCascadeController` while strictly preserving Ultra quota.
+    """
+
+    MODELS: Tuple[str, ...] = (
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium",
+        "gemini-4-argon-high",
+    )
+
+    def __init__(
+        self,
+        tau: float = 0.80,
+        tier: str = "pro",
+        controller: Optional[TrustworthyCascadeController] = None,
+    ) -> None:
+        if tier != "pro":
+            raise ValueError("SpeculativeCascadeRouter strictly enforces tier='pro' (zero Ultra drain).")
+        self.tau = float(tau)
+        self.tier = tier
+        self.controller = controller or TrustworthyCascadeController(
+            evaluator=EscalationSensitivityEvaluator(tau_base=float(tau))
+        )
+
+    def route(self, prompt: str, infer_fn: Any) -> Tuple[str, Any, float]:
+        for idx, model in enumerate(self.MODELS):
+            out, conf = infer_fn(model, prompt)
+            if float(conf) >= self.tau or idx == len(self.MODELS) - 1:
+                return model, out, float(conf)
+        raise RuntimeError("Speculative cascade exhausted without candidate.")
+
+    def route_trustworthy(
+        self,
+        prompt: str,
+        infer_fn: Any,
+        complexity: float = 1.0,
+        quota_ratio: float = 0.80,
+        node: str = "sunward",
+        fake_risk_fn: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        start_idx = 1 if float(complexity) >= 2.8 else 0
+        hops: List[Dict[str, Any]] = []
+        for idx in range(start_idx, len(self.MODELS)):
+            model = self.MODELS[idx]
+            out, raw_conf = infer_fn(model, prompt)
+            fake_risk = float(fake_risk_fn(out)) if fake_risk_fn is not None else 0.0
+            rel = self.controller.get_reliability(node, model)
+            ece = self.controller.compute_ece(node, model)
+            tau_info = self.controller.evaluator.compute_dynamic_tau(
+                complexity=complexity,
+                quota_ratio=quota_ratio,
+                ece=ece,
+                node_reliability=rel,
+                tau_base=self.tau,
+            )
+            dyn_tau = tau_info["tau"]
+            trust_conf = self.controller.trust_adjusted_confidence(
+                node=node,
+                model=model,
+                raw_conf=raw_conf,
+                fake_risk=fake_risk,
+                complexity=complexity,
+            )
+            accepted = bool(trust_conf >= dyn_tau or idx == len(self.MODELS) - 1)
+            hops.append({
+                "model": model,
+                "raw_confidence": round(float(raw_conf), 4),
+                "trust_confidence": trust_conf,
+                "dynamic_tau": dyn_tau,
+                "fake_risk": round(fake_risk, 4),
+                "ece": ece,
+                "reliability": rel,
+                "accepted": accepted,
+            })
+            if accepted:
+                return {
+                    "selected_model": model,
+                    "tier": self.tier,
+                    "node": node,
+                    "output": out,
+                    "raw_confidence": round(float(raw_conf), 4),
+                    "trust_confidence": trust_conf,
+                    "dynamic_tau": dyn_tau,
+                    "escalation_count": len(hops) - 1,
+                    "hops": hops,
+                    "sensitivity": tau_info,
+                    "bradley_terry_win_rate": self.controller.calibrator.predict_win_rate(complexity),
+                    "conformal_q_hat": self.controller.calibrator.q_hat,
+                }
+        raise RuntimeError("Trustworthy speculative cascade exhausted without candidate.")
+
+
 if __name__ == "__main__":
     main()
+
+
 

@@ -263,6 +263,22 @@ class HLCClockGuard:
             return earlier.logical_counter < later.logical_counter
         return False
 
+    def tick(self) -> Tuple[int, int]:
+        import time
+
+        with self._lock:
+            now_ms = int(time.time() * 1000)
+            if self._latest_physical_ms - now_ms > self.max_drift_ms:
+                raise ClockDriftExceededError(
+                    f"Physical clock drift detected: {self._latest_physical_ms - now_ms}ms > {self.max_drift_ms}ms"
+                )
+            if now_ms > self._latest_physical_ms:
+                self._latest_physical_ms = now_ms
+                self._logical_counter = 0
+            else:
+                self._logical_counter += 1
+            return self._latest_physical_ms, self._logical_counter
+
 
 class HLCReading:
     """Immutable reading of a node's Hybrid Logical Clock."""
@@ -411,4 +427,245 @@ class HLCShrinkingCounterexampleEngine:
                 step_size = min(step_size, len(current_failing) // 2)
 
         return current_failing
+
+
+class ByzantineNodeQuarantinedError(RuntimeError):
+    """Raised when an event originates from a node currently slashed for Byzantine drift violations."""
+
+
+@dataclass(frozen=True)
+class QuarantinedRecord:
+    timestamp: HLCReading
+    payload_hash: str
+    rejection_reason: str
+    detected_at_ms: int
+
+
+class BoundedQuarantineBuffer:
+    """Fixed-capacity FIFO ring buffer to store quarantined anomalies without OOM risk.
+
+    Grounded from Pro node binhthuong Fleet Advisory (Dialectic Synthesis).
+    """
+
+    def __init__(self, capacity: int = 256) -> None:
+        import collections
+
+        if capacity <= 0:
+            raise ValueError("Capacity must be strictly positive")
+        self._capacity = int(capacity)
+        self._buffer: Any = collections.deque(maxlen=self._capacity)
+
+    def record_quarantine(self, ts: HLCReading, payload: Dict[str, Any], reason: str) -> QuarantinedRecord:
+        import hashlib
+        import json
+        import time
+
+        serialized = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        payload_hash = hashlib.sha256(serialized).hexdigest()
+        record = QuarantinedRecord(
+            timestamp=ts,
+            payload_hash=payload_hash,
+            rejection_reason=reason,
+            detected_at_ms=int(time.time() * 1000),
+        )
+        self._buffer.append(record)
+        return record
+
+    def get_records(self) -> List[QuarantinedRecord]:
+        return list(self._buffer)
+
+    def __len__(self) -> int:
+        return len(self._buffer)
+
+
+class ByzantineSlashingHLCGuard:
+    """Hybrid Logical Clock guard with soft/hard drift thresholds, bounded quarantine, and 3-strike node slashing."""
+
+    def __init__(
+        self,
+        node_id: str,
+        soft_drift_threshold_ms: int = 1500,
+        hard_drift_threshold_ms: int = 3000,
+        slashing_strike_limit: int = 3,
+        quarantine_capacity: int = 256,
+        clock_source: Any = None,
+    ) -> None:
+        import collections
+        import time
+
+        self.node_id = validate_fleet_node_id(node_id)
+        self.soft_drift_threshold_ms = int(soft_drift_threshold_ms)
+        self.hard_drift_threshold_ms = int(hard_drift_threshold_ms)
+        self.slashing_strike_limit = int(slashing_strike_limit)
+        self._clock_source = clock_source or (lambda: int(time.time() * 1000))
+        self._local_physical_ms: int = int(self._clock_source())
+        self._local_logical_counter: int = 0
+        self.quarantine = BoundedQuarantineBuffer(capacity=quarantine_capacity)
+        self._slashed_nodes: set[str] = set()
+        self._node_strikes: Dict[str, List[int]] = collections.defaultdict(list)
+
+    def witness_event(self, incoming_ts: HLCReading, event_payload: Dict[str, Any]) -> HLCReading:
+        sender_node = incoming_ts.node_id
+        if sender_node in self._slashed_nodes:
+            self.quarantine.record_quarantine(
+                incoming_ts, event_payload, f"Sender node '{sender_node}' is slashed"
+            )
+            raise ByzantineNodeQuarantinedError(f"Node '{sender_node}' is slashed for Byzantine drift")
+
+        physical_now = int(self._clock_source())
+        drift_delta = incoming_ts.physical_ms - physical_now
+
+        if drift_delta > self.hard_drift_threshold_ms:
+            self._record_strike(sender_node, physical_now)
+            self.quarantine.record_quarantine(
+                incoming_ts,
+                event_payload,
+                f"Hard drift exceeded: +{drift_delta}ms > {self.hard_drift_threshold_ms}ms",
+            )
+            raise ClockDriftExceededError(
+                f"Clock drift +{drift_delta}ms exceeds limit {self.hard_drift_threshold_ms}ms"
+            )
+
+        if drift_delta < -self.hard_drift_threshold_ms:
+            self.quarantine.record_quarantine(
+                incoming_ts,
+                event_payload,
+                f"Stale drift exceeded: {drift_delta}ms < -{self.hard_drift_threshold_ms}ms",
+            )
+            raise ClockDriftExceededError(
+                f"Event timestamp lag {drift_delta}ms exceeds threshold -{self.hard_drift_threshold_ms}ms"
+            )
+
+        # Clamp local physical advancement if within soft/hard drift window
+        clamped_remote_phys = (
+            min(incoming_ts.physical_ms, physical_now + self.soft_drift_threshold_ms)
+            if drift_delta > self.soft_drift_threshold_ms
+            else incoming_ts.physical_ms
+        )
+
+        if physical_now > self._local_physical_ms and physical_now > clamped_remote_phys:
+            self._local_physical_ms = physical_now
+            self._local_logical_counter = 0
+        elif clamped_remote_phys == self._local_physical_ms:
+            self._local_logical_counter = max(self._local_logical_counter, incoming_ts.logical_counter) + 1
+        elif clamped_remote_phys > self._local_physical_ms:
+            self._local_physical_ms = clamped_remote_phys
+            self._local_logical_counter = incoming_ts.logical_counter + 1
+        else:
+            self._local_logical_counter += 1
+
+        return HLCReading(self._local_physical_ms, self._local_logical_counter, self.node_id)
+
+    def _record_strike(self, node_id: str, current_time_ms: int) -> None:
+        cutoff = current_time_ms - 60000
+        valid_strikes = [t for t in self._node_strikes[node_id] if t >= cutoff]
+        valid_strikes.append(current_time_ms)
+        self._node_strikes[node_id] = valid_strikes
+        if len(valid_strikes) >= self.slashing_strike_limit:
+            self._slashed_nodes.add(node_id)
+
+    def is_slashed(self, node_id: str) -> bool:
+        return node_id in self._slashed_nodes
+
+    def unslash_node(self, node_id: str) -> None:
+        self._slashed_nodes.discard(node_id)
+        self._node_strikes.pop(node_id, None)
+
+
+@dataclass(frozen=True)
+class MonotonicHLCTimestamp:
+    """Immutable HLC representation anchored with hardware monotonic_ns (MA-ELC)."""
+
+    physical_ms: int
+    logical_counter: int
+    monotonic_anchor_ns: int
+
+    def __lt__(self, other: MonotonicHLCTimestamp) -> bool:
+        if self.physical_ms != other.physical_ms:
+            return self.physical_ms < other.physical_ms
+        return self.logical_counter < other.logical_counter
+
+
+class MonotonicAnchoredHLCGuard:
+    """Monotonically-Anchored Ephemeral Logical Clock Invariant (MA-ELC).
+
+    Anchors physical wall-clock advances against hardware `time.monotonic_ns()`
+    to detect TOCTOU retrograde wall-clock slews. Grounded from Pro node ai-digimate.
+    """
+
+    def __init__(self, max_drift_ms: float = 5000.0, wall_clock_ms_fn: Any = None, mono_ns_fn: Any = None) -> None:
+        import threading
+        import time
+
+        if max_drift_ms <= 0.0:
+            raise ValueError(f"max_drift_ms must be positive, got {max_drift_ms}")
+        self._max_drift_ms = float(max_drift_ms)
+        self._lock = threading.Lock()
+        self._wall_fn = wall_clock_ms_fn or (lambda: int(time.time() * 1000))
+        self._mono_fn = mono_ns_fn or time.monotonic_ns
+        self._latest_physical_ms: int = int(self._wall_fn())
+        self._latest_logical: int = 0
+        self._latest_monotonic_ns: int = int(self._mono_fn())
+
+    def read_current_timestamp(self) -> MonotonicHLCTimestamp:
+        with self._lock:
+            current_wall_ms = int(self._wall_fn())
+            current_mono_ns = int(self._mono_fn())
+            elapsed_mono_ms = (current_mono_ns - self._latest_monotonic_ns) / 1_000_000.0
+            projected_wall_ms = self._latest_physical_ms + int(elapsed_mono_ms)
+            physical_drift = abs(current_wall_ms - projected_wall_ms)
+            if physical_drift > self._max_drift_ms:
+                raise ClockDriftExceededError(int(physical_drift), int(self._max_drift_ms))
+
+            if current_wall_ms > self._latest_physical_ms:
+                self._latest_physical_ms = current_wall_ms
+                self._latest_logical = 0
+            else:
+                self._latest_logical += 1
+            self._latest_monotonic_ns = current_mono_ns
+            return MonotonicHLCTimestamp(
+                physical_ms=self._latest_physical_ms,
+                logical_counter=self._latest_logical,
+                monotonic_anchor_ns=current_mono_ns,
+            )
+
+    def validate_incoming_tick(self, remote_physical_ms: int, remote_logical: int) -> MonotonicHLCTimestamp:
+        with self._lock:
+            current_wall_ms = int(self._wall_fn())
+            current_mono_ns = int(self._mono_fn())
+            drift = abs(current_wall_ms - int(remote_physical_ms))
+            if drift > self._max_drift_ms:
+                raise ClockDriftExceededError(int(drift), int(self._max_drift_ms))
+            if int(remote_logical) < 0 or int(remote_logical) >= 65535:
+                raise LogicalCounterOverflowError(
+                    f"Logical counter {remote_logical} overflowed 16-bit ceiling (65535)"
+                )
+
+            max_phys = max(self._latest_physical_ms, current_wall_ms, int(remote_physical_ms))
+            if max_phys == self._latest_physical_ms and max_phys == int(remote_physical_ms):
+                self._latest_logical = max(self._latest_logical, int(remote_logical)) + 1
+            elif max_phys == self._latest_physical_ms:
+                self._latest_logical += 1
+            elif max_phys == int(remote_physical_ms):
+                self._latest_logical = int(remote_logical) + 1
+            else:
+                self._latest_logical = 0
+
+            if self._latest_logical > 65535:
+                raise LogicalCounterOverflowError("Combined logical counter overflowed ceiling 65535")
+
+            self._latest_physical_ms = max_phys
+            self._latest_monotonic_ns = current_mono_ns
+            return MonotonicHLCTimestamp(
+                physical_ms=self._latest_physical_ms,
+                logical_counter=self._latest_logical,
+                monotonic_anchor_ns=current_mono_ns,
+            )
+
+
+class LogicalCounterOverflowError(OverflowError):
+    """Raised when HLC logical ticks within the same physical millisecond exceed 16-bit bounds (65535)."""
+
+
+
 

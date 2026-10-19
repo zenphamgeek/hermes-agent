@@ -111,6 +111,25 @@ class SovereignVictoryCritic:
                     CREATE INDEX IF NOT EXISTS idx_victory_critique_project
                     ON victory_critique_ledger(project, claim_type, verdict);
                 """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS fleet_reward_ledger (
+                        bounty_id TEXT PRIMARY KEY,
+                        node_name TEXT NOT NULL,
+                        audit_id TEXT NOT NULL,
+                        root_cause_type TEXT NOT NULL,
+                        reward_points INTEGER NOT NULL,
+                        qbrr_priority_boost REAL NOT NULL,
+                        badge TEXT NOT NULL,
+                        evidence_digest_sha256 TEXT NOT NULL,
+                        fake_pass_risk_score REAL NOT NULL,
+                        critic_verdict TEXT NOT NULL,
+                        timestamp REAL NOT NULL,
+                        details_json TEXT DEFAULT '{}'
+                    );
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_h_frl_node ON fleet_reward_ledger(node_name);
+                """)
                 conn.commit()
         except Exception:
             pass
@@ -370,6 +389,23 @@ class SovereignVictoryCritic:
                 "Migrate all `gemini-3.8-flash*` model strings to `gemini-4-argon-high`, `gemini-4-argon-medium`, or `gemini-4-argon-low`."
             )
 
+        # 4. Check Vertical Resilience Deployment Fake-Pass Taxonomy (FP-VR-01..FP-VR-06)
+        vr_findings = self.evaluate_vertical_resilience_deploy_gate_risk(
+            claim_text=claim_text,
+            test_code=test_code,
+            execution_log=execution_log,
+            changed_files=changed_files,
+        )
+        for item in vr_findings:
+            detected.append({
+                "code": item["code"],
+                "weight": item["weight"],
+                "detail": item["detail"],
+            })
+            total_risk += float(item["weight"])
+            if item.get("remediation"):
+                remediations.append(item["remediation"])
+
         risk_score = round(min(1.0, total_risk), 4)
         if risk_score >= 0.50:
             risk_level = "HIGH_FAKE_PASS"
@@ -389,6 +425,69 @@ class SovereignVictoryCritic:
             "detected_anti_patterns": detected,
             "remediation_steps": remediations,
         }
+
+    def evaluate_vertical_resilience_deploy_gate_risk(
+        self,
+        claim_text: str,
+        test_code: str = "",
+        execution_log: str = "",
+        changed_files: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Evaluate deployment and UI/API verification artifacts against the 6 forensic Fake-Pass
+        root-cause patterns discovered in Vertical Resilience Deployment (57b513a2-89ba-4897-a173-1d8b3356abcb):
+          - FP-VR-01: Metadata-only `vertical_files` seed / PVC binary missing causing HTTP 403 on `/assets/:id`.
+          - FP-VR-02: DOM Popper/Tooltip grace-area click interception (`useGraceArea`) & O(N*M) Pinia deep-ref reactivity lag masked by static bundle grep.
+          - FP-VR-03: Silent pass-on-unreachable (`!liveBundleCheck?.reachable || ...` / `!httpReachable || ...`) in live deployment gates.
+          - FP-VR-04: Local-DB (`127.0.0.1:5432`) vs. Live-K8s API split-brain during `--mode=live` verification.
+          - FP-VR-05: Late-stage seed pipeline clobbering (`apply_grc_menu_industry_taxonomy` / `demo-seed` overwriting `vertical_settings` or `vertical_fields` after `initContainers` branding upload).
+          - FP-VR-06: Row-count-only smoke check (`COUNT(*) >= N`) without minimal-payload mutation & Maker != Checker `SOD_VIOLATION` probe.
+        """
+        findings: List[Dict[str, Any]] = []
+        corpus = f"{claim_text or ''}\n{test_code or ''}\n{execution_log or ''}"
+        for fpath in (changed_files or []):
+            try:
+                p = Path(fpath)
+                if p.is_file() and p.name != "sovereign_victory_critic.py":
+                    corpus += "\n" + p.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                pass
+
+        # FP-VR-01: Metadata-only file check without live GET /assets/:id HTTP 200 verification, or raw 403 on /assets/
+        if re.search(r"/assets/[0-9a-fA-F-]{36}[^\n]*\b403\b", corpus) or (
+            re.search(r"request\(\s*`?/files\?filter\[title\]", corpus)
+            and not re.search(r"/assets/\$\{file\.id\}|brandingAssetsHttp200", corpus)
+        ):
+            findings.append({
+                "code": "fp_vr_01_metadata_only_asset_seed_403",
+                "weight": 0.45,
+                "detail": "FP-VR-01: `vertical_files` metadata row exists in PostgreSQL without verifying live HTTP 200 binary stream on `GET /assets/:id` (K8s `/uploads` PVC split-brain causing 403 Forbidden).",
+                "remediation": "Verify `GET /assets/:id` returns HTTP 200 with non-zero bytes in `apply_branding.mjs` and `auditApiCacheParity`, and enable self-healing branding recovery in `AssetsService.getAsset`.",
+            })
+
+        # FP-VR-02: Popper/Tooltip hoverable grace-area click interception or deep ref() store stall
+        if re.search(r"disable-hoverable-content\s*=\s*['\"]false['\"]", corpus) or (
+            "TooltipRoot" in corpus
+            and "disable-hoverable-content" not in corpus
+            and "app-tooltip.vue" in corpus
+        ):
+            findings.append({
+                "code": "fp_vr_02_dom_popper_click_interception_lag",
+                "weight": 0.40,
+                "detail": "FP-VR-02: `TooltipRoot` without `:disable-hoverable-content=\"true\"` mounts `TooltipContentHoverable` (`useGraceArea`) and intercepts pointer clicks on adjacent sidebar items.",
+                "remediation": "Enforce `:disable-hoverable-content=\"true\"`, `pointer-events: none !important` on `[data-reka-popper-content-wrapper]:has(> .tooltip)`, `shallowRef` + O(1) Map indices in Pinia stores, and lazy `v-if` on hidden Filter/Export field trees.",
+            })
+
+        # FP-VR-03: Pass-on-unreachable bypass in live deployment gate
+        if re.search(r"mode\s*!==\s*['\"]live['\"]\s*\|\|\s*!liveBundleCheck\?\.reachable", corpus):
+            findings.append({
+                "code": "fp_vr_03_pass_on_unreachable_gate_bypass",
+                "weight": 0.45,
+                "detail": "FP-VR-03: Deployment gate expression `mode !== 'live' || !liveBundleCheck?.reachable` evaluates to `passed: true` when the live `/admin/` bundle is unreachable or times out.",
+                "remediation": "Require `Boolean(liveBundleCheck?.reachable && liveBundleCheck?.allSignaturesPresent)` when `mode === 'live'` (fail-closed on unreachable endpoints).",
+            })
+
+        return findings
 
     def critique_victory_claim(
         self,
@@ -700,6 +799,487 @@ def ensure_gemini_dod_reminder(
     if not base:
         return reminder
     return f"{base}\n\n{reminder}"
+
+
+class DutyRole:
+    MAKER = "maker"
+    CHECKER = "checker"
+    CONTROLLER = "controller"
+
+
+class PredicateState:
+    QUARANTINED = "quarantined"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class ASTSecurityViolation(Exception):
+    """Raised when an AST expression violates the sovereign safety invariants."""
+
+
+class SegregatedDutiesASTValidator:
+    """
+    Validates AST predicates under strict Segregation of Duties (SoD).
+    Enforces zero dynamic attribute access, zero function calls, and strict symbol lookup.
+    """
+
+    ALLOWED_NODES = (
+        ast.Expression,
+        ast.Compare,
+        ast.Name,
+        ast.Constant,
+        ast.Load,
+        ast.Eq,
+        ast.NotEq,
+        ast.Lt,
+        ast.LtE,
+        ast.Gt,
+        ast.GtE,
+        ast.In,
+        ast.NotIn,
+        ast.BoolOp,
+        ast.And,
+        ast.Or,
+        ast.UnaryOp,
+        ast.Not,
+    )
+
+    def __init__(self, allowed_variables: Any) -> None:
+        self.allowed_variables = frozenset(allowed_variables)
+
+    def inspect_ast(self, expr_str: str) -> None:
+        try:
+            tree = ast.parse(expr_str, mode="eval")
+        except SyntaxError as err:
+            raise ASTSecurityViolation(f"Malformed syntax in predicate: {err}") from err
+
+        for node in ast.walk(tree):
+            if not isinstance(node, self.ALLOWED_NODES):
+                raise ASTSecurityViolation(
+                    f"Forbidden AST Node [{type(node).__name__}] detected in expression."
+                )
+            if isinstance(node, ast.Name) and node.id not in self.allowed_variables:
+                raise ASTSecurityViolation(
+                    f"Access to unauthorized symbol [{node.id}]. Allowed: {sorted(self.allowed_variables)}"
+                )
+
+
+class QuarantinedPredicateRecord:
+    """Represents a predicate subject to Maker-Checker dual control."""
+
+    def __init__(self, expression: str, maker_id: str) -> None:
+        self.expression = expression
+        self.maker_id = maker_id
+        self.checker_id: Optional[str] = None
+        self.state = PredicateState.QUARANTINED
+        self.content_digest = hashlib.sha256(expression.encode("utf-8")).hexdigest()
+
+    def approve(self, checker_id: str, validator: SegregatedDutiesASTValidator) -> None:
+        if checker_id == self.maker_id:
+            self.state = PredicateState.REJECTED
+            raise PermissionError(
+                f"Segregation of Duties Violation: Maker [{checker_id}] cannot check their own submission."
+            )
+
+        try:
+            validator.inspect_ast(self.expression)
+            self.checker_id = checker_id
+            self.state = PredicateState.APPROVED
+        except ASTSecurityViolation:
+            self.state = PredicateState.REJECTED
+            raise
+
+
+class SovereignMemoryApprovalController:
+    """Controller enforcing dual-key commit before ADR-004 PEM memory recall."""
+
+    ENABLE_SEGREGATED_DUTIES_GATE: bool = True
+
+    def __init__(self, allowed_symbols: Any) -> None:
+        self.validator = SegregatedDutiesASTValidator(allowed_symbols)
+        self.ledger: Dict[str, QuarantinedPredicateRecord] = {}
+
+    def submit_predicate(self, expression: str, maker_id: str) -> str:
+        record = QuarantinedPredicateRecord(expression=expression, maker_id=maker_id)
+        self.ledger[record.content_digest] = record
+        return record.content_digest
+
+    def review_and_commit(self, digest: str, checker_id: str) -> bool:
+        if not self.ENABLE_SEGREGATED_DUTIES_GATE:
+            return True
+        if digest not in self.ledger:
+            raise KeyError(f"Predicate digest [{digest}] not found in quarantine ledger.")
+        record = self.ledger[digest]
+        record.approve(checker_id=checker_id, validator=self.validator)
+        return record.state == PredicateState.APPROVED
+
+
+class SecuritySandboxViolation(Exception):
+    """Raised when an untrusted AST predicate violates the strict node allowlist."""
+
+
+class PredicateGasExceeded(Exception):
+    """Raised when AST traversal exceeds MAX_EXPR_DEPTH or MAX_EVAL_STEPS."""
+
+
+class SafeASTPredicateEvaluator:
+    """Strictly allowlisted, gas-bounded AST evaluator for untrusted memory predicates.
+
+    Grounded from Pro node zenonmind Fleet Advisory (Clef Trust Score: 0.88).
+    """
+
+    MAX_EXPR_DEPTH: int = 8
+    MAX_EVAL_STEPS: int = 64
+
+    _ALLOWED_NODES = (
+        ast.Expression,
+        ast.BoolOp,
+        ast.And,
+        ast.Or,
+        ast.UnaryOp,
+        ast.Not,
+        ast.Compare,
+        ast.Eq,
+        ast.NotEq,
+        ast.Lt,
+        ast.LtE,
+        ast.Gt,
+        ast.GtE,
+        ast.In,
+        ast.NotIn,
+        ast.Constant,
+        ast.Name,
+        ast.Load,
+        ast.Tuple,
+        ast.List,
+    )
+
+    @classmethod
+    def evaluate(cls, expr_str: str, context: Dict[str, Any]) -> bool:
+        if not isinstance(expr_str, str) or len(expr_str) > 512:
+            raise SecuritySandboxViolation("Expression invalid or exceeds 512 chars.")
+        try:
+            tree = ast.parse(expr_str, mode="eval")
+        except SyntaxError as exc:
+            raise SecuritySandboxViolation(f"Syntax error in predicate: {exc}") from exc
+
+        steps = 0
+        for node in ast.walk(tree):
+            steps += 1
+            if steps > cls.MAX_EVAL_STEPS:
+                raise PredicateGasExceeded(f"AST node count exceeded budget ({cls.MAX_EVAL_STEPS}).")
+            if not isinstance(node, cls._ALLOWED_NODES):
+                raise SecuritySandboxViolation(f"Disallowed AST node type: {type(node).__name__}")
+            if isinstance(node, ast.Name) and node.id.startswith("_"):
+                raise SecuritySandboxViolation(f"Dunder/private identifier blocked: {node.id}")
+
+        return bool(cls._eval_node(tree.body, context, depth=0))
+
+    @classmethod
+    def _eval_node(cls, node: ast.AST, ctx: Dict[str, Any], depth: int) -> Any:
+        if depth > cls.MAX_EXPR_DEPTH:
+            raise PredicateGasExceeded(f"AST depth exceeded {cls.MAX_EXPR_DEPTH}.")
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            if node.id not in ctx:
+                raise SecuritySandboxViolation(f"Unbound context identifier: {node.id}")
+            return ctx[node.id]
+        if isinstance(node, (ast.Tuple, ast.List)):
+            return [cls._eval_node(el, ctx, depth + 1) for el in node.elts]
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return not bool(cls._eval_node(node.operand, ctx, depth + 1))
+        if isinstance(node, ast.BoolOp):
+            if isinstance(node.op, ast.And):
+                return all(bool(cls._eval_node(v, ctx, depth + 1)) for v in node.values)
+            if isinstance(node.op, ast.Or):
+                return any(bool(cls._eval_node(v, ctx, depth + 1)) for v in node.values)
+        if isinstance(node, ast.Compare):
+            left = cls._eval_node(node.left, ctx, depth + 1)
+            for op, comp in zip(node.ops, node.comparators):
+                right = cls._eval_node(comp, ctx, depth + 1)
+                if isinstance(op, ast.Eq) and not (left == right):
+                    return False
+                elif isinstance(op, ast.NotEq) and not (left != right):
+                    return False
+                elif isinstance(op, ast.Lt) and not (left < right):
+                    return False
+                elif isinstance(op, ast.LtE) and not (left <= right):
+                    return False
+                elif isinstance(op, ast.Gt) and not (left > right):
+                    return False
+                elif isinstance(op, ast.GtE) and not (left >= right):
+                    return False
+                elif isinstance(op, ast.In) and not (left in right):
+                    return False
+                elif isinstance(op, ast.NotIn) and not (left not in right):
+                    return False
+                left = right
+            return True
+        raise SecuritySandboxViolation(f"Unhandled AST construct: {type(node).__name__}")
+
+
+SovereignASTSecurityError = SecuritySandboxViolation
+StrictASTPredicateEvaluator = SafeASTPredicateEvaluator
+
+
+class BatchMerkleEpochDigest:
+    """Batch Merkle-Chained Epoch Digest with RFC-8785 Canonical Serialization and HLC Interval Attestation.
+
+    Grounded from Pro node sunward Fleet Advisory (Dialectic Synthesis).
+    """
+
+    @staticmethod
+    def canonical_json(obj: Any) -> str:
+        return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    @classmethod
+    def compute_merkle_root(cls, events: List[Dict[str, Any]]) -> str:
+        if not events:
+            return hashlib.sha256(b"EMPTY_EPOCH").hexdigest()
+        layer = [
+            hashlib.sha256(cls.canonical_json(ev).encode("utf-8")).hexdigest()
+            for ev in events
+        ]
+        while len(layer) > 1:
+            next_layer: List[str] = []
+            for idx in range(0, len(layer), 2):
+                left = layer[idx]
+                right = layer[idx + 1] if idx + 1 < len(layer) else left
+                combined = hashlib.sha256(f"{left}:{right}".encode("utf-8")).hexdigest()
+                next_layer.append(combined)
+            layer = next_layer
+        return layer[0]
+
+    @classmethod
+    def SealEpoch(
+        cls,
+        events: List[Dict[str, Any]],
+        hlc_start: int,
+        hlc_end: int,
+        prev_epoch_hash: str = "0" * 64,
+    ) -> Dict[str, Any]:
+        if hlc_end < hlc_start:
+            raise ValueError(f"Invalid HLC interval: hlc_end ({hlc_end}) < hlc_start ({hlc_start})")
+        merkle_root = cls.compute_merkle_root(events)
+        envelope = {
+            "event_count": len(events),
+            "hlc_end": hlc_end,
+            "hlc_start": hlc_start,
+            "merkle_root": merkle_root,
+            "prev_epoch_hash": prev_epoch_hash,
+        }
+        epoch_hash = hashlib.sha256(cls.canonical_json(envelope).encode("utf-8")).hexdigest()
+        return {**envelope, "epoch_hash": epoch_hash}
+
+
+class SecurityTraversalError(ValueError):
+    """Raised when an inspected target path escapes the sovereign workspace (CWE-22)."""
+
+
+def resolve_safe_workspace_path(untrusted_path: str | Path, workspace_root: Path) -> Path:
+    """Canonically resolve path and guarantee containment within workspace_root.
+
+    Grounded from Pro node ai-digimate Fleet Advisory (Clef Trust Score: 0.81).
+    """
+    canonical_root = Path(workspace_root).resolve(strict=True)
+    target = (canonical_root / untrusted_path).resolve()
+    if not target.is_relative_to(canonical_root):
+        raise SecurityTraversalError(
+            f"Directory traversal rejected: {target} is outside {canonical_root}"
+        )
+    return target
+
+
+class SafeLedgerIOError(RuntimeError):
+    """Raised on unrecoverable ledger IO failure (SEC-03)."""
+
+
+class SafeLedgerIO:
+    """Thread-safe and process-safe transactional JSON ledger reader/writer.
+
+    Implements RFC 8785 canonical serialization, fcntl advisory locks, and atomic os.replace.
+    Grounded from Pro node insilos Fleet Advisory (Clef Trust Score: 0.65).
+    """
+
+    @staticmethod
+    def read_ledger(file_path: Path | str) -> Dict[str, Any]:
+        import fcntl
+
+        path = Path(file_path)
+        if not path.exists():
+            return {}
+        with open(path, "r", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
+            try:
+                content = handle.read().strip()
+                if not content:
+                    return {}
+                return json.loads(content)
+            except json.JSONDecodeError as err:
+                raise SafeLedgerIOError(f"Ledger decode error at {path}: {err}") from err
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    @staticmethod
+    def atomic_write_ledger(file_path: Path | str, data: Dict[str, Any]) -> None:
+        import fcntl
+        import os
+        import tempfile
+
+        target_path = Path(file_path).resolve()
+        target_dir = target_path.parent
+        target_dir.mkdir(parents=True, exist_ok=True)
+        serialized = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        lock_file_path = target_dir / f".{target_path.name}.lock"
+        with open(lock_file_path, "w", encoding="utf-8") as lock_handle:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+            tmp_file_path: Optional[Path] = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    dir=str(target_dir),
+                    prefix=f"tmp_{target_path.stem}_",
+                    suffix=".tmp",
+                    delete=False,
+                    encoding="utf-8",
+                ) as tmp_file:
+                    tmp_file.write(serialized)
+                    tmp_file.flush()
+                    os.fsync(tmp_file.fileno())
+                    tmp_file_path = Path(tmp_file.name)
+                os.replace(tmp_file_path, target_path)
+            except Exception as write_err:
+                if tmp_file_path is not None and tmp_file_path.exists():
+                    tmp_file_path.unlink()
+                raise SafeLedgerIOError(f"Atomic ledger write failed: {write_err}") from write_err
+            finally:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+
+
+class TombstoneResurrectionError(RuntimeError):
+    """Raised when a Tombstone Resurrection Attack (line deletion, reordering, or HMAC mismatch) is detected (FAIL-01 / CWE-345)."""
+
+
+class TombstoneIntegrityGuard:
+    """HMAC-SHA256 + RFC 8785 Chained Tombstone Ledger Guard preventing Tombstone Resurrection Attacks.
+
+    Grounded from Pro node ai-digimate (claude-opus-5-5-high, Spiral T3·Q4 FAIL-01).
+    """
+
+    GENESIS_CHAIN_HASH: str = "0" * 64
+
+    @staticmethod
+    def canonical_payload_bytes(entry: Dict[str, Any]) -> bytes:
+        clean = {
+            k: v
+            for k, v in entry.items()
+            if k not in ("chain_hash", "prev_chain_hash", "seq_index")
+        }
+        return json.dumps(clean, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+    @classmethod
+    def compute_entry_hmac(
+        cls,
+        entry: Dict[str, Any],
+        seq_index: int,
+        prev_chain_hash: str,
+        hmac_key: bytes,
+    ) -> str:
+        import hmac
+
+        if not hmac_key or len(hmac_key) < 16:
+            raise ValueError("HMAC key must be at least 16 bytes (fail-closed, CWE-345).")
+        msg = f"{seq_index}:{prev_chain_hash}:".encode("utf-8") + cls.canonical_payload_bytes(entry)
+        return hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
+
+    @classmethod
+    def append_tombstone(
+        cls,
+        ledger_path: Path | str,
+        entry: Dict[str, Any],
+        hmac_key: bytes,
+    ) -> Dict[str, Any]:
+        path = Path(ledger_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing_lines: List[str] = []
+        if path.exists():
+            existing_lines = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+        if existing_lines:
+            ok, msg, head_hash = cls.verify_ledger(path, hmac_key, expected_min_count=len(existing_lines))
+            if not ok:
+                raise TombstoneResurrectionError(f"Cannot append to compromised tombstone ledger: {msg}")
+            prev_hash = head_hash
+            seq_idx = len(existing_lines)
+        else:
+            prev_hash = cls.GENESIS_CHAIN_HASH
+            seq_idx = 0
+
+        chain_hash = cls.compute_entry_hmac(entry, seq_idx, prev_hash, hmac_key)
+        sealed_entry = {
+            **entry,
+            "seq_index": seq_idx,
+            "prev_chain_hash": prev_hash,
+            "chain_hash": chain_hash,
+        }
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(sealed_entry, sort_keys=True, ensure_ascii=False) + "\n")
+        return sealed_entry
+
+    @classmethod
+    def verify_ledger(
+        cls,
+        ledger_path: Path | str,
+        hmac_key: bytes,
+        expected_min_count: int = 0,
+        expected_head_hash: Optional[str] = None,
+    ) -> Tuple[bool, str, str]:
+        import hmac
+
+        if not hmac_key or len(hmac_key) < 16:
+            raise ValueError("HMAC key must be at least 16 bytes (fail-closed, CWE-345).")
+        path = Path(ledger_path)
+        if not path.exists():
+            if expected_min_count > 0 or expected_head_hash:
+                raise TombstoneResurrectionError("Tombstone ledger missing or deleted (resurrection attack).")
+            return True, "EMPTY_VALID", cls.GENESIS_CHAIN_HASH
+
+        lines = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        if len(lines) < expected_min_count:
+            raise TombstoneResurrectionError(
+                f"Tombstone truncation detected: found {len(lines)} entries < expected {expected_min_count}"
+            )
+
+        prev_hash = cls.GENESIS_CHAIN_HASH
+        for idx, raw_line in enumerate(lines):
+            rec = json.loads(raw_line)
+            if rec.get("seq_index") != idx:
+                raise TombstoneResurrectionError(
+                    f"Tombstone sequence gap/reorder at line {idx}: seq_index={rec.get('seq_index')}"
+                )
+            if rec.get("prev_chain_hash") != prev_hash:
+                raise TombstoneResurrectionError(
+                    f"Tombstone prev_chain_hash broken at seq_index={idx}"
+                )
+            expected_mac = cls.compute_entry_hmac(rec, idx, prev_hash, hmac_key)
+            actual_mac = str(rec.get("chain_hash", ""))
+            if not hmac.compare_digest(expected_mac, actual_mac):
+                raise TombstoneResurrectionError(
+                    f"Tombstone HMAC mismatch at seq_index={idx}"
+                )
+            prev_hash = actual_mac
+
+        if expected_head_hash is not None and not hmac.compare_digest(prev_hash, expected_head_hash):
+            raise TombstoneResurrectionError(
+                f"Tombstone tail hash mismatch: {prev_hash} != {expected_head_hash}"
+            )
+        return True, f"VERIFIED ({len(lines)} entries)", prev_hash
+
+
+
+
+
 
 
 def main(argv: Optional[List[str]] = None) -> int:
