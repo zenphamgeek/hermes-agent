@@ -100,6 +100,10 @@ $VAULT provision google-oauth-client --account google_insilos --project-id proje
 $VAULT provision youtube-oauth --account google_insilos --channel reality_decode --headed
 $VAULT provision google-security --account google_zenhunter --headed
 $VAULT provision mcp-cloud-key --account google_zenhunter --provider openrouter
+
+# 11. Interactive Playwright Login & Full Auth Capture Into Vault (Rule 1.18)
+$VAULT interactive-login google_insilos --url https://studio.youtube.com
+$VAULT interactive-login openrouter_prod --url https://openrouter.ai/settings/keys --username inteligentsilos@gmail.com
 ```
 
 ---

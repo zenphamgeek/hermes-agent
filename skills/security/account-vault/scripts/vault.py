@@ -1154,6 +1154,30 @@ class AccountVault:
         )
         return res.to_dict()
 
+    def interactive_login(
+        self,
+        service: str,
+        login_url: Optional[str] = None,
+        url: Optional[str] = None,
+        provider: str = "google-cloud",
+        timeout_sec: int = 300,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Open headed Playwright browser for user interactive login and harvest all Auth info into Vault."""
+        mod = _load_provisioner_module()
+        engine = mod.PlaywrightCloudProvisioner(
+            _get_self_vault_interface(),
+            passphrase=self.passphrase,
+        )
+        res = engine.capture_interactive_auth(
+            service_or_account=service,
+            login_url=login_url or url,
+            provider=provider,
+            timeout_sec=timeout_sec,
+            dry_run=dry_run,
+        )
+        return res.to_dict()
+
 
 def _get_self_vault_interface() -> Any:
     import types
@@ -1231,6 +1255,28 @@ def cmd_provision(args) -> int:
             project_id=args.project_id,
             channel_key=args.channel,
             headless=not args.headed,
+            dry_run=args.dry_run,
+        )
+    except Exception as exc:
+        print(json.dumps({"status": "error", "error": str(exc)}, indent=2), file=sys.stderr)
+        return 1
+    print(json.dumps(res.to_dict(), indent=2, ensure_ascii=False))
+    return 0 if res.status in ("ok", "dry_run_ready") else 1
+
+
+def cmd_interactive_login(args) -> int:
+    mod = _load_provisioner_module()
+    try:
+        engine = mod.PlaywrightCloudProvisioner(
+            _get_self_vault_interface(),
+            passphrase=args.passphrase,
+        )
+        res = engine.capture_interactive_auth(
+            service_or_account=args.service,
+            login_url=args.url,
+            username=getattr(args, "username", None),
+            provider=args.provider,
+            timeout_sec=args.timeout,
             dry_run=args.dry_run,
         )
     except Exception as exc:
@@ -1394,6 +1440,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_prov.add_argument("--dry-run", action="store_true", help="Run preflight check without launching browser")
     p_prov.add_argument("--passphrase", help="Master passphrase")
 
+    # interactive-login
+    p_ilogin = sub.add_parser("interactive-login", help="Open headed Playwright browser for user login and harvest all Auth info into Vault")
+    p_ilogin.add_argument("service", help="Vault service key or email (e.g. google_insilos, cloudflare_main, github_zen)")
+    p_ilogin.add_argument("--url", help="Explicit login URL to open")
+    p_ilogin.add_argument("-u", "--username", help="Account username or email to pre-fill and save")
+    p_ilogin.add_argument("--provider", default="google-cloud", help="Provider preset (google-cloud, youtube, openrouter, firecrawl, tavily, cloudflare, modal, github, bai)")
+    p_ilogin.add_argument("--timeout", type=int, default=300, help="Max seconds to wait for interactive login completion (default: 300)")
+    p_ilogin.add_argument("--dry-run", action="store_true", help="Run preflight check without opening browser")
+    p_ilogin.add_argument("--passphrase", help="Master passphrase")
+
     # providers
     sub.add_parser("providers", help="List supported Cloud & MCP provider provisioning playbooks")
 
@@ -1439,6 +1495,7 @@ def main(argv: list[str] | None = None) -> int:
         "sync-ecosystem": cmd_sync_ecosystem,
         "oauth-refresh": cmd_oauth_refresh,
         "provision": cmd_provision,
+        "interactive-login": cmd_interactive_login,
         "providers": cmd_providers,
     }
 

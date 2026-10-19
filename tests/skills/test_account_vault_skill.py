@@ -339,6 +339,48 @@ class TestAccountVault(unittest.TestCase):
         self.assertNotIn("Zeninall@123", gp_md)
         self.assertIn("[Vault: vault.py get", gp_md)
 
+    def test_interactive_login_auth_capture_workflow(self):
+        self._exec_cli(["init", "--passphrase", self.passphrase])
+        sdk = vault_mod.AccountVault(self.passphrase)
+        sdk.set(
+            "google_insilos",
+            "inteligentsilos@gmail.com",
+            "SuperStrongVaultPass!2026",
+            {"totp_secret": "JBSWY3DPEHPK3PXP", "provider": "google"},
+        )
+
+        # 1. Existing Vault account interactive-login dry-run via SDK
+        res_existing = sdk.interactive_login(
+            service="google_insilos",
+            url="https://studio.youtube.com",
+            dry_run=True,
+        )
+        self.assertEqual(res_existing["status"], "dry_run_ready")
+        self.assertEqual(res_existing["playbook"], "interactive-login")
+        self.assertTrue(res_existing["details"]["headed"])
+        self.assertIn("cookies", res_existing["details"]["captures"])
+        self.assertIn("storage_state", res_existing["details"]["captures"])
+
+        # 2. Brand-new service key auto-initialized via CLI interactive-login --dry-run
+        ret = self._exec_cli([
+            "interactive-login",
+            "new_mcp_cloud_portal",
+            "--url",
+            "https://openrouter.ai/settings/keys",
+            "--username",
+            "inteligentsilos@gmail.com",
+            "--provider",
+            "openrouter",
+            "--dry-run",
+            "--passphrase",
+            self.passphrase,
+        ])
+        self.assertEqual(ret, 0)
+        new_entry = sdk.get("new_mcp_cloud_portal")
+        self.assertIsNotNone(new_entry)
+        self.assertEqual(new_entry["username"], "inteligentsilos@gmail.com")
+
 
 if __name__ == "__main__":
     unittest.main()
+

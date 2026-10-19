@@ -903,3 +903,255 @@ class PlaywrightCloudProvisioner:
                 )
             finally:
                 await context.close()
+
+    def capture_interactive_auth(
+        self,
+        service_or_account: str,
+        login_url: Optional[str] = None,
+        username: Optional[str] = None,
+        provider: str = "google-cloud",
+        timeout_sec: int = 300,
+        dry_run: bool = False,
+    ) -> ProvisionResult:
+        """Launch headed Playwright browser for interactive user login and harvest all Auth info into AccountVault."""
+        try:
+            srv_key, entry = self.resolve_account_entry(service_or_account)
+            if username:
+                entry["username"] = username
+                self.vault.set(
+                    srv_key,
+                    username=username,
+                    password=entry.get("password") or "MANAGED_INTERACTIVE_PLAYWRIGHT_AUTH",
+                    fields=entry.get("fields", {}),
+                )
+        except KeyError:
+            srv_key = service_or_account.strip().lower().replace(" ", "_")
+            resolved_username = username or (service_or_account if "@" in service_or_account else "")
+            entry = {
+                "username": resolved_username,
+                "password": "MANAGED_INTERACTIVE_PLAYWRIGHT_AUTH",
+                "fields": {"provider": provider.lower()},
+            }
+            self.vault.set(
+                srv_key,
+                username=resolved_username,
+                password="MANAGED_INTERACTIVE_PLAYWRIGHT_AUTH",
+                fields={"provider": provider.lower()},
+            )
+
+        profile_dir = self.get_profile_dir(srv_key, entry)
+        provider_meta = MCP_PROVIDER_REGISTRY.get(provider.lower(), MCP_PROVIDER_REGISTRY["google-cloud"])
+        resolved_url = (
+            login_url
+            or entry.get("fields", {}).get("login_url")
+            or provider_meta.get("keys_url")
+            or provider_meta.get("credentials_url")
+            or provider_meta.get("studio_url")
+            or "https://accounts.google.com/"
+        )
+
+        preflight = {
+            "mode": "interactive_playwright_auth_capture",
+            "headless": False,
+            "headed": True,
+            "captures": ["cookies", "storage_state", "bearer_headers", "oauth_codes", "api_keys"],
+            "login_url": resolved_url,
+            "timeout_sec": timeout_sec,
+            "account_username": entry.get("username", ""),
+            "has_existing_password": bool(entry.get("password") and not entry.get("password", "").startswith("MANAGED_")),
+            "has_totp_secret": bool(entry.get("fields", {}).get("totp_secret")),
+            "has_cached_session": bool(self.vault.get_session(srv_key)),
+            "profile_dir": str(profile_dir),
+            "provider": provider,
+        }
+
+        if dry_run:
+            return ProvisionResult(
+                status="dry_run_ready",
+                playbook="interactive-login",
+                account_id=service_or_account,
+                provider=provider,
+                vault_service_key=srv_key,
+                profile_dir=str(profile_dir),
+                details=preflight,
+            )
+
+        import asyncio
+        return asyncio.run(
+            self._run_interactive_auth_capture(
+                srv_key=srv_key,
+                entry=entry,
+                profile_dir=profile_dir,
+                login_url=resolved_url,
+                provider=provider,
+                provider_meta=provider_meta,
+                timeout_sec=timeout_sec,
+            )
+        )
+
+    async def _run_interactive_auth_capture(
+        self,
+        srv_key: str,
+        entry: Dict[str, Any],
+        profile_dir: Path,
+        login_url: str,
+        provider: str,
+        provider_meta: Dict[str, Any],
+        timeout_sec: int,
+    ) -> ProvisionResult:
+        """Open headed persistent Chromium, assist user login, intercept tokens/cookies/storageState, and save to Vault."""
+        from playwright.async_api import async_playwright
+
+        captured_bearer_tokens: List[str] = []
+        captured_oauth_codes: List[str] = []
+
+        async with async_playwright() as p:
+            launch_kwargs: Dict[str, Any] = {
+                "headless": False,  # Mandatory headed window for user interactive login
+                "viewport": {"width": 1366, "height": 860},
+                "args": self.build_launch_args(),
+            }
+            if Path(self.chrome_executable).exists():
+                launch_kwargs["executable_path"] = self.chrome_executable
+
+            context = await p.chromium.launch_persistent_context(str(profile_dir), **launch_kwargs)
+            try:
+                cached_cookies = self.vault.get_session(srv_key)
+                if isinstance(cached_cookies, list) and cached_cookies:
+                    try:
+                        await context.add_cookies(cached_cookies)
+                    except Exception:
+                        pass
+
+                page = context.pages[0] if context.pages else await context.new_page()
+
+                # Intercept Authorization headers & OAuth callback codes in real time
+                def _on_request(req: Any) -> None:
+                    try:
+                        auth_hdr = req.headers.get("authorization") or req.headers.get("Authorization")
+                        if auth_hdr and auth_hdr.lower().startswith("bearer ") and len(auth_hdr) > 20:
+                            tok = auth_hdr.split(" ", 1)[1].strip()
+                            if tok not in captured_bearer_tokens:
+                                captured_bearer_tokens.append(tok)
+                        if "code=" in req.url and ("localhost" in req.url or "oauth" in req.url or "callback" in req.url):
+                            qs = parse_qs(urlparse(req.url).query)
+                            if "code" in qs and qs["code"][0] not in captured_oauth_codes:
+                                captured_oauth_codes.append(qs["code"][0])
+                    except Exception:
+                        pass
+
+                context.on("request", _on_request)
+
+                print(f"\n[Playwright Vault Auth] Opening interactive login window for '{srv_key}' -> {login_url}")
+                print(f"[Playwright Vault Auth] Please complete login in the browser window (timeout: {timeout_sec}s)...")
+                await page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
+
+                # Assist user by pre-filling known Google/service credentials if on sign-in screen
+                if "accounts.google.com" in page.url and entry.get("username"):
+                    try:
+                        await self._authenticate_google_page(page, srv_key, entry)
+                    except Exception:
+                        pass
+
+                # Poll until login completes (auth cookies present & off initial login form, or user closes page)
+                deadline = time.time() + timeout_sec
+                final_url = page.url
+                detected_email = entry.get("username", "")
+                harvested_keys: List[str] = []
+
+                while time.time() < deadline:
+                    if page.is_closed():
+                        break
+                    try:
+                        final_url = page.url
+                        cookies_now = await context.cookies()
+                        auth_cookie_names = {c.get("name", "") for c in cookies_now}
+                        has_strong_auth_cookie = bool(
+                            auth_cookie_names
+                            & {"SID", "HSID", "SSID", "__Secure-1PSID", "__Secure-3PSID", "user_session", "session", "cf_clearance", "access_token"}
+                        )
+                        # Check page content for keys or email
+                        html = await page.content()
+                        if not detected_email:
+                            emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", html)
+                            if emails:
+                                detected_email = emails[0]
+                        key_pattern = provider_meta.get("key_regex")
+                        if key_pattern:
+                            found_k = re.findall(key_pattern, html)
+                            for fk in found_k:
+                                if fk not in harvested_keys:
+                                    harvested_keys.append(fk)
+
+                        # If user finished Google login and landed on target domain (not accounts.google.com/v3/signin)
+                        if has_strong_auth_cookie and "accounts.google.com/v3/signin" not in final_url and "/login" not in final_url:
+                            await page.wait_for_timeout(2000)
+                            break
+                    except Exception:
+                        break
+                    await page.wait_for_timeout(1500)
+
+                # Harvest final cookies & storage_state before closing context
+                final_cookies = await context.cookies()
+                storage_state = await context.storage_state()
+
+                if final_cookies:
+                    self.vault.save_session(srv_key, final_cookies)
+
+                # Save storage_state snapshot in profile_dir for instant Playwright reuse
+                storage_state_path = profile_dir / "vault_storage_state.json"
+                storage_state_path.write_text(json.dumps(storage_state, indent=2), encoding="utf-8")
+                try:
+                    storage_state_path.chmod(0o600)
+                except OSError:
+                    pass
+
+                fields = dict(entry.get("fields", {}))
+                fields["provider"] = provider.lower()
+                fields["login_url"] = login_url
+                fields["final_authenticated_url"] = final_url
+                fields["browser_profile"] = str(profile_dir)
+                fields["storage_state_file"] = str(storage_state_path)
+                fields["last_interactive_login_at"] = datetime.now(timezone.utc).isoformat()
+                fields["cookies_count"] = str(len(final_cookies))
+                if captured_bearer_tokens:
+                    fields["captured_bearer_token"] = captured_bearer_tokens[-1]
+                if captured_oauth_codes:
+                    fields["captured_oauth_code"] = captured_oauth_codes[-1]
+                if harvested_keys:
+                    fields["harvested_api_key"] = harvested_keys[0]
+
+                final_pw = entry.get("password", "")
+                if harvested_keys and (not final_pw or final_pw.startswith("MANAGED_")):
+                    final_pw = harvested_keys[0]
+                elif captured_bearer_tokens and (not final_pw or final_pw.startswith("MANAGED_")):
+                    final_pw = captured_bearer_tokens[-1]
+
+                self.vault.set(
+                    srv_key,
+                    detected_email or srv_key,
+                    final_pw or "MANAGED_INTERACTIVE_PLAYWRIGHT_AUTH",
+                    fields,
+                )
+
+                return ProvisionResult(
+                    status="ok",
+                    playbook="interactive-login",
+                    account_id=srv_key,
+                    provider=provider,
+                    vault_service_key=srv_key,
+                    profile_dir=str(profile_dir),
+                    details={
+                        "final_url": final_url,
+                        "detected_username": detected_email or srv_key,
+                        "cookies_saved": len(final_cookies),
+                        "origins_saved": len(storage_state.get("origins", [])),
+                        "bearer_tokens_captured": len(captured_bearer_tokens),
+                        "oauth_codes_captured": len(captured_oauth_codes),
+                        "api_keys_harvested": len(harvested_keys),
+                        "storage_state_file": str(storage_state_path),
+                    },
+                )
+            finally:
+                await context.close()
+

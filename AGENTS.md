@@ -126,6 +126,12 @@ Before dispatching, deploying, or executing ANY remote Modal GPU operation acros
 - **Hermes-Clef-Decision Permanent Retirement**: `hermes-clef-decision` on Modal GPU is permanently decommissioned. 100% of Clef routing and classification tasks MUST resolve via Cloudflare Workers AI Cloud (@cf/cloudflare/clef-flash) or Local Air-Gapped Surrogate ($0.00 Modal GPU cost).
 - **Fail-Closed Violation Response**: Any script or coordinator attempting to deploy on a workspace with $\le \$15.00$ remaining credits or infer on $\le \$10.00$ remaining credits MUST abort immediately with a hard error (`RuntimeError: Modal Credit Gate Violation`).
 
+### 1.18. Interactive Playwright Auth Capture Into Vault Invariant (Mọi Đăng Nhập Lấy Auth Info Qua Playwright Của Người Dùng)
+Whenever ANY authentication, login, session renewal, OAuth consent, or credential capture is needed for `vault.py` (`~/.hermes/account_vault.json`):
+- **Mandatory Interactive Playwright Login Flow**: Always launch a visible (headed) Playwright browser window via `vault.py interactive-login <service> --url <target_url>` (`PlaywrightCloudProvisioner.capture_interactive_auth`) so the user can authenticate directly in the Playwright window once ("làm 1 lần dùng lâu dài tin cậy").
+- **Zero-Manual-Copy-Paste**: Never ask the user to manually copy-paste cookies, DevTools headers, or OAuth tokens out of a browser. Instead, open the persistent Playwright browser profile (`~/.hermes/browser_profiles/<service>`), auto-fill any existing username/password/TOTP from `AccountVault`, let the user complete login/2FA/Passkey/consent, and automatically harvest and AES-256-GCM encrypt all cookies, `storageState` (`cookies` + `localStorage`), intercepted `Authorization: Bearer` headers, and OAuth tokens directly into `vault.py`.
+- **Single Source of Truth**: All credentials, API keys, OAuth clients, and captured session states across Google, YouTube, Modal, MCP providers, and Odoo must reside exclusively in `AccountVault` (`skills/security/account-vault/scripts/vault.py`).
+
 ---
 
 ## 2. Hermes Agent Core Principles
